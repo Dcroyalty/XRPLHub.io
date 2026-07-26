@@ -59,6 +59,8 @@ function GrantActions({ grant, onUpdate }: { grant: Grant; onUpdate: () => void 
   const [loading, setLoading] = useState('');
   const [note, setNote]       = useState('');
   const [amount, setAmount]   = useState(String(grant.amountRequested));
+  const [payTxHash, setPayTxHash] = useState('');
+  const txHashValid = /^[A-Fa-f0-9]{64}$/.test(payTxHash.trim());
 
   const act = async (action: string, body: object) => {
     setLoading(action);
@@ -123,10 +125,16 @@ function GrantActions({ grant, onUpdate }: { grant: Grant; onUpdate: () => void 
           </>
         )}
         {grant.status === 'APPROVED' && (
-          <button onClick={()=>act('pay',{amount:parseFloat(amount)})} disabled={!!loading}
-            style={{ padding:'6px 14px', borderRadius:8, border:'none', background:'#10b981', color:'#000', fontSize:11, fontWeight:800, cursor:'pointer', fontFamily:'inherit' }}>
-            {loading==='pay' ? '⚡ Sending…' : '💸 Pay Now'}
-          </button>
+          <>
+            <input type="text" value={payTxHash} onChange={e=>setPayTxHash(e.target.value)}
+              placeholder="TX hash from Xaman after you send the payout"
+              style={{ ...INP, width:'100%', padding:'7px 10px', fontSize:11, fontFamily:"'IBM Plex Mono',monospace", marginBottom:6 }} />
+            <button onClick={()=>act('pay',{amount:parseFloat(amount), txHash:payTxHash.trim()})} disabled={!!loading || !txHashValid}
+              title={!txHashValid ? 'Paste the 64-character TX hash from the payment you sent in Xaman first' : ''}
+              style={{ padding:'6px 14px', borderRadius:8, border:'none', background:'#10b981', color:'#000', fontSize:11, fontWeight:800, cursor:(!!loading||!txHashValid)?'not-allowed':'pointer', opacity:(!!loading||!txHashValid)?0.5:1, fontFamily:'inherit' }}>
+              {loading==='pay' ? '⚡ Sending…' : '💸 Mark Paid'}
+            </button>
+          </>
         )}
       </div>
     </div>

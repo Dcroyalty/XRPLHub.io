@@ -466,23 +466,27 @@ function Overlay({ show, onClose, children, wide=false }: { show:boolean; onClos
 // treasuryXRP (number) · treasuryUSD (preformatted string) · donorCount · grantCount.
 function TreasuryStatsBar() {
   const [stats, setStats] = useState<{ treasuryXRP:number; treasuryUSD:string; donorCount:number; grantCount:number }|null>(null);
+  const [statsError, setStatsError] = useState(false);
   useEffect(() => {
     let stop = false;
     const load = async () => {
       try {
         const res = await fetch(`${API_URL}/api/treasury-stats`, { cache: 'no-store' });
-        if (!res.ok) return;
+        if (!res.ok) { console.error('[TreasuryStatsBar] non-OK response', res.status); if (!stop) setStatsError(true); return; }
         const d = await res.json();
-        if (!stop) setStats({
-          treasuryXRP: Number(d.treasuryXRP || 0),
-          treasuryUSD: String(d.treasuryUSD || '$0'),
-          donorCount:  Number(d.donorCount  || 0),
-          grantCount:  Number(d.grantCount  || 0),
-        });
-      } catch {}
+        if (!stop) {
+          setStats({
+            treasuryXRP: Number(d.treasuryXRP || 0),
+            treasuryUSD: String(d.treasuryUSD || '$0'),
+            donorCount:  Number(d.donorCount  || 0),
+            grantCount:  Number(d.grantCount  || 0),
+          });
+          setStatsError(d.source === 'error');
+        }
+      } catch (e) { console.error('[TreasuryStatsBar] fetch failed', e); if (!stop) setStatsError(true); }
     };
     load();
-    const iv = setInterval(load, 30_000);
+    const iv = setInterval(load, 15_000); // retry faster than before so a transient failure clears itself quickly
     return () => { stop = true; clearInterval(iv); };
   }, []);
   const fmt = (n:number) => n >= 1000 ? n.toLocaleString('en-US', { maximumFractionDigits:0 }) : n.toLocaleString('en-US', { minimumFractionDigits:2, maximumFractionDigits:2 });
@@ -503,6 +507,11 @@ function TreasuryStatsBar() {
         <Cell label="Donors"           value={stats ? fmtCount(stats.donorCount) : '—'}           color="#38bdf8" />
         <Cell label="Grants Funded"    value={stats ? fmtCount(stats.grantCount) : '—'}           color="#8b5cf6" />
       </div>
+      {(statsError || !stats) && (
+        <div style={{ textAlign:'center', fontSize:10, color:'rgba(255,255,255,.3)', paddingBottom:6 }}>
+          {stats ? 'Live figures may be delayed — retrying…' : 'Loading live figures…'}
+        </div>
+      )}
       <div style={{ display:'flex',flexWrap:'wrap',justifyContent:'center',gap:14,padding:'4px 0 10px' }}>
         <a href={`https://xrpscan.com/account/${TREASURY}`} target="_blank" rel="noopener noreferrer" style={{ fontSize:10,fontWeight:700,color:'rgba(255,255,255,.45)',letterSpacing:'.13em',textTransform:'uppercase',textDecoration:'none',display:'inline-flex',alignItems:'center',gap:6 }}>
           <span style={{ width:5,height:5,borderRadius:'50%',background:'#10b981',boxShadow:'0 0 8px #10b981',animation:'pulse 2s infinite' }} />
@@ -1088,53 +1097,114 @@ function LoginModal({ show, onClose, onLoggedIn }: { show:boolean;onClose:()=>vo
   );
 }
 
-// ─── DONATE MODAL ───
+// ─── DONATE MODAL — real polling payment gate (mirrors ProductModal's proven flow) ───
 function DonateModal({ show, onClose }: { show:boolean; onClose:()=>void }) {
   const [amount, setAmount] = useState('');
   const [currency, setCurrency] = useState<Currency>('XRP');
   const [copiedA, setCopiedA] = useState(false);
-  const [step, setStep] = useState<'form'|'done'>('form');
-  const dl = `xrpl:${TREASURY}${currency==='XRP'&&parseFloat(amount)>0?`?amount=${Math.floor(parseFloat(amount)*1e6)}`:''}`;
-  const handleClose = () => { onClose(); setTimeout(()=>{ setStep('form'); setAmount(''); },300); };
-  if (step === 'done') return (
+  const [payStatus, setPayStatus] = useState<'idle'|'creating'|'waiting'|'done'>('idle');
+  const [uuid, setUuid] = useState('');
+  const [qrUrl, setQrUrl] = useState('');
+  const [deepLnk, setDeepLnk] = useState('');
+  const [countdown, setCountdown] = useState(900);
+  const [verifiedTx, setVerifiedTx] = useState('');
+  const [payError, setPayError] = useState('');
+  const pollRef = useRef<ReturnType<typeof setTimeout>|null>(null);
+  const cancelRef = useRef(false);
+
+  useEffect(() => {
+    if (payStatus !== 'waiting' || !uuid) return;
+    cancelRef.current = false;
+    const poll = async () => {
+      if (cancelRef.current) return;
+      try {
+        const params = new URLSearchParams({ uuid, productId:'donate', amount, currency });
+        const res = await fetch(`${API_URL}/api/check-payment?${params}`);
+        const data = await res.json();
+        if (cancelRef.current) return;
+        if (data.status === 'verified') { setVerifiedTx(data.txHash || ''); setPayStatus('done'); }
+        else if (data.status === 'expired') { setPayStatus('idle'); setPayError('Payment expired. Tap to try again.'); }
+        else if (data.status === 'rejected') { setPayStatus('idle'); setPayError(data.reason || 'Payment declined.'); }
+        else { pollRef.current = setTimeout(poll, 3000); }
+      } catch { if (!cancelRef.current) pollRef.current = setTimeout(poll, 5000); }
+    };
+    poll();
+    return () => { cancelRef.current = true; if (pollRef.current) clearTimeout(pollRef.current); };
+  }, [payStatus, uuid]); // eslint-disable-line
+
+  useEffect(() => {
+    if (payStatus !== 'waiting') return;
+    const iv = setInterval(() => setCountdown(c => { if (c <= 1) { clearInterval(iv); if (!cancelRef.current) { setPayStatus('idle'); setPayError('Payment expired.'); } return 0; } return c - 1; }), 1000);
+    return () => clearInterval(iv);
+  }, [payStatus]);
+
+  const handleClose = () => {
+    cancelRef.current = true; if (pollRef.current) clearTimeout(pollRef.current);
+    onClose();
+    setTimeout(()=>{ setPayStatus('idle'); setAmount(''); setUuid(''); setQrUrl(''); setDeepLnk(''); setVerifiedTx(''); setPayError(''); setCountdown(900); },300);
+  };
+
+  const handleDonate = async () => {
+    setPayStatus('creating'); setPayError('');
+    try {
+      const res = await fetch(`${API_URL}/api/create-payment`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ productId:'donate', currency, amount }) });
+      const data = await res.json();
+      if (!res.ok || !data.uuid) throw new Error(data.error || 'Failed to create payment');
+      setUuid(data.uuid); setQrUrl(data.qr_png); setDeepLnk(data.deep_link); setCountdown(data.expires_in || 900); setPayStatus('waiting');
+    } catch (e: unknown) { setPayError(e instanceof Error ? e.message : 'Payment failed'); setPayStatus('idle'); }
+  };
+
+  if (payStatus === 'done') return (
     <Overlay show={show} onClose={handleClose}>
       <div style={{ textAlign:'center',padding:'28px 0' }}>
         <div style={{ fontSize:60,marginBottom:14 }}>💚</div>
         <h3 style={{ fontSize:26,fontWeight:900,color:'#10b981',marginBottom:10 }}>Thank You.</h3>
         <p style={{ color:'rgba(255,255,255,.55)',fontSize:14,lineHeight:1.8,marginBottom:8 }}><strong style={{ color:'#fff' }}>{amount} {currency}</strong> to the community treasury.</p>
-        <p style={{ color:'rgba(255,255,255,.35)',fontSize:13,lineHeight:1.75,marginBottom:26 }}>Wallet-to-wallet — permanently on the XRP Ledger.</p>
+        <p style={{ color:'rgba(255,255,255,.35)',fontSize:13,lineHeight:1.75,marginBottom:26 }}>Verified on the XRP Ledger — not self-reported.</p>
         <div style={{ display:'flex',gap:10,justifyContent:'center',flexWrap:'wrap' }}>
-          <a href={`https://xrpscan.com/account/${TREASURY}`} target="_blank" rel="noopener noreferrer" style={{ ...Btn('ghost',undefined,{fontSize:13,textDecoration:'none'}) }}>Verify on XRPScan ↗</a>
+          <a href={`https://xrpscan.com/tx/${verifiedTx}`} target="_blank" rel="noopener noreferrer" style={{ ...Btn('ghost',undefined,{fontSize:13,textDecoration:'none'}) }}>Verify on XRPScan ↗</a>
           <button onClick={handleClose} style={Btn('green')}>Done</button>
         </div>
       </div>
     </Overlay>
   );
+
+  if (payStatus === 'waiting') return (
+    <Overlay show={show} onClose={handleClose}>
+      <div style={{ textAlign:'center' }}>
+        <div style={{ fontSize:10,fontWeight:700,color:'#10b981',letterSpacing:'.12em',textTransform:'uppercase',marginBottom:5 }}>Awaiting Signature</div>
+        <h3 style={{ fontSize:20,fontWeight:900,marginBottom:14 }}>Scan or tap to confirm in Xaman</h3>
+        <div style={{ background:'#fff',borderRadius:18,padding:14,width:210,height:210,margin:'0 auto 14px',display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 0 30px rgba(16,185,129,.15)' }}>
+          <img src={qrUrl || qrImg(`https://xumm.app/sign/${uuid}`)} alt="Donate" style={{ width:'100%',height:'100%',borderRadius:8 }} />
+        </div>
+        <a href={deepLnk || `https://xumm.app/sign/${uuid}`} target="_blank" rel="noopener noreferrer" style={{ fontSize:13,color:'#10b981',fontWeight:600 }}>Open in Xaman — {amount} {currency}</a>
+        <p style={{ fontSize:12,color:'rgba(255,255,255,.35)',marginTop:14 }}>Expires in {Math.floor(countdown/60)}:{String(countdown%60).padStart(2,'0')}</p>
+      </div>
+    </Overlay>
+  );
+
   return (
     <Overlay show={show} onClose={handleClose}>
       <div style={{ fontSize:10,fontWeight:700,color:'#10b981',letterSpacing:'.12em',textTransform:'uppercase',marginBottom:5 }}>Donate to Treasury</div>
       <h3 style={{ fontSize:22,fontWeight:900,marginBottom:4 }}>Fund the community treasury.</h3>
-      <p style={{ fontSize:13,color:'rgba(255,255,255,.44)',marginBottom:18 }}>Public and verifiable on XRPScan.</p>
-      <div style={{ background:'#fff',borderRadius:16,padding:11,width:166,height:166,margin:'0 auto 12px',display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden' }}>
-        <img src={qrImg(dl)} alt="Donate" style={{ width:144,height:144,borderRadius:5 }} />
-      </div>
-      <p style={{ textAlign:'center',marginBottom:12 }}><a href={dl} target="_blank" rel="noopener noreferrer" style={{ fontSize:12,color:'#10b981',fontWeight:600 }}>📱 Open in Xaman{amount&&parseFloat(amount)>0?` — ${amount} ${currency}`:''}</a></p>
+      <p style={{ fontSize:13,color:'rgba(255,255,255,.44)',marginBottom:18 }}>Verified on-chain — no self-reporting.</p>
       <div style={{ background:'rgba(16,185,129,.05)',border:'1px solid rgba(16,185,129,.15)',borderRadius:12,padding:'9px 12px',marginBottom:14,display:'flex',alignItems:'center',gap:8,flexWrap:'wrap' }}>
         <code style={{ fontSize:10,color:'#34d399',flex:1,wordBreak:'break-all',fontFamily:"'IBM Plex Mono',monospace" }}>{TREASURY}</code>
-        <button onClick={()=>{ navigator.clipboard.writeText(TREASURY); setCopiedA(true); setTimeout(()=>setCopiedA(false),2000); }} style={{ ...Btn('ghost',undefined,{padding:'4px 9px',fontSize:10}),flexShrink:0 }}>{copiedA?'✓':'Copy'}</button>
+        <button onClick={()=>{ navigator.clipboard.writeText(TREASURY).then(()=>{ setCopiedA(true); setTimeout(()=>setCopiedA(false),2000); }).catch(()=>{ alert('Could not copy automatically — long-press the address above to copy it manually.'); }); }} style={{ ...Btn('ghost',undefined,{padding:'4px 9px',fontSize:10}),flexShrink:0 }}>{copiedA?'Copied':'Copy'}</button>
       </div>
       <div style={{ display:'flex',gap:8,marginBottom:12 }}>
         {(['XRP','RLUSD'] as Currency[]).map(c => (
           <button key={c} onClick={()=>setCurrency(c)} style={{ flex:1,padding:'10px',borderRadius:12,cursor:'pointer',fontFamily:'inherit',fontWeight:700,fontSize:13,border:`1px solid ${currency===c?'#10b981':'rgba(255,255,255,.1)'}`,background:currency===c?'rgba(16,185,129,.12)':'rgba(255,255,255,.04)',color:currency===c?'#10b981':'rgba(255,255,255,.5)' }}>
-            {c==='XRP'?'◈ XRP':'💵 RLUSD'}
+            {c==='XRP'?'XRP':'RLUSD'}
           </button>
         ))}
       </div>
       <div style={{ display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:8,marginBottom:10 }}>
         {['10','25','50','100'].map(a => <button key={a} onClick={()=>setAmount(a)} style={{ padding:'10px',borderRadius:12,cursor:'pointer',border:`1px solid ${amount===a?'#10b981':'rgba(255,255,255,.1)'}`,background:amount===a?'rgba(16,185,129,.12)':'rgba(255,255,255,.04)',color:amount===a?'#10b981':'rgba(255,255,255,.6)',fontWeight:700,fontSize:13,fontFamily:'inherit' }}>{a}</button>)}
       </div>
-      <input type="number" value={amount} onChange={e=>setAmount(e.target.value)} placeholder={`Amount in ${currency}`} style={{ ...INP, marginBottom:16 }} />
-      <button onClick={async()=>{ try{ await fetch(`${API_URL}/api/donate`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({amount,currency})}); }catch{} setStep('done'); }} disabled={!amount||parseFloat(amount)<=0} style={{ ...Btn('green',undefined,{width:'100%',padding:'14px',fontSize:15,opacity:!amount||parseFloat(amount)<=0?0.4:1}) }}>💚 I Sent My Donation</button>
+      <input type="number" value={amount} onChange={e=>setAmount(e.target.value)} placeholder={`Amount in ${currency}`} style={{ ...INP, marginBottom:12 }} />
+      {payError && <p style={{ fontSize:12,color:'#f87171',marginBottom:10 }}>{payError}</p>}
+      <button onClick={handleDonate} disabled={!amount||parseFloat(amount)<=0||payStatus==='creating'} style={{ ...Btn('green',undefined,{width:'100%',padding:'14px',fontSize:15,opacity:(!amount||parseFloat(amount)<=0)?0.4:1}) }}>{payStatus==='creating'?'Creating…':'Donate Now'}</button>
     </Overlay>
   );
 }

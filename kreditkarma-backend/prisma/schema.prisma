@@ -75,6 +75,23 @@ model GrantRequest {
   @@index([createdAt])
 }
 
+model Purchase {
+  id            String    @id @default(cuid())
+  productId     String
+  currency      String    @default("XRP")
+  amount        String
+  email         String?
+  wallet        String?
+  txHash        String?   @unique
+  serviceTxHash String?
+  status        String    @default("VERIFIED")
+  verifiedAt    DateTime  @default(now())
+  deliveredAt   DateTime?
+
+  @@index([txHash])
+  @@index([wallet])
+}
+
 model Donation {
   id          String   @id @default(cuid())
   fromAddress String

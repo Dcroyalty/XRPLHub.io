@@ -2,23 +2,23 @@
 
 import { useState, useEffect } from "react";
 
-const TREASURY = "rNvizifpxwLGrZhVve1uu5MkQ3ZfVXGyVt";
+const TREASURY = "rs59g3amo5iT6T64Cg96XXMAWuw3WPQcLF"; // corrected — was pointing at the wrong wallet entirely
 
 export default function DonatePage() {
   const [stats, setStats] = useState<any>(null);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    fetch("/api/treasury/stats")
+    fetch("/api/treasury-stats") // corrected — was hitting the dead duplicate route
       .then(r => r.json())
       .then(setStats)
       .catch(() => {});
   }, []);
 
   function copyTreasury() {
-    navigator.clipboard.writeText(TREASURY);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    navigator.clipboard.writeText(TREASURY)
+      .then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); })
+      .catch(() => { alert('Could not copy automatically — long-press the address to copy it manually.'); });
   }
 
   return (

@@ -2,7 +2,9 @@
 // Live XRPL treasury stats — matches Xaman's "available balance" exactly.
 
 import { NextResponse } from 'next/server';
+import { PrismaClient } from '@prisma/client';
 
+const prisma = new PrismaClient();
 const TREASURY = 'rs59g3amo5iT6T64Cg96XXMAWuw3WPQcLF';
 const XRPL_API = 'https://xrplcluster.com';
 const XRPL_BACKUP = 'https://s1.ripple.com:51234/';
@@ -77,16 +79,17 @@ export async function GET() {
     return NextResponse.json(cache.data, { headers: { 'Cache-Control': 'no-store' } });
   }
   try {
-    const [availXRP, xrpPrice, inbound] = await Promise.all([
+    const [availXRP, xrpPrice, inbound, grantCount] = await Promise.all([
       fetchAvailableBalance(),
       fetchXRPPrice(),
       fetchInboundStats(),
+      prisma.grantRequest.count({ where: { status: 'PAID' } }).catch(() => 0),
     ]);
     const payload = {
       treasuryXRP: Number(availXRP.toFixed(2)),
       treasuryUSD: fmtUSD(availXRP * xrpPrice),
       donorCount:  inbound.donorCount,
-      grantCount:  0,
+      grantCount,
       paymentCount: inbound.paymentCount,
       updatedAt:   new Date().toISOString(),
       source:      'xrpl-live',
