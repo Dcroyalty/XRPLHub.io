@@ -59,33 +59,16 @@ function GrantActions({ grant, onUpdate }: { grant: Grant; onUpdate: () => void 
   const [loading, setLoading] = useState('');
   const [note, setNote]       = useState('');
   const [amount, setAmount]   = useState(String(grant.amountRequested));
-  const [payTxHash, setPayTxHash] = useState('');
-  const txHashValid = /^[A-Fa-f0-9]{64}$/.test(payTxHash.trim());
 
   const act = async (action: string, body: object) => {
     setLoading(action);
     try {
-      // 'review' uses the review route; approve/reject/pay use the approve route.
-      const isReview = action === 'review';
-      const url = isReview ? `${API_URL}/api/grants/review` : `${API_URL}/api/grants/approve`;
-      // Map UI action → route action verb
-      const verbMap: Record<string,string> = { approve:'APPROVE', reject:'REJECT', pay:'PAID' };
-      const payload = isReview
-        ? { wallet: grant.walletAddress }
-        : { id: grant.id, action: verbMap[action] || action.toUpperCase(), secret: ADMIN_PWD, ...body };
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-admin-secret': ADMIN_PWD },
-        body: JSON.stringify(payload),
+      await fetch(`${API_URL}/api/grants/${grant.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, ...body }),
       });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok || json.error) {
-        alert(`Action failed: ${json.error || res.status}. The grant was not updated.`);
-      }
       onUpdate();
-    } catch (e) {
-      alert(`Network error — grant not updated. ${e instanceof Error ? e.message : ''}`);
-    }
+    } catch { /* silent */ }
     finally { setLoading(''); }
   };
 
@@ -125,16 +108,10 @@ function GrantActions({ grant, onUpdate }: { grant: Grant; onUpdate: () => void 
           </>
         )}
         {grant.status === 'APPROVED' && (
-          <>
-            <input type="text" value={payTxHash} onChange={e=>setPayTxHash(e.target.value)}
-              placeholder="TX hash from Xaman after you send the payout"
-              style={{ ...INP, width:'100%', padding:'7px 10px', fontSize:11, fontFamily:"'IBM Plex Mono',monospace", marginBottom:6 }} />
-            <button onClick={()=>act('pay',{amount:parseFloat(amount), txHash:payTxHash.trim()})} disabled={!!loading || !txHashValid}
-              title={!txHashValid ? 'Paste the 64-character TX hash from the payment you sent in Xaman first' : ''}
-              style={{ padding:'6px 14px', borderRadius:8, border:'none', background:'#10b981', color:'#000', fontSize:11, fontWeight:800, cursor:(!!loading||!txHashValid)?'not-allowed':'pointer', opacity:(!!loading||!txHashValid)?0.5:1, fontFamily:'inherit' }}>
-              {loading==='pay' ? '⚡ Sending…' : '💸 Mark Paid'}
-            </button>
-          </>
+          <button onClick={()=>act('pay',{amount:parseFloat(amount)})} disabled={!!loading}
+            style={{ padding:'6px 14px', borderRadius:8, border:'none', background:'#10b981', color:'#000', fontSize:11, fontWeight:800, cursor:'pointer', fontFamily:'inherit' }}>
+            {loading==='pay' ? '⚡ Sending…' : '💸 Pay Now'}
+          </button>
         )}
       </div>
     </div>
