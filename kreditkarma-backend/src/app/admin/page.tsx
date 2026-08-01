@@ -169,8 +169,9 @@ export default function AdminPage() {
   useEffect(() => {
     if (!authed) return;
     fetchData();
-    const iv = setInterval(fetchData, 60_000);
-    return () => clearInterval(iv);
+    // NO auto-refresh interval. A 60s poll here kept the Neon compute awake for
+    // as long as this tab stayed open (hours), which dominated the monthly bill.
+    // Use the Refresh button in the header when you want fresh data.
   }, [authed, fetchData]);
 
   // ── Login screen ──

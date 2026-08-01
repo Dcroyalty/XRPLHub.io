@@ -486,8 +486,10 @@ function TreasuryStatsBar() {
       } catch (e) { console.error('[TreasuryStatsBar] fetch failed', e); if (!stop) setStatsError(true); }
     };
     load();
-    const iv = setInterval(load, 120_000); // 2 min — keeps Neon compute idle-able; stats change slowly
-    return () => { stop = true; clearInterval(iv); };
+    // Load once per page view. No polling: a repeating fetch here kept the Neon
+    // compute from ever scaling to zero. Treasury figures change slowly and the
+    // page re-fetches on every fresh visit, which is plenty.
+    return () => { stop = true; };
   }, []);
   const fmt = (n:number) => n >= 1000 ? n.toLocaleString('en-US', { maximumFractionDigits:0 }) : n.toLocaleString('en-US', { minimumFractionDigits:2, maximumFractionDigits:2 });
   const fmtCount = (n:number) => n.toLocaleString('en-US', { maximumFractionDigits:0 });
