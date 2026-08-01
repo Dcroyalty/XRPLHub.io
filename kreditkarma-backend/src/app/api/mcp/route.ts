@@ -149,7 +149,7 @@ const TOOLS = [
     description:
       'Submit a community grant application to the XRPLHub on-chain treasury. ' +
       'Grants go directly wallet-to-wallet — no NGO, no overhead, no middleman. ' +
-      'AI reviews every application and a human approves within 24 hours. ' +
+      'AI assists by summarizing and flagging each application; a human reviewer makes every approval decision, typically within 24 hours. ' +
       'If approved, funds are sent in RLUSD directly to the applicant\'s XRPL wallet. ' +
       'Use this to help someone apply for emergency financial assistance — rent, food, medical, ' +
       'utilities, transport, or other urgent needs. ' +
@@ -175,7 +175,7 @@ const TOOLS = [
           type: 'string',
           description:
             'Clear description of the need, situation, and urgency (2–4 sentences). ' +
-            'Be specific — vague applications score lower in AI review.',
+            'Be specific — vague applications are harder for the reviewer to verify.',
         },
         currency: {
           type: 'string',
@@ -380,7 +380,7 @@ async function toolSubmitGrantApplication(
       amountRequested: `${amount} ${currency}`,
       category,
       nextSteps:
-        'Application submitted. AI review begins immediately. A human approver will ' +
+        'Application submitted. AI-assisted triage begins immediately and is advisory only. A human approver will ' +
         'review within 24 hours. If approved, funds are sent directly to the wallet ' +
         'address — no further action required from the applicant.',
       poweredBy: 'XRPLHub.io Community Grants — wallet-to-wallet, no middleman © 2026',

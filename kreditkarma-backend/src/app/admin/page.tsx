@@ -377,9 +377,9 @@ export default function AdminPage() {
                           👛 {copiedAddr===g.id ? 'Copied full address ✓' : `${trunc(g.walletAddress, 10)} — Copy`}
                         </button>
                         {g.scoreSnapshot && <span style={{ fontSize:11, color:'#34d399' }}>📊 XRPLScore: {g.scoreSnapshot}</span>}
-                        {g.aiScore != null && <span style={{ fontSize:11, color:'#a78bfa' }}>🤖 AI Risk: {g.aiScore.toFixed(1)}</span>}
+                        {g.aiScore != null && <span style={{ fontSize:11, color:'#a78bfa' }} title="Advisory triage signal only — not a decision. A human reviews and decides every application.">🤖 AI triage (advisory): {g.aiScore.toFixed(0)}/100</span>}
                       </div>
-                      {g.aiReasoning && <p style={{ fontSize:11, color:'rgba(255,255,255,.35)', marginTop:6, fontStyle:'italic' }}>🤖 {g.aiReasoning}</p>}
+                      {g.aiReasoning && <p style={{ fontSize:11, color:'rgba(255,255,255,.35)', marginTop:6, fontStyle:'italic' }}>🤖 {g.aiReasoning} <span style={{ color:'rgba(255,255,255,.25)', fontStyle:'normal' }}>— advisory only; your decision governs.</span></p>}
                     </div>
                     <div style={{ textAlign:'right', flexShrink:0 }}>
                       <div style={{ fontSize:22, fontWeight:900, color:'#10b981' }}>${g.amountRequested}</div>

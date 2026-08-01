@@ -1,6 +1,9 @@
 // src/app/api/grants/review/route.ts
-// Autonomous grant review: Grok (xAI) + Anthropic Claude.
-// Writes verdict to LIVE Neon columns: aiScore, aiReasoning, riskFlags.
+// AI-ASSISTED TRIAGE (advisory only) — Grok (xAI) + Anthropic Claude.
+// This NEVER auto-approves or auto-denies. It writes an advisory signal to
+// aiScore/aiReasoning/riskFlags and sets status to REVIEWING for a human to decide.
+// Keep it that way: automated denial of need-based aid invites disparate-impact
+// and fair-lending-style exposure. The human decision is the decision.
 
 import { NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
@@ -10,6 +13,12 @@ const XAI_API_KEY       = process.env.XAI_API_KEY || process.env.GROK_API_KEY ||
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
 
 const REVIEW_INSTRUCTIONS = `You are a grant reviewer for XRPLHub, a community mutual-aid fund that gives small emergency grants ($25-$100) directly to people in need, paid to their XRPL wallet. Review the application below for legitimacy and need. Watch for: obvious fraud or spam, duplicate/templated text, requests that don't match the stated category, or amounts that seem inconsistent with the described need. You are advisory only — a human gives final approval before any funds move.
+
+FAIRNESS REQUIREMENTS (mandatory):
+- Assess ONLY legitimacy of the request and consistency of the stated need.
+- NEVER consider or infer race, ethnicity, national origin, religion, sex, gender identity, sexual orientation, age, disability, marital or familial status, immigration status, or receipt of public assistance. Do not use names, language style, spelling, grammar, or location as proxies for any of these.
+- Do not penalize an applicant for poor writing, limited English, or an unusual-sounding name.
+- If you lack sufficient basis to judge, return "REVIEW" rather than "REJECT".
 
 Respond with STRICT JSON only, no markdown, no preamble:
 {"recommendation":"APPROVE"|"REVIEW"|"REJECT","confidence":0-100,"summary":"one or two sentence rationale for the human approver","flags":["short risk flags, empty array if none"]}`;

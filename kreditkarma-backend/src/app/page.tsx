@@ -1209,7 +1209,7 @@ function DonateModal({ show, onClose }: { show:boolean; onClose:()=>void }) {
   );
 }
 
-// ─── GRANT MODAL — submit → real AI review (Grok + Anthropic) → admin queue ───
+// ─── GRANT MODAL — submit → AI-assisted triage (Grok + Anthropic) → human admin queue ───
 function GrantModal({ show, onClose, connectedWallet, user }: { show:boolean; onClose:()=>void; connectedWallet?:string; user?:{email:string;name:string}|null }) {
   const [step, setStep] = useState<'form'|'reviewing'|'success'>('form');
   const [form, setForm] = useState({ name:'', wallet:'', email:'', phone:'', category:'', need:'', amount:'25' });
@@ -1248,7 +1248,7 @@ function GrantModal({ show, onClose, connectedWallet, user }: { show:boolean; on
       await fetch(`${API_URL}/api/grants/submit`, {
         method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(form),
       });
-      // 2) real autonomous AI review (Grok + Anthropic) → returns recommendation + summary
+      // 2) AI-assisted triage (Grok + Anthropic) → returns an ADVISORY recommendation + summary for the human reviewer
       const res = await fetch(`${API_URL}/api/grants/review`, {
         method:'POST', headers:{'Content-Type':'application/json'},
         body:JSON.stringify({ name:form.name, wallet:form.wallet, email:form.email, category:form.category, need:form.need, amount:form.amount }),
@@ -1272,7 +1272,7 @@ function GrantModal({ show, onClose, connectedWallet, user }: { show:boolean; on
     <Overlay show={show} onClose={()=>{}}>
       <div style={{ textAlign:'center', padding:'44px 0' }}>
         <div style={{ fontSize:44, animation:'spin 1s linear infinite', display:'inline-block', marginBottom:14 }}>🤖</div>
-        <p style={{ color:'#8b5cf6', fontWeight:700, fontSize:17 }}>AI reviewing your application…</p>
+        <p style={{ color:'#8b5cf6', fontWeight:700, fontSize:17 }}>Preparing your application for review…</p>
         <p style={{ fontSize:13, color:'rgba(255,255,255,.38)', marginTop:6 }}>Assessing need · checking treasury · drafting recommendation</p>
       </div>
     </Overlay>
@@ -1342,7 +1342,7 @@ function AboutModal({ show, onClose }: { show:boolean; onClose:()=>void }) {
         <p>We build entirely on the <strong style={{ color:'#fff' }}>XRP Ledger</strong> — fast, low-cost, and energy-efficient. Three pillars power the platform: XRPL Services, Community Grants, and XRPLScore.</p>
         <p><strong style={{ color:'#10b981' }}>XRPLScore™</strong> is our proprietary on-chain rating, 300–850, computed live from your wallet. No FICO. No bureau. No SSN. The Builder lets you grow it over time through verifiable on-chain history.</p>
         <p>Our <strong style={{ color:'#fff' }}>XRPL Services</strong> are AI-delivered on-chain tools covering major XRPL transaction types — pay in Xaman, AI verifies on mainnet, the service activates in seconds.</p>
-        <p><strong style={{ color:'#10b981' }}>Community Grants</strong>: donors fund a public XRPL treasury. AI reviews every application, and approved grants go wallet-to-wallet after final human approval. No NGO. No middlemen. Permanently verifiable on-chain.</p>
+        <p><strong style={{ color:'#10b981' }}>Community Grants</strong>: donors fund a public XRPL treasury. AI helps sort and summarize applications; every decision is made by a human reviewer. Approved grants go wallet-to-wallet. No NGO. No middlemen. Permanently verifiable on-chain.</p>
         <p style={{ fontSize:12,color:'rgba(255,255,255,.4)',fontStyle:'italic' }}>XRPLScore™ methodology is proprietary and licensable to financial institutions, DeFi platforms, and on-chain data partners. Partnership inquiries: <a href="mailto:partners@xrplhub.io" style={{ color:'#10b981' }}>partners@xrplhub.io</a></p>
       </div>
       <button onClick={onClose} style={{ ...Btn('green',undefined,{marginTop:24}) }}>Close</button>
@@ -1356,7 +1356,7 @@ function FAQModal({ show, onClose }: { show:boolean; onClose:()=>void }) {
   const faqs:[string,string][] = [
     ['What is XRPLScore™?',"XRPLScore™ is XRPLHub's proprietary on-chain rating — 300 to 850, computed live from your XRPL wallet. No SSN, no credit bureau, no FICO affiliation. It's your verifiable on-chain reputation."],
     ['How do the XRPL Services work?','You pay in Xaman and get a TX hash. Our AI verifies the transaction on XRPL mainnet, confirms the amount and destination, and activates your service within one ledger close (~4 seconds).'],
-    ['How does the grant system work?',"Donate XRP/RLUSD to the public treasury (viewable on XRPScan). Anyone in need can apply for $25–$100. AI reviews each application, and after final human approval, funds go directly to the recipient's XRPL wallet."],
+    ['How does the grant system work?',"Donate XRP/RLUSD to the public treasury (viewable on XRPScan). Anyone in need can apply for $25–$100. AI assists by summarizing and flagging each application for the human reviewer; a person makes every approval decision. Approved funds then go directly to the recipient's XRPL wallet."],
     ['What is the XRPLScore Builder?','A monthly subscription that builds verifiable on-chain history, raising your XRPLScore over time. The first reputation builder native to the XRP Ledger.'],
     ['Do I need a Xaman wallet?','Yes — Xaman is the XRPL wallet, free on iOS and Android at xaman.app. Payments are a single QR scan and swipe.'],
     ['Is XRPLHub a bank?','No. Not a bank, broker, insurer, or FDIC institution. XRPLHub is a financial technology platform on the XRP Ledger. All services are on-chain operational tools.'],
@@ -1401,7 +1401,7 @@ function TermsModal({ show, onClose }: { show:boolean; onClose:()=>void }) {
         <span style={H}>5. XRPLScore Builder</span>
         <p style={P}>Monthly subscriptions build on-chain history that factors into your XRPLScore. Subscriptions cancel at end-of-cycle. All payments are non-refundable (irrevocable XRPL transactions).</p>
         <span style={H}>6. Community Grant Program</span>
-        <p style={P}>Donations are voluntary and irrevocable. Grant applications are subject to AI review and final human approval. Submission does not guarantee disbursement. Grants range $25–$100 subject to treasury availability.</p>
+        <p style={P}>Donations are voluntary and irrevocable. Applications are triaged with AI assistance to help our reviewer prioritize; all approval and denial decisions are made by a human. AI is advisory only and never automatically approves or denies an application. Submission does not guarantee disbursement. Grants range $25–$100 subject to treasury availability.</p>
         <span style={H}>7. Your Wallet — Your Responsibility</span>
         <p style={P}>You are solely responsible for your XRPL wallet, private keys, and seed phrases. XRPLHub never has access to your private keys. Lost keys result in permanent, unrecoverable loss.</p>
         <span style={H}>8. Prohibited Uses</span>
@@ -2067,7 +2067,7 @@ export default function XRPLHubHome() {
           <div style={{ textAlign:'center',marginBottom:34 }}>
             <div style={{ display:'inline-flex',alignItems:'center',gap:6,marginBottom:12 }}><span style={{ width:5,height:5,borderRadius:'50%',background:'#8b5cf6',boxShadow:'0 0 8px #8b5cf6' }} /><span style={{ fontSize:11,fontWeight:700,color:'#8b5cf6',letterSpacing:'.14em',textTransform:'uppercase' }}>Community Grants</span></div>
             <h2 style={{ fontSize:'clamp(22px,3.5vw,34px)',fontWeight:900,letterSpacing:'-2px',marginBottom:12 }}>Real people. Real money. Wallet to wallet.</h2>
-            <p style={{ fontSize:13,color:'rgba(255,255,255,.48)',lineHeight:1.8,maxWidth:580,margin:'0 auto' }}>Donors fund a public XRPL treasury. AI reviews every application. Approved grants go directly to recipients&apos; wallets — 100% verifiable on the XRP Ledger.</p>
+            <p style={{ fontSize:13,color:'rgba(255,255,255,.48)',lineHeight:1.8,maxWidth:580,margin:'0 auto' }}>Donors fund a public XRPL treasury. AI assists review; a human decides every application. Approved grants go directly to recipients&apos; wallets — 100% verifiable on the XRP Ledger.</p>
           </div>
           <TreasuryStatsBar />
           <div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(300px,1fr))',gap:20 }}>
@@ -2093,9 +2093,9 @@ export default function XRPLHubHome() {
             <div style={{ background:'linear-gradient(135deg,rgba(139,92,246,.08),rgba(6,6,22,.8))',border:'1px solid rgba(139,92,246,.2)',borderRadius:22,padding:'30px 26px',backdropFilter:'blur(20px)' }}>
               <div style={{ fontSize:40,marginBottom:14,animation:'float 4s ease-in-out infinite',animationDelay:'1s' }}>❤️</div>
               <h3 style={{ fontSize:21,fontWeight:900,marginBottom:10 }}>Apply for a Grant</h3>
-              <p style={{ fontSize:13,color:'rgba(255,255,255,.48)',lineHeight:1.8,marginBottom:18 }}>Need help? Apply for $25–$100. AI reviews your application, then funds are released to your XRPL wallet after final approval.</p>
+              <p style={{ fontSize:13,color:'rgba(255,255,255,.48)',lineHeight:1.8,marginBottom:18 }}>Need help? Apply for $25–$100. AI helps our reviewer sort applications; a human makes the decision, then funds are released to your XRPL wallet.</p>
               <div style={{ display:'flex',flexDirection:'column',gap:7,marginBottom:20 }}>
-                {['Submit a short application','AI reviews using the community treasury','Approved funds go direct to your wallet','No bank account, no ID required'].map(f=>(
+                {['Submit a short application','AI-assisted review — a human decides','Approved funds go direct to your wallet','No bank account, no ID required'].map(f=>(
                   <div key={f} style={{ display:'flex',alignItems:'center',gap:8,fontSize:12,color:'rgba(255,255,255,.52)' }}>
                     <span style={{ color:'#8b5cf6',fontSize:11 }}>✓</span>{f}
                   </div>
