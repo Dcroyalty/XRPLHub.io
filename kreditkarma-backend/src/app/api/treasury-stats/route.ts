@@ -10,7 +10,7 @@ const XRPL_API = 'https://xrplcluster.com';
 const XRPL_BACKUP = 'https://s1.ripple.com:51234/';
 
 let cache: { data: object; ts: number } | null = null;
-const CACHE_TTL = 25_000;
+const CACHE_TTL = 300_000; // 5 min — grant count changes rarely; long TTL lets Neon compute auto-suspend
 
 async function rpc(method: string, params: object[]): Promise<Record<string, unknown> | null> {
   for (const url of [XRPL_API, XRPL_BACKUP]) {

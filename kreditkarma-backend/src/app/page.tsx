@@ -486,7 +486,7 @@ function TreasuryStatsBar() {
       } catch (e) { console.error('[TreasuryStatsBar] fetch failed', e); if (!stop) setStatsError(true); }
     };
     load();
-    const iv = setInterval(load, 15_000); // retry faster than before so a transient failure clears itself quickly
+    const iv = setInterval(load, 120_000); // 2 min — keeps Neon compute idle-able; stats change slowly
     return () => { stop = true; clearInterval(iv); };
   }, []);
   const fmt = (n:number) => n >= 1000 ? n.toLocaleString('en-US', { maximumFractionDigits:0 }) : n.toLocaleString('en-US', { minimumFractionDigits:2, maximumFractionDigits:2 });
