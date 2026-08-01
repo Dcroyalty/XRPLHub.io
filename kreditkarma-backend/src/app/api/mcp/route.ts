@@ -39,6 +39,37 @@ const CORS = {
 // Write them to match the exact questions agents are asked.
 const TOOLS = [
   {
+    name: 'issue_score_credential',
+    description:
+      'Purchase a signed, independently verifiable XRPLScore credential for an XRP Ledger wallet. ' +
+      'The free score check returns a number that a third party cannot confirm; this issues a ' +
+      'tamper-evident certificate with a public verification URL that any lender, counterparty, ' +
+      'underwriter, or other agent can check without trusting the holder. ' +
+      'Use this when a wallet needs to PROVE its reputation to someone else — loan applications, ' +
+      'OTC counterparty checks, vault/broker onboarding, escrow negotiation, or any situation where ' +
+      'self-reported scores are not sufficient. Costs 1 XRP or 1 RLUSD, valid 90 days. ' +
+      'Returns a Xaman payment request; call again with the uuid to claim the credential after signing.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        wallet_address: {
+          type: 'string',
+          description: 'XRP Ledger wallet address the credential will attest to (starts with r)',
+        },
+        currency: {
+          type: 'string',
+          enum: ['XRP', 'RLUSD'],
+          description: 'Payment currency. Defaults to XRP.',
+        },
+        uuid: {
+          type: 'string',
+          description: 'Only for the second call: the payment uuid returned by the first call, after the user has signed in Xaman.',
+        },
+      },
+      required: ['wallet_address'],
+    },
+  },
+  {
     name: 'check_xrpl_score',
     description:
       'Check the XRPLScore™ of any XRP Ledger wallet. Returns a 300–850 on-chain ' +
@@ -450,6 +481,79 @@ async function toolDonateToFund(
   }, null, 2);
 }
 
+// ─── TOOL: issue_score_credential ─────────────────────────────────────────────
+async function handleIssueScoreCredential(args: Record<string, unknown>): Promise<string> {
+  const wallet = String(args.wallet_address || '').trim();
+  const currency = args.currency === 'RLUSD' ? 'RLUSD' : 'XRP';
+  const uuid = String(args.uuid || '').trim();
+
+  if (!wallet.startsWith('r') || wallet.length < 25) {
+    return JSON.stringify({ error: 'A valid XRPL wallet address (starting with r) is required.' }, null, 2);
+  }
+
+  // Second call: payment signed, claim the credential.
+  if (uuid) {
+    try {
+      const res = await fetch(`${API_URL}/api/credential?claim=1`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ wallet_address: wallet, uuid, currency }),
+        signal: AbortSignal.timeout(20_000),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        return JSON.stringify({
+          success: false,
+          status: data.status || 'unverified',
+          message: data.error || 'Payment not confirmed yet. Sign the request in Xaman, then retry with the same uuid.',
+        }, null, 2);
+      }
+      return JSON.stringify({
+        success: true,
+        credentialIssued: true,
+        certId: data.certId,
+        wallet: data.wallet,
+        score: data.score,
+        grade: data.grade,
+        validUntil: data.expiresAt,
+        verifyUrl: data.verifyUrl,
+        howToUse: 'Share the verifyUrl with any counterparty. They can confirm the score is authentic and unaltered without trusting you or contacting XRPLHub.',
+        poweredBy: 'XRPLHub.io — XRPLScore Verified Credential © 2026',
+      }, null, 2);
+    } catch {
+      return JSON.stringify({ error: 'Credential service unreachable. Try again shortly.' }, null, 2);
+    }
+  }
+
+  // First call: create the payment request.
+  try {
+    const res = await fetch(`${API_URL}/api/credential`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ wallet_address: wallet, currency }),
+      signal: AbortSignal.timeout(20_000),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.uuid) {
+      return JSON.stringify({ error: data.error || 'Could not start credential purchase.' }, null, 2);
+    }
+    return JSON.stringify({
+      step: 'payment_required',
+      whatThisBuys: 'A signed, tamper-evident credential attesting to this wallet\'s XRPLScore, with a public URL any third party can verify. Valid 90 days.',
+      price: data.price,
+      wallet,
+      paymentUuid: data.uuid,
+      signInXaman: data.deep_link,
+      qrCode: data.qr_png,
+      expiresInSeconds: data.expires_in,
+      nextStep: `Have the user sign the payment in Xaman, then call issue_score_credential again with the SAME wallet_address plus uuid="${data.uuid}" to receive the credential.`,
+      poweredBy: 'XRPLHub.io © 2026',
+    }, null, 2);
+  } catch {
+    return JSON.stringify({ error: 'Credential service unreachable. Try again shortly.' }, null, 2);
+  }
+}
+
 // ─── JSON-RPC DISPATCHER ──────────────────────────────────────────────────────
 function rpcError(id: unknown, code: number, message: string) {
   return NextResponse.json(
@@ -563,6 +667,8 @@ export async function POST(req: NextRequest) {
         output = await toolSubmitGrantApplication(toolArgs);
       } else if (toolName === 'donate_to_community_fund') {
         output = await toolDonateToFund(toolArgs);
+      } else if (toolName === 'issue_score_credential') {
+        output = await handleIssueScoreCredential(toolArgs);
       } else {
         return rpcError(id, -32601, `Tool not found: ${toolName}`);
       }

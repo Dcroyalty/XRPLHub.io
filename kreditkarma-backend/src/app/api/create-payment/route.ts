@@ -36,6 +36,7 @@ const NAMES: Record<string, string> = {
   checkcreate:'Create a Check', checkcash:'Cash a Check', checkcancel:'Cancel a Check',
   desttagreq:'Require Destination Tags', dextrade:'DEX Trade Execution', tickets:'Ticket Batch Setup',
   credentialissue:'Issue a Credential', permdomain:'Permissioned Domain',
+  credential:'XRPLScore Verified Credential (90 days)',
 }
 
 export async function POST(req: NextRequest) {

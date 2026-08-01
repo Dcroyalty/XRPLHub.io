@@ -75,6 +75,29 @@ model GrantRequest {
   @@index([createdAt])
 }
 
+model ScoreCredential {
+  id            String    @id @default(cuid())
+  certId        String    @unique
+  walletAddress String
+  score         Int
+  grade         String
+  percentile    Int?
+  signature     String
+  issuedAt      DateTime  @default(now())
+  expiresAt     DateTime
+  amountPaid    String
+  currency      String    @default("XRP")
+  txHash        String?   @unique
+  paymentUuid   String?
+  status        String    @default("PENDING")
+  revoked       Boolean   @default(false)
+  verifyCount   Int       @default(0)
+
+  @@index([walletAddress])
+  @@index([certId])
+  @@index([status])
+}
+
 model Purchase {
   id            String    @id @default(cuid())
   productId     String
