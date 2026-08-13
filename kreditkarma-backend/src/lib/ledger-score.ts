@@ -305,14 +305,14 @@ function buildInsights(
     negatives.push("No AMM LP participation detected");
   if (snap.recentVolume30d < 10)
     negatives.push("Low transaction volume in the past 30 days");
-  if (!snap.trustLines.some((t) => t.currency === "RLUSD"))
+  if (!snap.trustLines.some((t) => t.currency === "RLUSD" || t.currency === "524C555344000000000000000000000000000000"))
     negatives.push("No RLUSD trust line established");
   if (snap.balanceXRP < 10)
     negatives.push("XRP balance is low — risk of dropped reserve");
 
   if (snap.ammPositions.length === 0)
     tips.push("Add liquidity to an XRPL AMM pool to boost your DeFi score by up to 160 points");
-  if (!snap.trustLines.some((t) => t.currency === "RLUSD"))
+  if (!snap.trustLines.some((t) => t.currency === "RLUSD" || t.currency === "524C555344000000000000000000000000000000"))
     tips.push("Set up an RLUSD trust line — it's free and adds up to 70 points");
   if (snap.recentVolume30d < 100)
     tips.push("Increase on-chain activity this month to improve your volume score");

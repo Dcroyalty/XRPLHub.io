@@ -141,3 +141,58 @@ model AdminLog {
   details   String?  // JSON
   createdAt DateTime @default(now())
 }
+
+// prisma/schema.additions.prisma
+// APPEND these models to your existing schema.prisma. Do NOT replace the
+// file — your existing models stay untouched. Then run:
+//   npx prisma migrate dev --name xrplscore_billing
+//   npx prisma generate
+
+// -------- API keys ---------------------------------------------------------
+model ApiKey {
+  id         String        @id @default(cuid())
+  keyPrefix  String        @unique              // first 16 chars, indexed lookup
+  keyHash    String                              // sha256 of full key; raw never stored
+  name       String?
+  plan       String        @default("free")      // "free" | "starter" | "growth"
+  active     Boolean       @default(true)
+  createdAt  DateTime      @default(now())
+  lastUsedAt DateTime?
+  usage      UsageRecord[]
+  invoices   Invoice[]
+
+  @@index([keyPrefix])
+}
+
+// -------- Usage (also the billing signal) ----------------------------------
+model UsageRecord {
+  id        String   @id @default(cuid())
+  apiKeyId  String
+  apiKey    ApiKey   @relation(fields: [apiKeyId], references: [id], onDelete: Cascade)
+  endpoint  String                               // "score", etc.
+  windowKey String                               // month bucket, e.g. "2026-08"
+  overage   Boolean  @default(false)             // true = billable overage call
+  createdAt DateTime @default(now())
+
+  @@index([apiKeyId, createdAt])                  // per-minute rate limit
+  @@index([apiKeyId, windowKey])                  // monthly quota + billing
+}
+
+// -------- Checkout invoices -------------------------------------------------
+model Invoice {
+  id             String    @id @default(cuid())
+  plan           String                            // plan being purchased
+  amountRlusd    Decimal   @db.Decimal(20, 6)      // exact RLUSD to charge
+  destinationTag Int       @unique                 // 32-bit; one per invoice
+  status         String    @default("pending")     // pending | paid | expired
+  txHash         String?                            // set when matched on-ledger
+  deliveredRlusd Decimal?  @db.Decimal(20, 6)      // what actually arrived
+  paidAt         DateTime?
+  createdAt      DateTime  @default(now())
+  expiresAt      DateTime
+  apiKeyId       String?                            // key issued on payment
+  apiKey         ApiKey?   @relation(fields: [apiKeyId], references: [id])
+
+  @@index([destinationTag])
+  @@index([status])
+}
