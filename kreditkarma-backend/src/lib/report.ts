@@ -5,15 +5,17 @@
 // weighted signal detail. One JSON response, no signing, no account.
 //
 // Reuses the proven pipeline: buildAccountSnapshot() + calculateLedgerScore().
+// Field names below match the real AccountSnapshot interface in xrpl-client.ts
+// (balanceXRP, txCount, ammPositions, trustLines).
 
 import { buildAccountSnapshot } from "@/lib/xrpl-client";
 import { calculateLedgerScore } from "@/lib/ledger-score";
 import { computeScore, type ScoreResult } from "@/lib/engine";
 
 export interface WalletReport {
-  score: ScoreResult;            // the same score object the 5¢ call returns
-  riskFlags: string[];           // quick machine-readable risk signals
-  weightedSignals: Array<{       // per-signal detail incl. weight + label
+  score: ScoreResult;
+  riskFlags: string[];
+  weightedSignals: Array<{
     key: string;
     label: string;
     raw: number;
@@ -21,12 +23,15 @@ export interface WalletReport {
     weighted: number;
     notes: string[];
   }>;
-  snapshot: {                    // the raw on-chain facts, for a bot to reason on
+  snapshot: {
     xrpBalance: number | null;
     trustLineCount: number | null;
     hasRlusdTrustLine: boolean;
     ammPositionCount: number | null;
     txCount: number | null;
+    paymentCount: number | null;
+    uniqueCounterparties: number | null;
+    accountAgeSeconds: number | null;
   };
   generatedAt: string;
 }
@@ -34,12 +39,10 @@ export interface WalletReport {
 const RLUSD_HEX = "524C555344000000000000000000000000000000";
 
 export async function buildWalletReport(wallet: string): Promise<WalletReport> {
-  // Run the same two calls the score uses, but keep the snapshot too.
   const snap = await buildAccountSnapshot(wallet);
   const breakdown = calculateLedgerScore(snap);
-  const score = await computeScore(wallet); // clean score object (same numbers)
+  const score = await computeScore(wallet);
 
-  // Flatten the weighted component detail for machine consumption.
   const c = breakdown.components as Record<string, {
     raw: number; weight: number; weighted: number; label: string; notes: string[];
   }>;
@@ -52,25 +55,31 @@ export async function buildWalletReport(wallet: string): Promise<WalletReport> {
     notes: v.notes ?? [],
   }));
 
-  // Machine-readable risk flags (concise; distinct from human "insights").
-  const riskFlags: string[] = [];
-  if (breakdown.total < 500) riskFlags.push("LOW_SCORE");
-  if (breakdown.total < 400) riskFlags.push("VERY_LOW_SCORE");
-
+  // Real snapshot fields (see AccountSnapshot interface).
   const s = snap as unknown as {
-    xrpBalance?: number;
+    balanceXRP?: number;
+    txCount?: number;
+    paymentCount?: number;
+    uniqueCounterparties?: number;
+    accountAge?: number;
     trustLines?: Array<{ currency?: string }>;
     ammPositions?: unknown[];
-    transactions?: unknown[];
   };
+
   const trustLines = Array.isArray(s.trustLines) ? s.trustLines : null;
   const hasRlusd = !!trustLines?.some(
     (t) => t.currency === RLUSD_HEX || t.currency === "RLUSD"
   );
-  if (!hasRlusd) riskFlags.push("NO_RLUSD_TRUSTLINE");
+  const xrpBalance = typeof s.balanceXRP === "number" ? s.balanceXRP : null;
 
-  const xrpBalance = typeof s.xrpBalance === "number" ? s.xrpBalance : null;
+  // Machine-readable risk flags.
+  const riskFlags: string[] = [];
+  if (breakdown.total < 500) riskFlags.push("LOW_SCORE");
+  if (breakdown.total < 400) riskFlags.push("VERY_LOW_SCORE");
+  if (!hasRlusd) riskFlags.push("NO_RLUSD_TRUSTLINE");
   if (xrpBalance !== null && xrpBalance < 2) riskFlags.push("LOW_XRP_RESERVE_RISK");
+  if ((s.txCount ?? 0) < 10) riskFlags.push("LOW_ACTIVITY");
+  if ((s.uniqueCounterparties ?? 0) < 3) riskFlags.push("FEW_COUNTERPARTIES");
 
   return {
     score,
@@ -81,7 +90,11 @@ export async function buildWalletReport(wallet: string): Promise<WalletReport> {
       trustLineCount: trustLines ? trustLines.length : null,
       hasRlusdTrustLine: hasRlusd,
       ammPositionCount: Array.isArray(s.ammPositions) ? s.ammPositions.length : null,
-      txCount: Array.isArray(s.transactions) ? s.transactions.length : null,
+      txCount: typeof s.txCount === "number" ? s.txCount : null,
+      paymentCount: typeof s.paymentCount === "number" ? s.paymentCount : null,
+      uniqueCounterparties:
+        typeof s.uniqueCounterparties === "number" ? s.uniqueCounterparties : null,
+      accountAgeSeconds: typeof s.accountAge === "number" ? s.accountAge : null,
     },
     generatedAt: new Date().toISOString(),
   };
