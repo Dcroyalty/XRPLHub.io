@@ -43,7 +43,7 @@ export const PLANS: Record<PlanId, Plan> = {
   starter: {
     id: "starter",
     name: "Starter",
-    priceRlusd: 1,
+    priceRlusd: 299,
     monthlyQuota: 50_000,
     rateLimitPerMin: 60,
     overage: false,
