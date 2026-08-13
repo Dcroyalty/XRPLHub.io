@@ -1,12 +1,14 @@
-// lib/plans.ts
+// src/lib/plans.ts
 // SINGLE SOURCE OF TRUTH for pricing.
-//
 // The pricing page renders from this. guard.ts enforces from this. The
 // checkout charges from this. Change a number here and the advertised
-// price, the enforced quota, and the amount charged all move together —
-// they can never drift apart.
+// price, the enforced quota, and the amount charged all move together.
+//
+// Priced Aug 2026 to undercut on-chain wallet-scoring competitors
+// (Cred Protocol Pro ≈ 25k–50k score lookups/mo; traditional credit APIs
+// $2.90–$3.99 per report). Our per-check cost is near zero, so these hold.
 
-export type PlanId = "free" | "starter" | "growth";
+export type PlanId = "free" | "starter" | "growth" | "scale";
 
 export interface Plan {
   id: PlanId;
@@ -27,56 +29,73 @@ export const PLANS: Record<PlanId, Plan> = {
     id: "free",
     name: "Free",
     priceRlusd: 0,
-    monthlyQuota: 100,
-    rateLimitPerMin: 10,
+    monthlyQuota: 500,
+    rateLimitPerMin: 15,
     overage: false,
     overageRlusdPer1k: 0,
     cacheTtlSeconds: 300,
-    blurb: "Kick the tires. Score real wallets, no card.",
+    blurb: "Score real wallets, no card. Bigger free tier than anyone.",
     features: [
-      "100 scored calls / month",
-      "10 requests / minute",
-      "300–850 score + 9 signals",
+      "500 scored calls / month",
+      "15 requests / minute",
+      "300–850 score + full signal breakdown",
       "Community support",
     ],
   },
   starter: {
     id: "starter",
     name: "Starter",
-    priceRlusd: 299,
-    monthlyQuota: 50_000,
+    priceRlusd: 29,
+    monthlyQuota: 10_000,
     rateLimitPerMin: 60,
     overage: false,
     overageRlusdPer1k: 0,
-    cacheTtlSeconds: 120,
-    blurb: "For a product putting scoring in front of real users.",
+    cacheTtlSeconds: 180,
+    blurb: "~$0.003 per check — a fraction of legacy credit APIs.",
     features: [
-      "50,000 scored calls / month",
+      "10,000 scored calls / month",
       "60 requests / minute",
-      "Full signal breakdown",
+      "Full signal breakdown + insights",
       "Email support",
     ],
   },
   growth: {
     id: "growth",
     name: "Growth",
-    priceRlusd: 2000,
-    monthlyQuota: 500_000,
+    priceRlusd: 149,
+    monthlyQuota: 100_000,
     rateLimitPerMin: 300,
     overage: true,
-    overageRlusdPer1k: 3, // 3 RLUSD per extra 1,000 calls
-    cacheTtlSeconds: 60,
-    blurb: "Ramps, processors, and agent frameworks at volume.",
+    overageRlusdPer1k: 2,
+    cacheTtlSeconds: 120,
+    blurb: "More volume than competitors' Pro tier, for less.",
     features: [
-      "500,000 scored calls / month",
+      "100,000 scored calls / month",
       "300 requests / minute",
       "Overage billing — never cut off mid-spike",
       "Priority support",
     ],
   },
+  scale: {
+    id: "scale",
+    name: "Scale",
+    priceRlusd: 499,
+    monthlyQuota: 1_000_000,
+    rateLimitPerMin: 1000,
+    overage: true,
+    overageRlusdPer1k: 1,
+    cacheTtlSeconds: 60,
+    blurb: "Serious infrastructure. Cheapest per-call at volume, period.",
+    features: [
+      "1,000,000 scored calls / month",
+      "1,000 requests / minute",
+      "Lowest overage rate",
+      "Priority support + integration help",
+    ],
+  },
 };
 
-export const PLAN_ORDER: PlanId[] = ["free", "starter", "growth"];
+export const PLAN_ORDER: PlanId[] = ["free", "starter", "growth", "scale"];
 
 export function getPlan(id: string): Plan {
   return PLANS[(id as PlanId)] ?? PLANS.free;
