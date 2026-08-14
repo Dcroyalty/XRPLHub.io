@@ -1,6 +1,6 @@
 // src/app/api/v1/wallet-report/route.ts
-// Full Wallet Risk Report — x402 pay-per-call bot product. $0.25 RLUSD.
-// Same two-round flow as /pay-per-score, richer payload. No account, no key.
+// Full Wallet Risk Report — x402 pay-per-call. $0.25 RLUSD. No account.
+// Paywall returns 402 BEFORE wallet validation (crawler-friendly).
 
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/xrplscore-db";
@@ -22,7 +22,7 @@ const MAX_TAG = 4_294_967_295;
 const randomTag = () => 1 + Math.floor(Math.random() * (MAX_TAG - 1));
 
 function paymentRequired(q: {
-  quoteId: string; wallet: string; destinationTag: number; expiresAt: Date;
+  quoteId: string; wallet: string | null; destinationTag: number; expiresAt: Date;
 }) {
   return NextResponse.json(
     {
@@ -40,9 +40,8 @@ function paymentRequired(q: {
         expiresAt: q.expiresAt.toISOString(),
       },
       instructions:
-        `Pay ${PRICE_PER_PRODUCT_RLUSD} RLUSD to ${TREASURY_ADDRESS} with ` +
-        `destination tag ${q.destinationTag}, then retry with ` +
-        `&quoteId=${q.quoteId} to receive the full report.`,
+        `Pay ${PRICE_PER_PRODUCT_RLUSD} RLUSD to ${TREASURY_ADDRESS} with destination ` +
+        `tag ${q.destinationTag}, then retry with &wallet=<r...>&quoteId=${q.quoteId}.`,
       scored_wallet: q.wallet,
     },
     { status: 402 }
@@ -57,14 +56,7 @@ export async function GET(req: Request) {
   const wallet = url.searchParams.get("wallet");
   const quoteId = url.searchParams.get("quoteId");
 
-  if (!wallet || !isValidXrplAddress(wallet)) {
-    return NextResponse.json(
-      { error: "bad_request", message: "Provide a valid XRPL wallet address." },
-      { status: 400 }
-    );
-  }
-
-  // Round 1 — quote + 402
+  // PAYWALL FIRST
   if (!quoteId) {
     let quote = null;
     for (let i = 0; i < 5 && !quote; i++) {
@@ -80,16 +72,21 @@ export async function GET(req: Request) {
         });
       } catch { /* tag collision */ }
     }
-    if (!quote) {
-      return NextResponse.json({ error: "retry" }, { status: 503 });
-    }
+    if (!quote) return NextResponse.json({ error: "retry" }, { status: 503 });
     return paymentRequired({
       quoteId: quote.id, wallet,
       destinationTag: quote.destinationTag, expiresAt: quote.expiresAt,
     });
   }
 
-  // Round 2 — verify payment, deliver report
+  // Paid retry -> validate wallet now
+  if (!wallet || !isValidXrplAddress(wallet)) {
+    return NextResponse.json(
+      { error: "bad_request", message: "Provide a valid XRPL wallet address (&wallet=r...)." },
+      { status: 400 }
+    );
+  }
+
   const quote = await prisma.invoice.findUnique({ where: { id: quoteId } });
   if (!quote || quote.plan !== "paycall:report") {
     return NextResponse.json({ error: "not_found" }, { status: 404 });
