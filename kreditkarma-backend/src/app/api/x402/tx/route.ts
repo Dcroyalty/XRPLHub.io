@@ -1,0 +1,167 @@
+// src/app/api/x402/tx/route.ts
+// Prebuilt XRPL transaction (27 services) over the OFFICIAL x402 v2 protocol.
+// Standard PAYMENT-REQUIRED header so xrpl-ai.org auto-discovers + lists it.
+// Runs alongside /api/x402-tx (destination-tag flow, untouched).
+//
+// productId + account come as query params; on paid retry we build the txjson
+// with the existing buildServiceTx engine. Bare probe -> 402 (defaults to
+// checkcreate so the crawler gets a valid challenge).
+
+import { NextResponse } from "next/server";
+import { prisma } from "@/lib/xrplscore-db";
+import { PRICE_PER_TX_PRODUCT_RLUSD, TREASURY_ADDRESS } from "@/lib/paycall";
+import { buildServiceTx } from "@/app/api/execute/txBuilder";
+import {
+  X402_VERSION,
+  decodeHeader,
+  encodeHeader,
+  paymentRequiredChallenge,
+  rlusdRequirements,
+  verifyPayment,
+  settlePayment,
+  looksSuccessful,
+  type PaymentSignaturePayload,
+} from "@/lib/x402";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+const RESOURCE = "/api/x402/tx";
+const MAX_TAG = 4_294_967_295;
+const randomTag = () => 1 + Math.floor(Math.random() * (MAX_TAG - 1));
+const isAddr = (v: string) => v.startsWith("r") && v.length >= 25 && v.length <= 35;
+
+const KNOWN = new Set([
+  "checkcreate","checkcash","checkcancel","escrow","paychannel","desttagreq","desttag",
+  "regkey","rippling","globalfreeze","freezeline","issuerdecl","issuercfg","dexorder",
+  "dextrade","smartswap","ammlaunch","ammentry","tickets","nftmint","nftburn","nftoffer",
+  "identity","did","compliance","credentialissue","permdomain",
+]);
+
+const NAME = "XRPLHub — Prebuilt XRPL Transaction (27 services)";
+const DESC =
+  "Ready-to-sign XRPL transaction for any of 27 services (CheckCreate, Escrow, NFT, AMM, " +
+  "TrustSet, DID, and more). Pay per call in RLUSD; sign the returned txjson with your own wallet.";
+
+function extractParams(url: URL): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [k, v] of url.searchParams.entries()) {
+    if (["productId", "account"].includes(k)) continue;
+    out[k] = v;
+  }
+  return out;
+}
+
+async function issueChallenge(productId: string) {
+  let invoice = null;
+  for (let i = 0; i < 5 && !invoice; i++) {
+    try {
+      invoice = await prisma.invoice.create({
+        data: {
+          plan: `x402:tx:${productId}`,
+          amountRlusd: PRICE_PER_TX_PRODUCT_RLUSD,
+          destinationTag: randomTag(),
+          status: "pending",
+          expiresAt: new Date(Date.now() + 10 * 60_000),
+        },
+      });
+    } catch { /* retry */ }
+  }
+  if (!invoice) return NextResponse.json({ error: "retry" }, { status: 503 });
+
+  const requirements = rlusdRequirements({
+    payTo: TREASURY_ADDRESS,
+    amountRlusd: PRICE_PER_TX_PRODUCT_RLUSD,
+    invoiceId: invoice.id,
+    name: NAME,
+    description: DESC,
+  });
+  const challenge = paymentRequiredChallenge(requirements, RESOURCE, DESC);
+  return NextResponse.json(challenge, {
+    status: 402,
+    headers: { "PAYMENT-REQUIRED": encodeHeader(challenge), "Cache-Control": "no-store" },
+  });
+}
+
+export async function GET(req: Request) {
+  if (!TREASURY_ADDRESS) return NextResponse.json({ error: "misconfigured" }, { status: 500 });
+
+  const url = new URL(req.url);
+  const productId = (url.searchParams.get("productId") ?? "checkcreate").toLowerCase();
+  const account = url.searchParams.get("account");
+  const sigHeader = req.headers.get("PAYMENT-SIGNATURE");
+
+  if (!KNOWN.has(productId)) {
+    return NextResponse.json({ error: "unknown_product", message: `No product "${productId}".` }, { status: 404 });
+  }
+
+  if (!sigHeader) return issueChallenge(productId);
+
+  if (!account || !isAddr(account)) {
+    return NextResponse.json({ error: "bad_request", message: "Provide &account=r... (the signer)." }, { status: 400 });
+  }
+
+  const payload = decodeHeader<PaymentSignaturePayload>(sigHeader);
+  if (!payload || payload.x402Version !== X402_VERSION || !payload.accepted) {
+    return NextResponse.json({ error: "invalid_payment_payload" }, { status: 400 });
+  }
+  const invoiceId = payload.accepted?.extra?.invoiceId;
+  if (!invoiceId) return NextResponse.json({ error: "invoice_binding_missing" }, { status: 400 });
+
+  const invoice = await prisma.invoice.findUnique({ where: { id: invoiceId } });
+  if (!invoice || invoice.plan !== `x402:tx:${productId}`) {
+    return NextResponse.json({ error: "invoice_not_found" }, { status: 404 });
+  }
+  if (invoice.status !== "paid") {
+    if (invoice.expiresAt < new Date()) return NextResponse.json({ error: "invoice_expired" }, { status: 410 });
+
+    const requirements = rlusdRequirements({
+      payTo: TREASURY_ADDRESS,
+      amountRlusd: Number(invoice.amountRlusd),
+      invoiceId: invoice.id,
+      name: NAME,
+      description: DESC,
+    });
+    const verified = await verifyPayment(payload, requirements);
+    if (!looksSuccessful(verified)) {
+      return NextResponse.json(
+        { error: "payment_verification_failed", facilitator: verified.body ?? verified.error ?? null, status: verified.status },
+        { status: 402 }
+      );
+    }
+    const settled = await settlePayment(payload, requirements);
+    if (!looksSuccessful(settled)) {
+      return NextResponse.json(
+        { error: "settlement_failed", facilitator: settled.body ?? settled.error ?? null, status: settled.status },
+        { status: 402 }
+      );
+    }
+    const b = (settled.body ?? {}) as { transaction?: string };
+    await prisma.invoice.update({
+      where: { id: invoice.id, status: "pending" },
+      data: { status: "paid", txHash: b.transaction ?? null, deliveredRlusd: invoice.amountRlusd, paidAt: new Date() },
+    }).catch(() => {});
+  }
+
+  const built = buildServiceTx(productId, account, extractParams(url));
+  if (!built.ok) {
+    return NextResponse.json(
+      { error: "build_failed", reason: built.error, needsParams: built.needsParams ?? [], tier: built.tier ?? null,
+        note: "Payment received. Retry with the missing params." },
+      { status: 422 }
+    );
+  }
+
+  const paymentResponse = { success: true, network: process.env.X402_NETWORK ?? "xrpl" };
+  return NextResponse.json(
+    {
+      data: {
+        productId, label: built.label ?? productId, tier: built.tier ?? "safe",
+        txjson: built.txjson, signWith: account,
+        instructions: "Sign this txjson with your own XRPL wallet and submit it.",
+      },
+      x402: paymentResponse,
+    },
+    { status: 200, headers: { "PAYMENT-RESPONSE": encodeHeader(paymentResponse), "Cache-Control": "no-store" } }
+  );
+}
