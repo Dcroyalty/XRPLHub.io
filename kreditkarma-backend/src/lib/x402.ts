@@ -49,6 +49,8 @@ export interface PaymentRequirements {
   extra: {
     invoiceId: string;
     sourceTag: number;
+    // Required by the XRPL exact scheme: the payer pays the network fee.
+    areFeesSponsored: boolean;
     issuer?: string;
     destinationTag?: number;
   };
@@ -76,6 +78,7 @@ export function rlusdRequirements(opts: {
     extra: {
       invoiceId: opts.invoiceId,
       sourceTag: X402_SOURCE_TAG,
+      areFeesSponsored: false,
       issuer: RLUSD_ISSUER_ADDR,
       ...(opts.destinationTag ? { destinationTag: opts.destinationTag } : {}),
     },
