@@ -1,16 +1,18 @@
 // src/lib/x402.ts
 // Official x402 v2 protocol helpers for XRPL (t54 facilitator scheme).
-// NETWORK STRING: xrpl-ai.org Index requires the challenge network field to be
-// the plain string "xrpl". We also carry a real name/description so listings
-// read properly. No custody: payer signs, facilitator submits.
+//
+// NETWORK STRING — the definitive value: the official @x402/xrpl SDK
+// requires the CAIP-2 form "xrpl:0" for mainnet (isXrplNetwork("xrpl")
+// returns false; XRPL_MAINNET === "xrpl:0"). We therefore emit "xrpl:0"
+// in the challenge so real x402 SDK clients can pay. No custody.
 
 import { createHash } from "crypto";
 
 export const X402_VERSION = 2;
 export const X402_SCHEME = "exact";
 
-export const XRPL_NETWORK = process.env.X402_NETWORK ?? "xrpl";
-export const XRPL_NETWORK_CAIP2 = process.env.X402_NETWORK_CAIP2 ?? "xrpl:0";
+// CAIP-2 mainnet id required by the @x402 SDK.
+export const XRPL_NETWORK = process.env.X402_NETWORK ?? "xrpl:0";
 
 export const FACILITATOR_URL =
   process.env.X402_FACILITATOR_URL ?? "https://xrpl-facilitator-mainnet.t54.ai";
@@ -62,15 +64,15 @@ export function rlusdRequirements(opts: {
 }): PaymentRequirements {
   return {
     scheme: X402_SCHEME,
-    network: XRPL_NETWORK,
+    network: XRPL_NETWORK, // "xrpl:0"
     asset: RLUSD_ASSET,
     payTo: opts.payTo,
     amount: opts.amountRlusd.toFixed(6),
     maxTimeoutSeconds: MAX_TIMEOUT_SECONDS,
-    name: opts.name ?? "XRPLScore™ — Wallet Risk Score",
+    name: opts.name ?? "XRPLScore - Wallet Risk Score",
     description:
       opts.description ??
-      "300–850 on-chain risk score for any XRPL wallet, from 9 signals. Pay per call in RLUSD.",
+      "300-850 on-chain risk score for any XRPL wallet, from 9 signals. Pay per call in RLUSD.",
     extra: {
       invoiceId: opts.invoiceId,
       sourceTag: X402_SOURCE_TAG,
