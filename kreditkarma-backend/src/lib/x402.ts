@@ -1,17 +1,18 @@
 // src/lib/x402.ts
 // Official x402 v2 protocol helpers for XRPL (t54 facilitator scheme).
 //
-// NETWORK STRING — the definitive value: the official @x402/xrpl SDK
-// requires the CAIP-2 form "xrpl:0" for mainnet (isXrplNetwork("xrpl")
-// returns false; XRPL_MAINNET === "xrpl:0"). We therefore emit "xrpl:0"
-// in the challenge so real x402 SDK clients can pay. No custody.
+// NETWORK: CAIP-2 "xrpl:0" (required by the @x402 SDK).
+// RESOURCE: x402 v2 requires `resource` to be an OBJECT {url, description,
+// mimeType}, NOT a bare URL string. The payer SDK echoes this object into the
+// paymentPayload it sends to the facilitator; if it's a string the facilitator
+// rejects it with a Pydantic 422 (paymentPayload.resource must be an object).
+// No custody: payer signs, facilitator submits.
 
 import { createHash } from "crypto";
 
 export const X402_VERSION = 2;
 export const X402_SCHEME = "exact";
 
-// CAIP-2 mainnet id required by the @x402 SDK.
 export const XRPL_NETWORK = process.env.X402_NETWORK ?? "xrpl:0";
 
 export const FACILITATOR_URL =
@@ -25,6 +26,9 @@ export const RLUSD_ISSUER_ADDR =
 
 export const MAX_TIMEOUT_SECONDS = 600;
 
+// Public origin, used to build absolute resource URLs.
+export const PUBLIC_ORIGIN = process.env.PUBLIC_ORIGIN ?? "https://www.xrplhub.io";
+
 export function encodeHeader(obj: unknown): string {
   return Buffer.from(JSON.stringify(obj), "utf8").toString("base64");
 }
@@ -35,6 +39,13 @@ export function decodeHeader<T = unknown>(value: string | null): T | null {
 }
 export function invoiceIdHash(invoiceId: string): string {
   return createHash("sha256").update(invoiceId, "utf8").digest("hex").toUpperCase();
+}
+
+// x402 v2 ResourceInfo object.
+export interface ResourceInfo {
+  url: string;
+  description?: string;
+  mimeType?: string;
 }
 
 export interface PaymentRequirements {
@@ -49,7 +60,6 @@ export interface PaymentRequirements {
   extra: {
     invoiceId: string;
     sourceTag: number;
-    // Required by the XRPL exact scheme: the payer pays the network fee.
     areFeesSponsored: boolean;
     issuer?: string;
     destinationTag?: number;
@@ -66,7 +76,7 @@ export function rlusdRequirements(opts: {
 }): PaymentRequirements {
   return {
     scheme: X402_SCHEME,
-    network: XRPL_NETWORK, // "xrpl:0"
+    network: XRPL_NETWORK,
     asset: RLUSD_ASSET,
     payTo: opts.payTo,
     amount: opts.amountRlusd.toFixed(6),
@@ -85,6 +95,19 @@ export function rlusdRequirements(opts: {
   };
 }
 
+// Build the resource as an OBJECT (x402 v2 ResourceInfo). resourcePath is the
+// route path like "/api/x402/score"; we make it an absolute URL.
+export function makeResource(resourcePath: string, description?: string): ResourceInfo {
+  const url = resourcePath.startsWith("http")
+    ? resourcePath
+    : `${PUBLIC_ORIGIN}${resourcePath}`;
+  return {
+    url,
+    description: description ?? "XRPLHub paid API resource",
+    mimeType: "application/json",
+  };
+}
+
 export function paymentRequiredChallenge(
   requirements: PaymentRequirements,
   resource: string,
@@ -93,7 +116,8 @@ export function paymentRequiredChallenge(
   return {
     x402Version: X402_VERSION,
     accepts: [requirements],
-    resource,
+    // resource is an OBJECT per x402 v2 (not a bare string).
+    resource: makeResource(resource, description),
     network: XRPL_NETWORK,
     ...(description ? { description } : {}),
   };
@@ -103,6 +127,7 @@ export interface PaymentSignaturePayload {
   x402Version: number;
   accepted: PaymentRequirements;
   payload: { signedTxBlob: string };
+  resource?: ResourceInfo;
 }
 
 export interface FacilitatorResult {
@@ -127,11 +152,40 @@ async function facilitatorPost(path: string, body: unknown): Promise<Facilitator
   }
 }
 
-export function verifyPayment(p: PaymentSignaturePayload, r: PaymentRequirements) {
-  return facilitatorPost("/verify", { x402Version: X402_VERSION, paymentPayload: p, paymentRequirements: r });
+// Ensure the payload we forward has resource as an OBJECT. If the client sent a
+// string (older SDK) or omitted it, coerce to a proper ResourceInfo so the
+// facilitator's Pydantic model accepts it.
+function normalizePayload(
+  p: PaymentSignaturePayload,
+  resourcePath: string
+): PaymentSignaturePayload {
+  const r = p.resource as unknown;
+  let resource: ResourceInfo;
+  if (r && typeof r === "object" && typeof (r as ResourceInfo).url === "string") {
+    resource = r as ResourceInfo;
+  } else if (typeof r === "string") {
+    resource = makeResource(r);
+  } else {
+    resource = makeResource(resourcePath);
+  }
+  return { ...p, resource };
 }
-export function settlePayment(p: PaymentSignaturePayload, r: PaymentRequirements) {
-  return facilitatorPost("/settle", { x402Version: X402_VERSION, paymentPayload: p, paymentRequirements: r });
+
+export function verifyPayment(
+  p: PaymentSignaturePayload,
+  r: PaymentRequirements,
+  resourcePath = "/api/x402/score"
+) {
+  const payload = normalizePayload(p, resourcePath);
+  return facilitatorPost("/verify", { x402Version: X402_VERSION, paymentPayload: payload, paymentRequirements: r });
+}
+export function settlePayment(
+  p: PaymentSignaturePayload,
+  r: PaymentRequirements,
+  resourcePath = "/api/x402/score"
+) {
+  const payload = normalizePayload(p, resourcePath);
+  return facilitatorPost("/settle", { x402Version: X402_VERSION, paymentPayload: payload, paymentRequirements: r });
 }
 export async function facilitatorSupported(): Promise<FacilitatorResult> {
   try {
