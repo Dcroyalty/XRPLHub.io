@@ -1,33 +1,36 @@
 // src/lib/x402.ts
 // Official x402 v2 protocol helpers for XRPL (t54 facilitator scheme).
 //
-// NETWORK: CAIP-2 "xrpl:0" (required by the @x402 SDK).
-// RESOURCE: x402 v2 requires `resource` to be an OBJECT {url, description,
-// mimeType}, NOT a bare URL string. The payer SDK echoes this object into the
-// paymentPayload it sends to the facilitator; if it's a string the facilitator
-// rejects it with a Pydantic 422 (paymentPayload.resource must be an object).
-// No custody: payer signs, facilitator submits.
+// AMOUNT: the exact scheme requires paymentRequirements.amount to equal the
+// transaction's Amount.value EXACTLY. XRPL IOU amounts are canonical decimal
+// strings ("0.02", not "0.020000"). We therefore emit a trimmed canonical
+// amount so it matches the on-ledger Amount.value the payer signs.
+// NETWORK: CAIP-2 "xrpl:0". RESOURCE: ResourceInfo object. No custody.
 
 import { createHash } from "crypto";
 
 export const X402_VERSION = 2;
 export const X402_SCHEME = "exact";
-
 export const XRPL_NETWORK = process.env.X402_NETWORK ?? "xrpl:0";
-
 export const FACILITATOR_URL =
   process.env.X402_FACILITATOR_URL ?? "https://xrpl-facilitator-mainnet.t54.ai";
-
 export const X402_SOURCE_TAG = Number(process.env.X402_SOURCE_TAG ?? 804681468);
-
 export const RLUSD_ASSET = "524C555344000000000000000000000000000000";
 export const RLUSD_ISSUER_ADDR =
   process.env.RLUSD_ISSUER ?? "rMxCKbEDwqr76QuheSUMdEGf4B9xJ8m5De";
-
 export const MAX_TIMEOUT_SECONDS = 600;
-
-// Public origin, used to build absolute resource URLs.
 export const PUBLIC_ORIGIN = process.env.PUBLIC_ORIGIN ?? "https://www.xrplhub.io";
+
+// Canonical XRPL IOU amount string: no trailing zeros, no trailing dot.
+// 0.02 -> "0.02"; 0.080000 -> "0.08"; 1 -> "1"; 0.15 -> "0.15".
+export function canonicalAmount(n: number): string {
+  let s = n.toFixed(6);          // "0.020000"
+  if (s.indexOf(".") >= 0) {
+    s = s.replace(/0+$/, "");     // strip trailing zeros -> "0.02"
+    s = s.replace(/\.$/, "");     // strip trailing dot if any -> "2"
+  }
+  return s;
+}
 
 export function encodeHeader(obj: unknown): string {
   return Buffer.from(JSON.stringify(obj), "utf8").toString("base64");
@@ -41,12 +44,7 @@ export function invoiceIdHash(invoiceId: string): string {
   return createHash("sha256").update(invoiceId, "utf8").digest("hex").toUpperCase();
 }
 
-// x402 v2 ResourceInfo object.
-export interface ResourceInfo {
-  url: string;
-  description?: string;
-  mimeType?: string;
-}
+export interface ResourceInfo { url: string; description?: string; mimeType?: string; }
 
 export interface PaymentRequirements {
   scheme: string;
@@ -79,7 +77,7 @@ export function rlusdRequirements(opts: {
     network: XRPL_NETWORK,
     asset: RLUSD_ASSET,
     payTo: opts.payTo,
-    amount: opts.amountRlusd.toFixed(6),
+    amount: canonicalAmount(opts.amountRlusd), // "0.02" not "0.020000"
     maxTimeoutSeconds: MAX_TIMEOUT_SECONDS,
     name: opts.name ?? "XRPLScore - Wallet Risk Score",
     description:
@@ -95,17 +93,9 @@ export function rlusdRequirements(opts: {
   };
 }
 
-// Build the resource as an OBJECT (x402 v2 ResourceInfo). resourcePath is the
-// route path like "/api/x402/score"; we make it an absolute URL.
 export function makeResource(resourcePath: string, description?: string): ResourceInfo {
-  const url = resourcePath.startsWith("http")
-    ? resourcePath
-    : `${PUBLIC_ORIGIN}${resourcePath}`;
-  return {
-    url,
-    description: description ?? "XRPLHub paid API resource",
-    mimeType: "application/json",
-  };
+  const url = resourcePath.startsWith("http") ? resourcePath : `${PUBLIC_ORIGIN}${resourcePath}`;
+  return { url, description: description ?? "XRPLHub paid API resource", mimeType: "application/json" };
 }
 
 export function paymentRequiredChallenge(
@@ -116,7 +106,6 @@ export function paymentRequiredChallenge(
   return {
     x402Version: X402_VERSION,
     accepts: [requirements],
-    // resource is an OBJECT per x402 v2 (not a bare string).
     resource: makeResource(resource, description),
     network: XRPL_NETWORK,
     ...(description ? { description } : {}),
@@ -131,10 +120,7 @@ export interface PaymentSignaturePayload {
 }
 
 export interface FacilitatorResult {
-  ok: boolean;
-  status: number;
-  body: Record<string, unknown> | null;
-  error?: string;
+  ok: boolean; status: number; body: Record<string, unknown> | null; error?: string;
 }
 
 async function facilitatorPost(path: string, body: unknown): Promise<FacilitatorResult> {
@@ -152,38 +138,20 @@ async function facilitatorPost(path: string, body: unknown): Promise<Facilitator
   }
 }
 
-// Ensure the payload we forward has resource as an OBJECT. If the client sent a
-// string (older SDK) or omitted it, coerce to a proper ResourceInfo so the
-// facilitator's Pydantic model accepts it.
-function normalizePayload(
-  p: PaymentSignaturePayload,
-  resourcePath: string
-): PaymentSignaturePayload {
+function normalizePayload(p: PaymentSignaturePayload, resourcePath: string): PaymentSignaturePayload {
   const r = p.resource as unknown;
   let resource: ResourceInfo;
-  if (r && typeof r === "object" && typeof (r as ResourceInfo).url === "string") {
-    resource = r as ResourceInfo;
-  } else if (typeof r === "string") {
-    resource = makeResource(r);
-  } else {
-    resource = makeResource(resourcePath);
-  }
+  if (r && typeof r === "object" && typeof (r as ResourceInfo).url === "string") resource = r as ResourceInfo;
+  else if (typeof r === "string") resource = makeResource(r);
+  else resource = makeResource(resourcePath);
   return { ...p, resource };
 }
 
-export function verifyPayment(
-  p: PaymentSignaturePayload,
-  r: PaymentRequirements,
-  resourcePath = "/api/x402/score"
-) {
+export function verifyPayment(p: PaymentSignaturePayload, r: PaymentRequirements, resourcePath = "/api/x402/score") {
   const payload = normalizePayload(p, resourcePath);
   return facilitatorPost("/verify", { x402Version: X402_VERSION, paymentPayload: payload, paymentRequirements: r });
 }
-export function settlePayment(
-  p: PaymentSignaturePayload,
-  r: PaymentRequirements,
-  resourcePath = "/api/x402/score"
-) {
+export function settlePayment(p: PaymentSignaturePayload, r: PaymentRequirements, resourcePath = "/api/x402/score") {
   const payload = normalizePayload(p, resourcePath);
   return facilitatorPost("/settle", { x402Version: X402_VERSION, paymentPayload: payload, paymentRequirements: r });
 }
