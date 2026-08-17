@@ -27,7 +27,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const RESOURCE = "/api/x402/tx";
-const MAX_TAG = 4_294_967_295;
+const MAX_TAG = 2_147_483_647; // INT4 max (Prisma destinationTag is signed 32-bit)
 const randomTag = () => 1 + Math.floor(Math.random() * (MAX_TAG - 1));
 const isAddr = (v: string) => v.startsWith("r") && v.length >= 25 && v.length <= 35;
 

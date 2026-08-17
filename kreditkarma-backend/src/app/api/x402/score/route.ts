@@ -6,7 +6,7 @@
 // PAYMENT-REQUIRED challenge so x402scan / xrpl-ai.org probes succeed.
 //
 // FIX: destination tags are 32-bit ints. Use the same safe range as the other
-// endpoints (max 4_294_967_295) so prisma.invoice.create never gets an
+// endpoints (max 2147483647) so prisma.invoice.create never gets an
 // out-of-range value.
 
 import { NextResponse } from "next/server";
@@ -29,7 +29,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const RESOURCE = "/api/x402/score";
-const MAX_TAG = 4_294_967_295; // 32-bit unsigned max
+const MAX_TAG = 2_147_483_647; // INT4 max (Prisma destinationTag is signed 32-bit) // 32-bit unsigned max
 const randomTag = () => 1 + Math.floor(Math.random() * (MAX_TAG - 1));
 
 async function issueChallenge(walletForDesc: string | null) {
