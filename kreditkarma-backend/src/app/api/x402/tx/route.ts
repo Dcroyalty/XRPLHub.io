@@ -6,6 +6,9 @@
 // productId + account come as query params; on paid retry we build the txjson
 // with the existing buildServiceTx engine. Bare probe -> 402 (defaults to
 // checkcreate so the crawler gets a valid challenge).
+//
+// SPAM FIX: stateless challenge â€” no invoice row for a probe; a row is written
+// only after a payment settles.
 
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/xrplscore-db";
@@ -20,6 +23,8 @@ import {
   verifyPayment,
   settlePayment,
   looksSuccessful,
+  statelessInvoiceId,
+  recordPaidInvoice,
   type PaymentSignaturePayload,
 } from "@/lib/x402";
 
@@ -27,8 +32,6 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const RESOURCE = "/api/x402/tx";
-const MAX_TAG = 2_147_483_647; // INT4 max (Prisma destinationTag is signed 32-bit)
-const randomTag = () => 1 + Math.floor(Math.random() * (MAX_TAG - 1));
 const isAddr = (v: string) => v.startsWith("r") && v.length >= 25 && v.length <= 35;
 
 const KNOWN = new Set([
@@ -38,7 +41,7 @@ const KNOWN = new Set([
   "identity","did","compliance","credentialissue","permdomain",
 ]);
 
-const NAME = "XRPLHub — Prebuilt XRPL Transaction (27 services)";
+const NAME = "XRPLHub â€” Prebuilt XRPL Transaction (27 services)";
 const DESC =
   "Ready-to-sign XRPL transaction for any of 27 services (CheckCreate, Escrow, NFT, AMM, " +
   "TrustSet, DID, and more). Pay per call in RLUSD; sign the returned txjson with your own wallet.";
@@ -52,27 +55,12 @@ function extractParams(url: URL): Record<string, string> {
   return out;
 }
 
-async function issueChallenge(productId: string) {
-  let invoice = null;
-  for (let i = 0; i < 5 && !invoice; i++) {
-    try {
-      invoice = await prisma.invoice.create({
-        data: {
-          plan: `x402:tx:${productId}`,
-          amountRlusd: PRICE_PER_TX_PRODUCT_RLUSD,
-          destinationTag: randomTag(),
-          status: "pending",
-          expiresAt: new Date(Date.now() + 10 * 60_000),
-        },
-      });
-    } catch { /* retry */ }
-  }
-  if (!invoice) return NextResponse.json({ error: "retry" }, { status: 503 });
-
+function issueChallenge(productId: string) {
+  const invoiceId = statelessInvoiceId(`x402:tx:${productId}`);
   const requirements = rlusdRequirements({
     payTo: TREASURY_ADDRESS,
     amountRlusd: PRICE_PER_TX_PRODUCT_RLUSD,
-    invoiceId: invoice.id,
+    invoiceId,
     name: NAME,
     description: DESC,
   });
@@ -108,40 +96,31 @@ export async function GET(req: Request) {
   const invoiceId = payload.accepted?.extra?.invoiceId;
   if (!invoiceId) return NextResponse.json({ error: "invoice_binding_missing" }, { status: 400 });
 
-  const invoice = await prisma.invoice.findUnique({ where: { id: invoiceId } });
-  if (!invoice || invoice.plan !== `x402:tx:${productId}`) {
-    return NextResponse.json({ error: "invoice_not_found" }, { status: 404 });
+  // Rebuild requirements server-side from OUR price + echoed invoiceId; the
+  // facilitator enforces the on-ledger payment matches. No stored row needed.
+  const requirements = rlusdRequirements({
+    payTo: TREASURY_ADDRESS,
+    amountRlusd: PRICE_PER_TX_PRODUCT_RLUSD,
+    invoiceId,
+    name: NAME,
+    description: DESC,
+  });
+  const verified = await verifyPayment(payload, requirements);
+  if (!looksSuccessful(verified)) {
+    return NextResponse.json(
+      { error: "payment_verification_failed", facilitator: verified.body ?? verified.error ?? null, status: verified.status },
+      { status: 402 }
+    );
   }
-  if (invoice.status !== "paid") {
-    if (invoice.expiresAt < new Date()) return NextResponse.json({ error: "invoice_expired" }, { status: 410 });
-
-    const requirements = rlusdRequirements({
-      payTo: TREASURY_ADDRESS,
-      amountRlusd: Number(invoice.amountRlusd),
-      invoiceId: invoice.id,
-      name: NAME,
-      description: DESC,
-    });
-    const verified = await verifyPayment(payload, requirements);
-    if (!looksSuccessful(verified)) {
-      return NextResponse.json(
-        { error: "payment_verification_failed", facilitator: verified.body ?? verified.error ?? null, status: verified.status },
-        { status: 402 }
-      );
-    }
-    const settled = await settlePayment(payload, requirements);
-    if (!looksSuccessful(settled)) {
-      return NextResponse.json(
-        { error: "settlement_failed", facilitator: settled.body ?? settled.error ?? null, status: settled.status },
-        { status: 402 }
-      );
-    }
-    const b = (settled.body ?? {}) as { transaction?: string };
-    await prisma.invoice.update({
-      where: { id: invoice.id, status: "pending" },
-      data: { status: "paid", txHash: b.transaction ?? null, deliveredRlusd: invoice.amountRlusd, paidAt: new Date() },
-    }).catch(() => {});
+  const settled = await settlePayment(payload, requirements);
+  if (!looksSuccessful(settled)) {
+    return NextResponse.json(
+      { error: "settlement_failed", facilitator: settled.body ?? settled.error ?? null, status: settled.status },
+      { status: 402 }
+    );
   }
+  const b = (settled.body ?? {}) as { transaction?: string };
+  await recordPaidInvoice(prisma, { plan: `x402:tx:${productId}`, amountRlusd: PRICE_PER_TX_PRODUCT_RLUSD, txHash: b.transaction });
 
   const built = buildServiceTx(productId, account, extractParams(url));
   if (!built.ok) {

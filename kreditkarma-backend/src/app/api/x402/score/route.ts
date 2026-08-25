@@ -5,9 +5,8 @@
 // CRAWLER NOTE: a bare GET (no wallet, no PAYMENT-SIGNATURE) returns the 402
 // PAYMENT-REQUIRED challenge so x402scan / xrpl-ai.org probes succeed.
 //
-// FIX: destination tags are 32-bit ints. Use the same safe range as the other
-// endpoints (max 2147483647) so prisma.invoice.create never gets an
-// out-of-range value.
+// SPAM FIX: the challenge is STATELESS â€” no invoice row is created for a probe.
+// A row is written only after a payment settles (see recordPaidInvoice).
 
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/xrplscore-db";
@@ -22,6 +21,8 @@ import {
   verifyPayment,
   settlePayment,
   looksSuccessful,
+  statelessInvoiceId,
+  recordPaidInvoice,
   type PaymentSignaturePayload,
 } from "@/lib/x402";
 
@@ -29,38 +30,13 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const RESOURCE = "/api/x402/score";
-const MAX_TAG = 2_147_483_647; // INT4 max (Prisma destinationTag is signed 32-bit) // 32-bit unsigned max
-const randomTag = () => 1 + Math.floor(Math.random() * (MAX_TAG - 1));
 
-async function issueChallenge(walletForDesc: string | null) {
-  // Allocate a unique 32-bit destination tag, retry on the rare collision.
-  let invoice = null;
-  for (let i = 0; i < 5 && !invoice; i++) {
-    try {
-      invoice = await prisma.invoice.create({
-        data: {
-          plan: "x402:score",
-          amountRlusd: PRICE_PER_SCORE_RLUSD,
-          destinationTag: randomTag(),
-          status: "pending",
-          expiresAt: new Date(Date.now() + 10 * 60_000),
-        },
-      });
-    } catch {
-      /* tag collision or transient — retry */
-    }
-  }
-  if (!invoice) {
-    return NextResponse.json(
-      { error: "retry", message: "Could not allocate an invoice. Try again." },
-      { status: 503 }
-    );
-  }
-
+function issueChallenge(walletForDesc: string | null) {
+  const invoiceId = statelessInvoiceId("x402:score");
   const requirements = rlusdRequirements({
     payTo: TREASURY_ADDRESS,
     amountRlusd: PRICE_PER_SCORE_RLUSD,
-    invoiceId: invoice.id,
+    invoiceId,
   });
   const challenge = paymentRequiredChallenge(
     requirements,
@@ -105,19 +81,13 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "invoice_binding_missing" }, { status: 400 });
   }
 
-  const invoice = await prisma.invoice.findUnique({ where: { id: invoiceId } });
-  if (!invoice || invoice.plan !== "x402:score") {
-    return NextResponse.json({ error: "invoice_not_found" }, { status: 404 });
-  }
-  if (invoice.status === "paid") return deliver(wallet, invoice.txHash ?? undefined);
-  if (invoice.expiresAt < new Date()) {
-    return NextResponse.json({ error: "invoice_expired" }, { status: 410 });
-  }
-
+  // Rebuild requirements server-side from OUR price + the echoed invoiceId. The
+  // facilitator enforces that the on-ledger payment matches these exactly (exact
+  // scheme, our treasury), so no pre-stored invoice row is needed.
   const requirements = rlusdRequirements({
     payTo: TREASURY_ADDRESS,
-    amountRlusd: Number(invoice.amountRlusd),
-    invoiceId: invoice.id,
+    amountRlusd: PRICE_PER_SCORE_RLUSD,
+    invoiceId,
   });
 
   const verified = await verifyPayment(payload, requirements);
@@ -137,10 +107,8 @@ export async function GET(req: Request) {
   }
 
   const b = (settled.body ?? {}) as { transaction?: string; payer?: string };
-  await prisma.invoice.update({
-    where: { id: invoice.id, status: "pending" },
-    data: { status: "paid", txHash: b.transaction ?? null, deliveredRlusd: invoice.amountRlusd, paidAt: new Date() },
-  }).catch(() => {});
+  // Persist a row ONLY now that payment settled (probes never reach here).
+  await recordPaidInvoice(prisma, { plan: "x402:score", amountRlusd: PRICE_PER_SCORE_RLUSD, txHash: b.transaction });
 
   return deliver(wallet, b.transaction, b.payer);
 }

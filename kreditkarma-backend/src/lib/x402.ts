@@ -7,7 +7,7 @@
 // amount so it matches the on-ledger Amount.value the payer signs.
 // NETWORK: CAIP-2 "xrpl:0". RESOURCE: ResourceInfo object. No custody.
 
-import { createHash } from "crypto";
+import { createHash, randomUUID } from "crypto";
 
 export const X402_VERSION = 2;
 export const X402_SCHEME = "exact";
@@ -169,4 +169,44 @@ export function looksSuccessful(r: FacilitatorResult): boolean {
   if (!r.ok || !r.body) return false;
   const b = r.body as { success?: boolean; isValid?: boolean; valid?: boolean };
   return b.success === true || b.isValid === true || b.valid === true;
+}
+
+// ---------------------------------------------------------------------------
+
+export function statelessInvoiceId(plan: string): string {
+  return `${plan}~${randomUUID()}`;
+}
+
+// Structural type so this lib needs no Prisma import.
+type PaidInvoiceRecorder = {
+  invoice: { create: (args: { data: Record<string, unknown> }) => Promise<unknown> };
+};
+
+// Best-effort books entry for a SETTLED x402 payment. Never throws â€” a
+// bookkeeping failure must not block delivery to a paying customer. Only
+// reached after settlement, so probes never create rows.
+export async function recordPaidInvoice(
+  db: PaidInvoiceRecorder,
+  opts: { plan: string; amountRlusd: number; txHash?: string | null }
+): Promise<void> {
+  const MAX_TAG = 2_147_483_647; // Invoice.destinationTag is a unique 32-bit int
+  for (let i = 0; i < 3; i++) {
+    try {
+      await db.invoice.create({
+        data: {
+          plan: opts.plan,
+          amountRlusd: opts.amountRlusd,
+          destinationTag: 1 + Math.floor(Math.random() * (MAX_TAG - 1)),
+          status: "paid",
+          txHash: opts.txHash ?? null,
+          deliveredRlusd: opts.amountRlusd,
+          paidAt: new Date(),
+          expiresAt: new Date(),
+        },
+      });
+      return;
+    } catch {
+      /* unique-tag collision or transient error â€” retry a couple times, then give up */
+    }
+  }
 }

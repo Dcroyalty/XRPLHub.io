@@ -2,6 +2,9 @@
 // Full Wallet Risk Report over the OFFICIAL x402 v2 protocol (t54, XRPL).
 // Standard PAYMENT-REQUIRED header so xrpl-ai.org auto-discovers + lists it.
 // Runs alongside /api/v1/wallet-report (destination-tag flow, untouched).
+//
+// SPAM FIX: stateless challenge â€” no invoice row for a probe; a row is written
+// only after a payment settles.
 
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/xrplscore-db";
@@ -17,6 +20,8 @@ import {
   verifyPayment,
   settlePayment,
   looksSuccessful,
+  statelessInvoiceId,
+  recordPaidInvoice,
   type PaymentSignaturePayload,
 } from "@/lib/x402";
 
@@ -24,36 +29,18 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const RESOURCE = "/api/x402/report";
-const MAX_TAG = 2_147_483_647; // INT4 max (Prisma destinationTag is signed 32-bit)
-const randomTag = () => 1 + Math.floor(Math.random() * (MAX_TAG - 1));
 
-const NAME = "XRPLHub — Full Wallet Risk Report";
+const NAME = "XRPLHub â€” Full Wallet Risk Report";
 const DESC =
   "Score plus machine-readable risk flags, weighted signal detail, and an on-chain " +
   "snapshot (balance, trust lines, activity, counterparties). Pay per call in RLUSD.";
 
-async function issueChallenge() {
-  let invoice = null;
-  for (let i = 0; i < 5 && !invoice; i++) {
-    try {
-      invoice = await prisma.invoice.create({
-        data: {
-          plan: "x402:report",
-          amountRlusd: PRICE_PER_PRODUCT_RLUSD,
-          destinationTag: randomTag(),
-          status: "pending",
-          expiresAt: new Date(Date.now() + 10 * 60_000),
-        },
-      });
-    } catch { /* retry */ }
-  }
-  if (!invoice) {
-    return NextResponse.json({ error: "retry" }, { status: 503 });
-  }
+function issueChallenge() {
+  const invoiceId = statelessInvoiceId("x402:report");
   const requirements = rlusdRequirements({
     payTo: TREASURY_ADDRESS,
     amountRlusd: PRICE_PER_PRODUCT_RLUSD,
-    invoiceId: invoice.id,
+    invoiceId,
     name: NAME,
     description: DESC,
   });
@@ -84,17 +71,12 @@ export async function GET(req: Request) {
   const invoiceId = payload.accepted?.extra?.invoiceId;
   if (!invoiceId) return NextResponse.json({ error: "invoice_binding_missing" }, { status: 400 });
 
-  const invoice = await prisma.invoice.findUnique({ where: { id: invoiceId } });
-  if (!invoice || invoice.plan !== "x402:report") {
-    return NextResponse.json({ error: "invoice_not_found" }, { status: 404 });
-  }
-  if (invoice.status === "paid") return deliver(wallet, invoice.txHash ?? undefined);
-  if (invoice.expiresAt < new Date()) return NextResponse.json({ error: "invoice_expired" }, { status: 410 });
-
+  // Rebuild requirements server-side from OUR price + echoed invoiceId; the
+  // facilitator enforces the on-ledger payment matches. No stored row needed.
   const requirements = rlusdRequirements({
     payTo: TREASURY_ADDRESS,
-    amountRlusd: Number(invoice.amountRlusd),
-    invoiceId: invoice.id,
+    amountRlusd: PRICE_PER_PRODUCT_RLUSD,
+    invoiceId,
     name: NAME,
     description: DESC,
   });
@@ -115,10 +97,7 @@ export async function GET(req: Request) {
   }
 
   const b = (settled.body ?? {}) as { transaction?: string; payer?: string };
-  await prisma.invoice.update({
-    where: { id: invoice.id, status: "pending" },
-    data: { status: "paid", txHash: b.transaction ?? null, deliveredRlusd: invoice.amountRlusd, paidAt: new Date() },
-  }).catch(() => {});
+  await recordPaidInvoice(prisma, { plan: "x402:report", amountRlusd: PRICE_PER_PRODUCT_RLUSD, txHash: b.transaction });
 
   return deliver(wallet, b.transaction, b.payer);
 }

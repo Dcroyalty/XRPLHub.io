@@ -5,6 +5,7 @@
 // Requires env vars: XUMM_API_KEY, XUMM_API_SECRET
 
 import { NextRequest, NextResponse } from 'next/server';
+import { recordPurchase } from '@/lib/recordPurchase';
 
 const XUMM_STATUS = 'https://xumm.app/api/v1/platform/payload';
 const XRPL_API    = 'https://xrplcluster.com/';
@@ -48,7 +49,7 @@ export async function GET(req: NextRequest) {
     if (meta.resolved && !meta.signed) return NextResponse.json({ status: 'rejected' });
     if (!meta.signed) return NextResponse.json({ status: 'pending' });
 
-    // Signed — now confirm on-chain success.
+    // Signed â€” now confirm on-chain success.
     const txHash = data?.response?.txid;
     if (!txHash) return NextResponse.json({ status: 'pending' });
 
@@ -56,14 +57,19 @@ export async function GET(req: NextRequest) {
     if (!result) return NextResponse.json({ status: 'pending', txHash });
     if (result !== 'tesSUCCESS') return NextResponse.json({ status: 'failed', txHash, result });
 
-    // Best-effort delivery record + receipt email.
+    // Mark the purchase DELIVERED â€” directly in the DB (no internal HTTP hop).
+    // blob = { productId, account, payTxHash }; payTxHash is the PAYMENT tx, the
+    // key the check-payment row was written under, so map it to txHash.
     try {
       const blob = data?.custom_meta?.blob ? JSON.parse(data.custom_meta.blob) : {};
-      const base = process.env.NEXT_PUBLIC_API_URL || '';
-      fetch(`${base}/api/purchase`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...blob, serviceTxHash: txHash, status: 'DELIVERED', deliveredAt: new Date().toISOString() }),
-      }).catch(() => {});
+      await recordPurchase({
+        productId: blob.productId,
+        sender: blob.account ?? null,
+        txHash: blob.payTxHash ?? null,
+        serviceTxHash: txHash,
+        status: 'DELIVERED',
+        deliveredAt: new Date().toISOString(),
+      });
     } catch {}
 
     return NextResponse.json({ status: 'delivered', txHash });

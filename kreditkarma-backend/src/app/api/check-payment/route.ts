@@ -5,6 +5,7 @@
 // Requires env vars: XUMM_API_KEY, XUMM_API_SECRET
 
 import { NextRequest, NextResponse } from 'next/server'
+import { recordPurchase } from '@/lib/recordPurchase'
 
 const XUMM_STATUS = 'https://xumm.app/api/v1/platform/payload'
 const XRPL_API    = 'https://xrplcluster.com/'
@@ -29,7 +30,7 @@ async function fetchTx(txHash: string): Promise<Record<string, unknown> | null> 
 
 async function verifyTx(txHash: string, expectedAmt: number, currency: string) {
   const tx = await fetchTx(txHash)
-  if (!tx) return { ok: false, reason: 'Transaction not yet visible on XRPL — retry in a moment', retry: true }
+  if (!tx) return { ok: false, reason: 'Transaction not yet visible on XRPL â€” retry in a moment', retry: true }
 
   const meta = tx.meta as Record<string, unknown>
   if (meta?.TransactionResult !== 'tesSUCCESS')
@@ -54,16 +55,6 @@ async function verifyTx(txHash: string, expectedAmt: number, currency: string) {
     }
   }
   return { ok: true, sender: tx.Account as string }
-}
-
-async function postVerify(productId: string, currency: string, amount: string, email: string, txHash: string, sender: string) {
-  const base = process.env.NEXT_PUBLIC_API_URL || ''
-  Promise.allSettled([
-    fetch(`${base}/api/purchase`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ productId, currency, amount, email, txHash, sender, verifiedAt: new Date().toISOString() }),
-    }),
-  ]).catch(() => {})
 }
 
 export async function GET(req: NextRequest) {
@@ -105,12 +96,15 @@ export async function GET(req: NextRequest) {
 
     const verify = await verifyTx(txHash, amount, currency)
     if (!verify.ok && (verify as { retry?: boolean }).retry) {
-      // Ledger hasn't seen the tx yet — keep polling.
+      // Ledger hasn't seen the tx yet â€” keep polling.
       return NextResponse.json({ status: 'pending', txHash })
     }
     if (!verify.ok) return NextResponse.json({ status: 'rejected', reason: verify.reason, txHash })
 
-    postVerify(productId, currency, String(amount), email, txHash, verify.sender!)
+    await recordPurchase({
+      productId, currency, amount: String(amount), email,
+      sender: verify.sender!, txHash, verifiedAt: new Date().toISOString(),
+    })
 
     return NextResponse.json({
       status:  'verified',
@@ -120,6 +114,6 @@ export async function GET(req: NextRequest) {
     })
   } catch (err) {
     console.error('[check-payment]', err)
-    return NextResponse.json({ status: 'error', reason: 'Verification failed — please retry' }, { status: 500 })
+    return NextResponse.json({ status: 'error', reason: 'Verification failed â€” please retry' }, { status: 500 })
   }
 }
