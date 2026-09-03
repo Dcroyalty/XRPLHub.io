@@ -7,6 +7,7 @@
 
 import { NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
+import { isAdmin } from '@/lib/adminAuth';
 
 const prisma = new PrismaClient();
 const XAI_API_KEY       = process.env.XAI_API_KEY || process.env.GROK_API_KEY || '';
@@ -129,6 +130,9 @@ function combine(grok: Partial<Verdict> | null, claude: Partial<Verdict> | null)
 }
 
 export async function POST(req: Request) {
+  if (!isAdmin(req)) {
+    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  }
   const debugBag: string[] = [];
   try {
     const app: AppInput = await req.json().catch(() => ({}));

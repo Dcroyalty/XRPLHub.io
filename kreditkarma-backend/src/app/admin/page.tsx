@@ -1,8 +1,10 @@
 'use client';
 import React, { useState, useEffect, useCallback } from 'react';
 
-const API_URL   = (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_API_URL) || '';
-const ADMIN_PWD = 'xrplhub2026';  // change this to your preferred password
+const API_URL = (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_API_URL) || '';
+// No hardcoded password. The operator pastes the ADMIN_API_TOKEN; it is validated
+// server-side by GET /api/admin and sent as a Bearer token on every admin call.
+const TOKEN_KEY = 'xh_admin_token';
 
 // ─── TYPES ────────────────────────────────────────────────────────────────────
 interface Grant {
@@ -55,7 +57,7 @@ function trunc(a: string, n = 8) { return a ? `${a.slice(0,n)}…${a.slice(-4)}`
 function fmt(d: string) { return new Date(d).toLocaleString('en-US', { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' }); }
 
 // ─── GRANT ACTIONS PANEL ──────────────────────────────────────────────────────
-function GrantActions({ grant, onUpdate }: { grant: Grant; onUpdate: () => void }) {
+function GrantActions({ grant, token, onUpdate }: { grant: Grant; token: string; onUpdate: () => void }) {
   const [loading, setLoading] = useState('');
   const [note, setNote]       = useState('');
   const [amount, setAmount]   = useState(String(grant.amountRequested));
@@ -72,10 +74,10 @@ function GrantActions({ grant, onUpdate }: { grant: Grant; onUpdate: () => void 
       const verbMap: Record<string,string> = { approve:'APPROVE', reject:'REJECT', pay:'PAID' };
       const payload = isReview
         ? { wallet: grant.walletAddress }
-        : { id: grant.id, action: verbMap[action] || action.toUpperCase(), secret: ADMIN_PWD, ...body };
+        : { id: grant.id, action: verbMap[action] || action.toUpperCase(), ...body };
       const res = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-admin-secret': ADMIN_PWD },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify(payload),
       });
       const json = await res.json().catch(() => ({}));
@@ -146,6 +148,7 @@ function GrantActions({ grant, onUpdate }: { grant: Grant; onUpdate: () => void 
 // ═══════════════════════════════════════════════════════════════════════════════
 export default function AdminPage() {
   const [authed, setAuthed]       = useState(false);
+  const [token, setToken]         = useState('');
   const [pwd, setPwd]             = useState('');
   const [pwdErr, setPwdErr]       = useState(false);
   const [data, setData]           = useState<AdminData|null>(null);
@@ -155,24 +158,59 @@ export default function AdminPage() {
   const [grantFilter, setGF]      = useState('ALL');
   const [lastRefresh, setLastRefresh] = useState('');
 
+  const logout = useCallback(() => {
+    setAuthed(false); setToken(''); setData(null); setPwd('');
+    try { sessionStorage.removeItem(TOKEN_KEY); } catch {}
+  }, []);
+
   const fetchData = useCallback(async () => {
+    if (!token) return;
     setLoading(true);
     try {
-      const res = await fetch(`${API_URL}/api/admin`, { cache: 'no-store' });
+      const res = await fetch(`${API_URL}/api/admin`, {
+        cache: 'no-store',
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      if (res.status === 401) { logout(); return; }
       const json = await res.json();
       setData(json);
       setLastRefresh(new Date().toLocaleTimeString());
     } catch { /* silent */ }
     finally { setLoading(false); }
+  }, [token, logout]);
+
+  // Validate a candidate token against the server; on success, unlock + cache it.
+  const tryAuth = useCallback(async (candidate: string) => {
+    const t = candidate.trim();
+    if (!t) { setPwdErr(true); return; }
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/api/admin`, {
+        cache: 'no-store',
+        headers: { 'Authorization': `Bearer ${t}` },
+      });
+      if (!res.ok) { setPwdErr(true); return; }
+      const json = await res.json();
+      setToken(t);
+      setData(json);
+      setLastRefresh(new Date().toLocaleTimeString());
+      setAuthed(true);
+      setPwdErr(false);
+      try { sessionStorage.setItem(TOKEN_KEY, t); } catch {}
+    } catch {
+      setPwdErr(true);
+    } finally { setLoading(false); }
   }, []);
 
+  // Restore a cached token on load (session-scoped — cleared when the tab closes).
   useEffect(() => {
-    if (!authed) return;
-    fetchData();
+    let saved = '';
+    try { saved = sessionStorage.getItem(TOKEN_KEY) || ''; } catch {}
+    if (saved) tryAuth(saved);
     // NO auto-refresh interval. A 60s poll here kept the Neon compute awake for
     // as long as this tab stayed open (hours), which dominated the monthly bill.
     // Use the Refresh button in the header when you want fresh data.
-  }, [authed, fetchData]);
+  }, [tryAuth]);
 
   // ── Login screen ──
   if (!authed) return (
@@ -183,13 +221,13 @@ export default function AdminPage() {
         <h2 style={{ fontSize:22, fontWeight:900, marginBottom:4 }}>XRPLHub Admin</h2>
         <p style={{ fontSize:12, color:'rgba(255,255,255,.38)', marginBottom:24 }}>Internal use only</p>
         <input type="password" value={pwd} onChange={e=>{setPwd(e.target.value);setPwdErr(false);}}
-          onKeyDown={e=>{if(e.key==='Enter'){if(pwd===ADMIN_PWD){setAuthed(true);}else{setPwdErr(true);}}}}
-          placeholder="Admin password" autoFocus
-          style={{ ...INP, marginBottom:12, textAlign:'center', letterSpacing:'.15em', borderColor: pwdErr?'#f87171':'rgba(255,255,255,.15)' }} />
-        {pwdErr && <p style={{ fontSize:12, color:'#f87171', marginBottom:10 }}>Incorrect password</p>}
-        <button onClick={()=>{ if(pwd===ADMIN_PWD){setAuthed(true);}else{setPwdErr(true);} }}
-          style={{ width:'100%', padding:'12px', borderRadius:99, background:'#10b981', color:'#000', border:'none', fontWeight:800, fontSize:14, cursor:'pointer', fontFamily:'inherit' }}>
-          Enter →
+          onKeyDown={e=>{if(e.key==='Enter'){tryAuth(pwd);}}}
+          placeholder="Admin API token" autoFocus disabled={loading}
+          style={{ ...INP, marginBottom:12, textAlign:'center', letterSpacing:'.1em', borderColor: pwdErr?'#f87171':'rgba(255,255,255,.15)' }} />
+        {pwdErr && <p style={{ fontSize:12, color:'#f87171', marginBottom:10 }}>Invalid token</p>}
+        <button onClick={()=>tryAuth(pwd)} disabled={loading}
+          style={{ width:'100%', padding:'12px', borderRadius:99, background:'#10b981', color:'#000', border:'none', fontWeight:800, fontSize:14, cursor:loading?'wait':'pointer', opacity:loading?0.6:1, fontFamily:'inherit' }}>
+          {loading ? 'Checking…' : 'Enter →'}
         </button>
       </div>
     </div>
@@ -222,7 +260,7 @@ export default function AdminPage() {
         <div style={{ display:'flex', alignItems:'center', gap:14 }}>
           {lastRefresh && <span style={{ fontSize:10, color:'rgba(255,255,255,.28)', fontFamily:"'IBM Plex Mono',monospace" }}>Updated {lastRefresh}</span>}
           <button onClick={fetchData} style={{ padding:'6px 14px', borderRadius:99, background:'rgba(16,185,129,.12)', border:'1px solid rgba(16,185,129,.28)', color:'#10b981', fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:'inherit' }}>↻ Refresh</button>
-          <button onClick={()=>setAuthed(false)} style={{ padding:'6px 14px', borderRadius:99, background:'rgba(255,255,255,.06)', border:'1px solid rgba(255,255,255,.12)', color:'rgba(255,255,255,.5)', fontSize:12, cursor:'pointer', fontFamily:'inherit' }}>Log Out</button>
+          <button onClick={logout} style={{ padding:'6px 14px', borderRadius:99, background:'rgba(255,255,255,.06)', border:'1px solid rgba(255,255,255,.12)', color:'rgba(255,255,255,.5)', fontSize:12, cursor:'pointer', fontFamily:'inherit' }}>Log Out</button>
         </div>
       </div>
 
@@ -387,7 +425,7 @@ export default function AdminPage() {
                       <div style={{ fontSize:10, color:'rgba(255,255,255,.35)' }}>{g.currency}</div>
                     </div>
                   </div>
-                  <GrantActions grant={g} onUpdate={fetchData} />
+                  <GrantActions grant={g} token={token} onUpdate={fetchData} />
                 </div>
               ))
             }

@@ -4,10 +4,18 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
+import { isAdmin } from '@/lib/adminAuth';
 
 const prisma = new PrismaClient();
 
+// POST writes/updates purchase rows. Nothing on the request path calls this
+// anymore (see src/lib/recordPurchase.ts — direct DB write, no HTTP hop), so
+// an open POST here only lets an attacker forge "delivered" purchase records.
+// Admin token required.
 export async function POST(req: NextRequest) {
+  if (!isAdmin(req)) {
+    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  }
   try {
     const b = await req.json().catch(() => ({}));
     const {
@@ -62,11 +70,18 @@ export async function GET(req: NextRequest) {
   try {
     const email  = req.nextUrl.searchParams.get('email')  || '';
     const wallet = req.nextUrl.searchParams.get('wallet') || '';
+    // Require BOTH identifiers and match them on the same row. A single known
+    // email or wallet is no longer enough to enumerate a customer's purchases.
+    // (Admin token also grants access, for the ops dashboard.)
     const where: Record<string, unknown> = {};
-    if (email && wallet) Object.assign(where, { OR: [{ email }, { wallet }] });
-    else if (email)  where.email  = email;
-    else if (wallet) where.wallet = wallet;
-    else return NextResponse.json([]);
+    if (isAdmin(req)) {
+      if (email)  where.email  = email;
+      if (wallet) where.wallet = wallet;
+    } else if (email && wallet) {
+      where.AND = [{ email }, { wallet }];
+    } else {
+      return NextResponse.json([]);
+    }
 
     const rows = await prisma.purchase.findMany({
       where, orderBy: { verifiedAt: 'desc' }, take: 100,

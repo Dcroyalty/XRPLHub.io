@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
+import { isAdmin } from '@/lib/adminAuth';
 
 const prisma = new PrismaClient();
 const TREASURY = 'rs59g3amo5iT6T64Cg96XXMAWuw3WPQcLF';
@@ -33,8 +34,14 @@ async function getXRPPrice(): Promise<number> {
   }
 }
 
-// GET /api/admin — full live admin dashboard data
-export async function GET() {
+// GET /api/admin — full live admin dashboard data (admin token required)
+export async function GET(req: Request) {
+  if (!isAdmin(req)) {
+    return NextResponse.json(
+      { error: 'unauthorized', message: 'Valid admin token required.' },
+      { status: 401 }
+    );
+  }
   try {
     const [
       treasuryXRP,

@@ -1,33 +1,21 @@
 // src/app/api/grants/approve/route.ts
-// Manual final approval (you). Locked behind ADMIN_SECRET.
+// Manual final approval (you). Locked behind ADMIN_API_TOKEN (header only).
 // Matches LIVE Neon columns: txHash (NOT payoutTx), paidAt (NOT reviewedAt).
 
 import { NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
+import { isAdmin } from '@/lib/adminAuth';
 
 const prisma = new PrismaClient();
-// Accept either the server env secret OR the admin-panel password.
-// The admin page authenticates the human with ADMIN_PWD client-side, then sends it here.
-const ADMIN_SECRET = process.env.ADMIN_SECRET || '';
-const ADMIN_PWD = 'xrplhub2026'; // must match ADMIN_PWD in the admin page
-
-function isAuthed(secret: string, headerSecret: string): boolean {
-  const provided = secret || headerSecret;
-  if (!provided) return false;
-  if (ADMIN_SECRET && provided === ADMIN_SECRET) return true;
-  if (provided === ADMIN_PWD) return true;
-  return false;
-}
 
 export async function POST(req: Request) {
+  if (!isAdmin(req)) {
+    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  }
   try {
     const body = await req.json().catch(() => ({}));
-    const { id, action, txHash, approvedAmount, rejectionReason, secret } = body || {};
+    const { id, action, txHash, approvedAmount, rejectionReason } = body || {};
 
-    const headerSecret = req.headers.get('x-admin-secret') || '';
-    if (!isAuthed(String(secret || ''), headerSecret)) {
-      return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
-    }
     if (!id || !action) {
       return NextResponse.json({ error: 'id and action are required' }, { status: 400 });
     }
