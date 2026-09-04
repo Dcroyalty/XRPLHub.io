@@ -1860,6 +1860,7 @@ export default function XRPLHubHome() {
               {connectedWallet
                 ? <button className="wallet-btn" onClick={disconnectWallet} title="Disconnect"><span style={{ width:6,height:6,borderRadius:'50%',background:'#10b981',boxShadow:'0 0 6px #10b981' }} />{trunc(connectedWallet)} ✕</button>
                 : <button className="wallet-btn" onClick={()=>setShowConnect(true)}>🔐 Connect Wallet</button>}
+              <a className="navbtn" href="/pricing">Score API</a>
               <button className="navbtn" onClick={()=>setShowDonate(true)}>Donate</button>
               <button className="navbtn" onClick={()=>setShowGrant(true)}>Apply for Grant</button>
               <button onClick={()=>fetchScore()} style={{ padding:'8px 18px',borderRadius:99,fontFamily:'inherit',fontWeight:700,fontSize:13,cursor:'pointer',border:'none',background:'#10b981',color:'#000',whiteSpace:'nowrap' }}>Get XRPLScore</button>
@@ -1871,6 +1872,7 @@ export default function XRPLHubHome() {
               {connectedWallet
                 ? <button className="wallet-btn" onClick={()=>{disconnectWallet();setMM(false);}}><span style={{ width:6,height:6,borderRadius:'50%',background:'#10b981',boxShadow:'0 0 6px #10b981' }} />{trunc(connectedWallet)} ✕</button>
                 : <button className="wallet-btn" onClick={()=>{setShowConnect(true);setMM(false);}}>🔐 Connect Wallet</button>}
+              <a className="navbtn" href="/pricing" onClick={()=>setMM(false)}>Score API</a>
               <button className="navbtn" onClick={()=>{setShowDonate(true);setMM(false);}}>Donate</button>
               <button className="navbtn" onClick={()=>{setShowGrant(true);setMM(false);}}>Apply for Grant</button>
               <button onClick={()=>{fetchScore();setMM(false);}} style={{ padding:'12px',borderRadius:99,fontFamily:'inherit',fontWeight:700,fontSize:14,cursor:'pointer',border:'none',background:'#10b981',color:'#000' }}>Get XRPLScore</button>
@@ -2109,6 +2111,27 @@ export default function XRPLHubHome() {
           </div>
         </section>
 
+        {/* SCORE API — for developers */}
+        <section id="api" className="section-pad" style={{ padding:'0 24px 72px',maxWidth:980,margin:'0 auto' }}>
+          <div style={{ ...GLASS,borderRadius:22,padding:'34px 28px' }}>
+            <div style={{ fontSize:10,fontWeight:700,color:'#38bdf8',letterSpacing:'.14em',textTransform:'uppercase',marginBottom:8,fontFamily:"'IBM Plex Mono',monospace" }}>For developers</div>
+            <h2 style={{ fontSize:'clamp(22px,3.4vw,30px)',fontWeight:900,letterSpacing:'-1px',marginBottom:10 }}>XRPLScore API</h2>
+            <p style={{ fontSize:14,color:'rgba(255,255,255,.55)',lineHeight:1.7,marginBottom:20,maxWidth:640 }}>
+              The same 300–850 score, from the same 9 signals, as one REST call. Free tier with no card, paid plans billed in RLUSD.
+              Autonomous agents can also pay per call over x402 — no account, no key.
+            </p>
+            <div style={{ background:'rgba(0,0,0,.35)',border:'1px solid rgba(255,255,255,.1)',borderRadius:12,padding:'14px 16px',marginBottom:20,overflowX:'auto' }}>
+              <code style={{ fontSize:12,color:'rgba(255,255,255,.75)',fontFamily:"'IBM Plex Mono',monospace",whiteSpace:'pre',lineHeight:1.7 }}>{`curl -H "authorization: Bearer xrs_live_..." \\
+  "https://www.xrplhub.io/api/v1/score?wallet=rXXXX..."`}</code>
+            </div>
+            <div style={{ display:'flex',gap:12,flexWrap:'wrap' }}>
+              <a href="/pricing" style={{ display:'inline-flex',alignItems:'center',gap:8,padding:'13px 26px',background:'#10b981',color:'#000',fontSize:14,fontWeight:800,borderRadius:99,textDecoration:'none' }}>See pricing & get a key →</a>
+              <a href="/openapi.json" style={{ display:'inline-flex',alignItems:'center',gap:8,padding:'13px 26px',border:'1.5px solid rgba(255,255,255,.22)',color:'#fff',fontSize:14,fontWeight:600,borderRadius:99,textDecoration:'none' }}>OpenAPI spec ↗</a>
+              <a href="/.well-known/x402" style={{ display:'inline-flex',alignItems:'center',gap:8,padding:'13px 26px',border:'1.5px solid rgba(255,255,255,.22)',color:'#fff',fontSize:14,fontWeight:600,borderRadius:99,textDecoration:'none' }}>x402 discovery ↗</a>
+            </div>
+          </div>
+        </section>
+
         {/* FOOTER */}
         <footer style={{ background:'rgba(3,4,14,.72)',backdropFilter:'blur(14px)',borderTop:'1px solid rgba(255,255,255,.07)',padding:'32px 24px 28px' }}>
           <div style={{ maxWidth:1240,margin:'0 auto' }}>
@@ -2124,6 +2147,8 @@ export default function XRPLHubHome() {
               </div>
               <div style={{ display:'flex',gap:'10px 18px',flexWrap:'wrap',alignItems:'center' }}>
                 <a href={XAMAN_DL} target="_blank" rel="noopener noreferrer" className="footer-lnk" style={{ color:'#10b981',textDecoration:'none' }}>📲 Get Xaman</a>
+                <a href="/pricing" className="footer-lnk" style={{ textDecoration:'none' }}>Score API</a>
+                <a href="/openapi.json" className="footer-lnk" style={{ textDecoration:'none' }}>API Docs</a>
                 <button className="footer-lnk" onClick={()=>setShowAbout(true)}>About</button>
                 <button className="footer-lnk" onClick={()=>setShowFaq(true)}>FAQ</button>
                 <button className="footer-lnk" onClick={()=>setShowTerms(true)}>Terms</button>

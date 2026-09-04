@@ -16,11 +16,23 @@ export const metadata = {
 export default function PricingPage() {
   return (
     <main style={styles.page}>
+      <nav style={styles.topnav}>
+        <a href="/" style={styles.brand}>
+          <span style={{ color: "#10b981" }}>xrpl</span>
+          <span style={{ color: "#38bdf8" }}>Hub</span>
+          <span style={{ color: "#ef4444" }}>.io</span>
+        </a>
+        <div style={styles.navlinks}>
+          <a href="/" style={styles.navlink}>Home</a>
+          <a href="/openapi.json" style={styles.navlink}>API Docs</a>
+        </div>
+      </nav>
+
       <header style={styles.header}>
-        <h1 style={styles.h1}>XRPLScore</h1>
+        <h1 style={styles.h1}>XRPLScore API</h1>
         <p style={styles.sub}>
-          A 300–850 risk score for any XRPL wallet, from 9 signals. One API
-          call. Paid in RLUSD.
+          A 300–850 risk score for any XRPL wallet, from 9 signals — the same
+          number the public site shows. One API call. Paid in RLUSD.
         </p>
       </header>
 
@@ -63,8 +75,23 @@ export default function PricingPage() {
         })}
       </section>
 
+      <section style={styles.usage}>
+        <h2 style={styles.usageH}>Using your key</h2>
+        <p style={styles.usageP}>
+          Checkout gives you a key once (starts <code>xrs_live_</code>). Store it —
+          it can’t be shown again. Then:
+        </p>
+        <pre style={styles.code}>{`curl -H "authorization: Bearer xrs_live_..." \\
+  "https://www.xrplhub.io/api/v1/score?wallet=rXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"`}</pre>
+        <p style={styles.usageP}>
+          Full schema and the pay-per-call (x402) endpoints for autonomous agents
+          are in the <a href="/openapi.json" style={styles.inlineLink}>OpenAPI spec</a> and
+          the <a href="/.well-known/x402" style={styles.inlineLink}>x402 discovery document</a>.
+        </p>
+      </section>
+
       <p style={styles.foot}>
-        Every plan returns the same score the API returns. No drift, ever.
+        Every plan returns the same score the public site returns. No drift, ever.
       </p>
     </main>
   );
@@ -72,7 +99,16 @@ export default function PricingPage() {
 
 // Inline styles keep this file drop-in with zero CSS setup. Replace freely.
 const styles: Record<string, React.CSSProperties> = {
-  page: { maxWidth: 960, margin: "0 auto", padding: "48px 20px", fontFamily: "system-ui, sans-serif" },
+  page: { maxWidth: 960, margin: "0 auto", padding: "24px 20px 48px", fontFamily: "system-ui, sans-serif" },
+  topnav: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 0 28px", borderBottom: "1px solid #eee", marginBottom: 40 },
+  brand: { fontWeight: 900, fontSize: 18, letterSpacing: "-0.5px", textDecoration: "none" },
+  navlinks: { display: "flex", gap: 18 },
+  navlink: { fontSize: 14, color: "#555", textDecoration: "none", fontWeight: 600 },
+  usage: { marginTop: 44, padding: "24px", border: "1px solid #e6e6e6", borderRadius: 16, background: "#fafafa" },
+  usageH: { fontSize: 18, fontWeight: 700, margin: "0 0 8px" },
+  usageP: { color: "#555", fontSize: 14, lineHeight: 1.6, margin: "8px 0" },
+  code: { background: "#111", color: "#e6e6e6", padding: 14, borderRadius: 10, fontSize: 12.5, overflowX: "auto", lineHeight: 1.6 },
+  inlineLink: { color: "#0a7", fontWeight: 600 },
   header: { textAlign: "center", marginBottom: 40 },
   h1: { fontSize: 40, fontWeight: 800, margin: 0 },
   sub: { fontSize: 17, color: "#555", maxWidth: 520, margin: "12px auto 0" },
