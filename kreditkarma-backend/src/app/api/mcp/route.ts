@@ -37,10 +37,21 @@ const CORS = {
   'Content-Type': 'application/json',
 };
 
+// ─── SERVER IDENTITY ────────────────────────────────────────────────────────
+// Exported so /.well-known/mcp/server-card.json stays in lockstep with the
+// JSON-RPC surface (one source of truth for scanners like Smithery).
+export const MCP_SERVER_INFO = {
+  name: 'xrplhub',
+  version: '1.3.0',
+  description:
+    'Free XRPL wallet creditworthiness scores · ready-to-sign txjson for 35 XRPL actions · ' +
+    'verifiable score credential · community micro-grants · donations',
+};
+
 // ─── TOOL DEFINITIONS (descriptions are the marketing copy to the AI) ────────
 // The AI reads these descriptions and decides WHEN to call each tool.
 // Write them to match the exact questions agents are asked.
-const TOOLS = [
+export const TOOLS = [
   {
     name: 'issue_score_credential',
     description:
@@ -580,10 +591,11 @@ export async function GET() {
   return NextResponse.json(
     {
       name:        'XRPLHub MCP Server',
-      version:     '1.3.0',
+      version:     MCP_SERVER_INFO.version,
       description: 'XRPLHub as AI-agent tools: free 300–850 wallet creditworthiness scores, ' +
                    'ready-to-sign txjson for 35 XRPL actions, a paid verifiable score credential, ' +
                    'community micro-grants, and charitable donations. No signup; paid actions settle in XRP or RLUSD.',
+      serverCard:  '/.well-known/mcp/server-card.json',
       tools: TOOLS.map(t => ({
         name:        t.name,
         description: t.description,
@@ -642,12 +654,7 @@ export async function POST(req: NextRequest) {
     return rpcResult(id, {
       protocolVersion: '2024-11-05',
       capabilities:    { tools: {} },
-      serverInfo: {
-        name:        'xrplhub',
-        version:     '1.3.0',
-        description: 'Free XRPL wallet creditworthiness scores · ready-to-sign txjson for 35 XRPL actions · ' +
-                     'verifiable score credential · community micro-grants · donations',
-      },
+      serverInfo:      MCP_SERVER_INFO,
     });
   }
 
