@@ -46,6 +46,9 @@ export const SERVICE_CATALOG: ServiceDef[] = [
     gives: "An AccountSet txjson that blocks unsolicited incoming payments.", params: [] },
   { id: "desttag", label: "Require destination tag", category: "Wallet security", tier: "safe",
     gives: "An AccountSet txjson requiring a destination tag on incoming payments.", params: [] },
+  { id: "lockdown", label: "XRP Lockdown (disable master key)", category: "Wallet security", tier: "blocked",
+    gives: "Nothing — disabling the master key can permanently lock you out, so this is not auto-built. Contact support@xrplhub.io for a guided manual process.",
+    params: [] },
 
   // ── Token issuer ────────────────────────────────────────────────
   { id: "issuerdecl", label: "Default Ripple (issuer)", category: "Token issuer", tier: "safe",
@@ -221,6 +224,9 @@ export const SERVICE_CATALOG: ServiceDef[] = [
 ];
 
 export const SERVICE_IDS = SERVICE_CATALOG.map((s) => s.id);
+
+/** Buildable service ids — everything except the blocked ones (e.g. lockdown). */
+export const BUILDABLE_SERVICE_IDS = SERVICE_CATALOG.filter((s) => s.tier !== "blocked").map((s) => s.id);
 
 /** Compact one-line-per-service reference for embedding in tool descriptions. */
 export function serviceParamLines(): string {

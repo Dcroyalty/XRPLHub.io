@@ -14,7 +14,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/xrplscore-db";
 import { PRICE_PER_TX_PRODUCT_RLUSD, TREASURY_ADDRESS } from "@/lib/paycall";
 import { buildServiceTx } from "@/app/api/execute/txBuilder";
-import { SERVICE_IDS } from "@/app/api/execute/serviceCatalog";
+import { BUILDABLE_SERVICE_IDS } from "@/app/api/execute/serviceCatalog";
 import {
   X402_VERSION,
   decodeHeader,
@@ -35,9 +35,9 @@ export const dynamic = "force-dynamic";
 const RESOURCE = "/api/x402/tx";
 const isAddr = (v: string) => v.startsWith("r") && v.length >= 25 && v.length <= 35;
 
-const KNOWN = new Set(SERVICE_IDS);
+const KNOWN = new Set(BUILDABLE_SERVICE_IDS);
 
-const NAME = "XRPLHub — Prebuilt XRPL Transaction (35 actions)";
+const NAME = "XRPLHub — Prebuilt XRPL Transaction";
 const DESC =
   "Get a ready-to-sign XRPL transaction JSON for any of 35 actions — CheckCreate, Escrow, TrustSet, " +
   "NFT mint/sell/burn, AMM create/deposit, DEX order, MPT issue/send, multisig, DID, credentials, " +

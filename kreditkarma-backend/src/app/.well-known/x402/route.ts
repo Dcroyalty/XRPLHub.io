@@ -21,7 +21,7 @@ import {
   PRICE_PER_TX_PRODUCT_RLUSD,
   TREASURY_ADDRESS,
 } from "@/lib/paycall";
-import { SERVICE_IDS } from "@/app/api/execute/serviceCatalog";
+import { BUILDABLE_SERVICE_IDS } from "@/app/api/execute/serviceCatalog";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -183,7 +183,7 @@ export async function GET(req: Request) {
             properties: {
               productId: {
                 type: "string",
-                enum: SERVICE_IDS,
+                enum: BUILDABLE_SERVICE_IDS,
                 description: "Which XRPL action to build. Full catalogue + per-action params at /api/mcp (list_xrpl_services).",
                 example: "checkcreate",
               },
