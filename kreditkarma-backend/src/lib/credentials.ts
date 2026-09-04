@@ -2,9 +2,11 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // DEVNET-ONLY proof of concept — XRPLScore as native XLS-70 Credentials.
 //
-// XLS-70 credentials carry no numeric value field, so XRPLScore ships here as
-// a TIERED credential: CredentialType = XRPLSCORE_<tier>. A PermissionedDomain
-// or lending vault would gate on the (Issuer, CredentialType) pair.
+// XLS-70 credentials carry no numeric value field, so XRPLScore ships as a
+// TIERED credential. CredentialType strings are frozen in docs/CREDENTIAL-SPEC.md:
+//   io.xrplhub.score.v1.min600 / .min650 / .min700 / .min750
+// A PermissionedDomain / lending vault gates on the (Issuer, CredentialType) pair.
+// A wallet receives ONLY its highest qualifying tier (see the spec).
 //
 // ── SAFETY: this file can only ever touch Devnet ──────────────────────────────
 //  * The endpoint is a hardcoded const — never read from an env var, never a
@@ -31,7 +33,9 @@ import { scoreWallet, AccountNotFoundError } from "./xrplscore";
 export const DEVNET_WSS = "wss://s.devnet.rippletest.net:51233";
 export const DEVNET_NETWORK_ID = 2; // mainnet=0, testnet=1, devnet=2
 const VALIDITY_DAYS = 90;
-const TYPE_PREFIX = "XRPLSCORE_";
+
+// FROZEN — see docs/CREDENTIAL-SPEC.md. Do not change without a v2 namespace.
+export const CRED_NAMESPACE = "io.xrplhub.score.v1";
 
 // The URI points at the existing mainnet verification surface (off-ledger).
 const PUBLIC_ORIGIN = "https://www.xrplhub.io";
@@ -41,22 +45,23 @@ const MAX_URI_HEX = 256; // xrpl.js MAX_URI_LENGTH (128 bytes)
 // a public on-chain negative attestation would never be accepted, so the
 // issuer would carry the 0.2 XRP reserve forever on an object that also
 // insults the subject. Below 600 (and unscored) -> "not eligible", no tx.
-export type ScoreTier = "750PLUS" | "700PLUS" | "650PLUS" | "600PLUS";
+export type ScoreTier = "min750" | "min700" | "min650" | "min600";
 
 export const ELIGIBILITY_FLOOR = 600;
 
 /** The tier a score qualifies for, or null if it is not eligible for issuance. */
 export function eligibleTier(score: number | null): ScoreTier | null {
   if (score == null) return null;      // not activated on mainnet -> not eligible
-  if (score >= 750) return "750PLUS";
-  if (score >= 700) return "700PLUS";
-  if (score >= 650) return "650PLUS";
-  if (score >= ELIGIBILITY_FLOOR) return "600PLUS";
+  if (score >= 750) return "min750";
+  if (score >= 700) return "min700";
+  if (score >= 650) return "min650";
+  if (score >= ELIGIBILITY_FLOOR) return "min600";
   return null;                          // below the floor -> not eligible
 }
 
+/** The frozen CredentialType string for a tier. */
 export function credentialType(tier: ScoreTier): string {
-  return TYPE_PREFIX + tier; // e.g. "XRPLSCORE_750PLUS"
+  return `${CRED_NAMESPACE}.${tier}`; // e.g. "io.xrplhub.score.v1.min750"
 }
 
 /** Thrown when a wallet's score does not qualify for a credential. */
@@ -74,7 +79,7 @@ export class ScoreNotEligibleError extends Error {
   }
 }
 
-/** Accept an ascii type ("XRPLSCORE_750PLUS") or a hex string; return upper hex. */
+/** Accept an ascii type ("io.xrplhub.score.v1.min750") or a hex string; return upper hex. */
 export function toCredentialTypeHex(input: string): string {
   const s = input.trim();
   const isHex = /^[0-9a-fA-F]+$/.test(s) && s.length % 2 === 0 && s.length >= 8;
