@@ -16,6 +16,7 @@ export const metadata = {
 
 export default function PricingPage() {
   return (
+    <div style={styles.shell}>
     <main style={styles.page}>
       <nav style={styles.topnav}>
         <a href="/" style={styles.brand}>
@@ -92,11 +93,17 @@ export default function PricingPage() {
         Every plan returns the same score the public site returns. No drift, ever.
       </p>
     </main>
+    </div>
   );
 }
 
 // Inline styles keep this file drop-in with zero CSS setup. Replace freely.
+// NOTE: globals.css sets `body { color: #eeeef2 }` for the dark homepage. This
+// is a LIGHT page, so it must set its own background + text colour explicitly —
+// otherwise every un-coloured element inherits near-white text and vanishes on
+// the white cards.
 const styles: Record<string, React.CSSProperties> = {
+  shell: { background: "#fff", color: "#1a1a1a", minHeight: "100vh" },
   page: { maxWidth: 960, margin: "0 auto", padding: "24px 20px 48px", fontFamily: "system-ui, sans-serif" },
   topnav: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 0 28px", borderBottom: "1px solid #eee", marginBottom: 40 },
   brand: { fontWeight: 900, fontSize: 18, letterSpacing: "-0.5px", textDecoration: "none" },

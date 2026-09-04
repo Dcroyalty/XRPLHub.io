@@ -66,11 +66,17 @@ export default function FreeKeyFlow() {
         return;
       }
       startData.current = data as StartData;
-      const opts = await resolveProviderOptions({ xamanAvailable: !!data.xamanAvailable });
-      setOptions(opts);
-      const firstUsable = opts.find((o) => o.available);
-      setSelected(firstUsable?.provider.id ?? null);
+      const xamanAvailable = !!data.xamanAvailable;
+      // Show the picker immediately with Xaman; extensions pop in when detected
+      // (their globals inject asynchronously — polling takes up to ~1.5s).
+      const xamanProv = getProvider("xaman")!;
+      setOptions([{ provider: xamanProv, available: xamanAvailable }]);
+      setSelected(xamanAvailable ? "xaman" : null);
       setPhase("picker");
+      resolveProviderOptions({ xamanAvailable }).then((opts) => {
+        setOptions(opts);
+        setSelected((cur) => cur ?? opts.find((o) => o.available)?.provider.id ?? null);
+      });
     } catch {
       setPhase("error");
       setMsg("Could not reach the server. Try again shortly.");

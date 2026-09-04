@@ -97,12 +97,14 @@ export default function CheckoutFlow({ plan }: { plan: string }) {
         setStatus("pending");
         setExt("idle");
         setExtMsg("");
-        resolveProviderOptions({ xamanAvailable: data.xamanAvailable !== false })
+        const xamanAvailable = data.xamanAvailable !== false;
+        // Show Xaman right away; extension detection resolves ~1.5s later.
+        setWalletOpts([{ provider: getProvider("xaman")!, available: xamanAvailable }]);
+        setWalletSel("xaman");
+        resolveProviderOptions({ xamanAvailable })
           .then((opts) => {
             if (cancelled) return;
             setWalletOpts(opts);
-            const first = opts.find((o) => o.available)?.provider.id ?? "xaman";
-            setWalletSel(first);
           })
           .catch(() => {});
       } catch (e) {
@@ -295,7 +297,7 @@ export default function CheckoutFlow({ plan }: { plan: string }) {
           </div>
 
           {/* ---- wallet picker (Xaman default; extensions if detected) ---- */}
-          {walletOpts.length > 1 && xaman !== "waiting" && ext === "idle" && (
+          {walletOpts.length > 0 && xaman !== "waiting" && ext === "idle" && (
             <WalletPicker options={walletOpts} selected={walletSel} onSelect={setWalletSel} />
           )}
 

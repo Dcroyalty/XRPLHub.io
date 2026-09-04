@@ -44,11 +44,11 @@ export const gemwalletProvider: WalletProvider = {
   installUrl: "https://gemwallet.app",
 
   async isAvailable() {
-    // The GemWallet extension injects window.gemWallet. Confirm with the SDK's
-    // isInstalled() (message round-trip) only if the global looks present, so
-    // we don't load the SDK on every page.
+    // GemWallet 3.x does NOT set window.gemWallet synchronously — the SDK sets
+    // it only after a successful isInstalled() round-trip. So call isInstalled()
+    // directly: it posts a message to the content script and resolves false
+    // after its own 1s timeout if nothing answers.
     if (typeof window === "undefined") return false;
-    if (!(window as unknown as { gemWallet?: unknown }).gemWallet) return false;
     try {
       const { isInstalled } = await loadApi();
       const r = await isInstalled();

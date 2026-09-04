@@ -730,12 +730,14 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
     return () => { stop = true; if (exPollRef.current) clearTimeout(exPollRef.current); };
   }, [exStatus, exUuid]); // eslint-disable-line
 
-  // detect installed extension wallets when the modal opens
+  // detect installed extension wallets when the modal opens (extension globals
+  // inject asynchronously — detection polls for up to ~1.5s)
   useEffect(() => {
     if (!show) return;
     let live = true;
+    setWalletSel('xaman');
     resolveProviderOptions({ xamanAvailable: true })
-      .then((o) => { if (live) { setWalletOpts(o); setWalletSel(o.find((x) => x.available)?.provider.id ?? 'xaman'); } })
+      .then((o) => { if (live) setWalletOpts(o); })
       .catch(() => {});
     return () => { live = false; };
   }, [show]);
@@ -1081,7 +1083,7 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
           </div>
           <label style={LBL}>Email for Receipt (optional)</label>
           <input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@example.com" style={{ ...INP, marginBottom:16 }} />
-          {walletOpts.length > 1 && (
+          {walletOpts.filter(o=>o.available).length > 1 && (
             <div style={{ marginBottom:14 }}>
               <label style={LBL}>Wallet</label>
               <WalletPicker options={walletOpts} selected={walletSel} onSelect={setWalletSel} />

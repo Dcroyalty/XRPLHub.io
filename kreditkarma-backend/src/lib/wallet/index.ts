@@ -26,14 +26,15 @@ export interface ProviderOption {
 }
 
 /**
- * Which wallets to show. Xaman is included whenever the server says it's
- * configured (xamanAvailable). Each extension is included only if its
- * isAvailable() resolves true right now.
+ * Detect every provider's availability. Returns ALL providers (Xaman first)
+ * with an accurate `available` flag — the picker renders available ones as
+ * selectable rows and names the rest so a user knows what to install.
+ * Extension detection polls for up to ~2.5s (globals inject asynchronously).
  */
 export async function resolveProviderOptions(opts: {
   xamanAvailable: boolean;
 }): Promise<ProviderOption[]> {
-  const checks = await Promise.all(
+  return Promise.all(
     ALL_PROVIDERS.map(async (provider) => {
       if (provider.id === "xaman") return { provider, available: opts.xamanAvailable };
       let available = false;
@@ -45,15 +46,4 @@ export async function resolveProviderOptions(opts: {
       return { provider, available };
     })
   );
-  // Xaman first; then available extensions; drop unavailable extensions entirely
-  // (no dead buttons) unless NONE are available — then keep one as an install hint.
-  const xaman = checks.find((c) => c.provider.id === "xaman")!;
-  const exts = checks.filter((c) => c.provider.id !== "xaman");
-  const availableExts = exts.filter((c) => c.available);
-  const shown = [xaman, ...availableExts];
-  if (!xaman.available && availableExts.length === 0) {
-    // Nothing works — surface the extensions as install links so it isn't a dead end.
-    return exts;
-  }
-  return shown;
 }

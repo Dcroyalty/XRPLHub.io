@@ -1,7 +1,7 @@
 "use client";
 // app/checkout/page.tsx
 // Thin page wrapper: reads ?plan= and renders the shared <CheckoutFlow>.
-// The flow itself (currency toggle, Xaman connect, manual fallback, polling,
+// The flow itself (currency toggle, wallet connect, manual fallback, polling,
 // key reveal) lives in CheckoutFlow.tsx so /pricing can reuse it in a modal.
 
 import { useEffect, useState } from "react";
@@ -22,15 +22,20 @@ export default function CheckoutPage() {
     : `Get ${p?.name ?? plan} — $${p?.priceRlusd ?? ""}/mo`;
 
   return (
-    <main style={s.page}>
-      <a href="/pricing" style={s.back}>← plans</a>
-      <h1 style={s.h1}>{title}</h1>
-      {plan ? <CheckoutFlow plan={plan} /> : <p style={s.p}>Pick a plan on the pricing page.</p>}
-    </main>
+    // globals.css sets near-white body text for the dark homepage; this is a
+    // light page, so set its own background + text colour explicitly.
+    <div style={s.shell}>
+      <main style={s.page}>
+        <a href="/pricing" style={s.back}>← plans</a>
+        <h1 style={s.h1}>{title}</h1>
+        {plan ? <CheckoutFlow plan={plan} /> : <p style={s.p}>Pick a plan on the pricing page.</p>}
+      </main>
+    </div>
   );
 }
 
 const s: Record<string, React.CSSProperties> = {
+  shell: { background: "#fff", color: "#1a1a1a", minHeight: "100vh" },
   page: { maxWidth: 520, margin: "0 auto", padding: "32px 20px 48px", fontFamily: "system-ui, sans-serif" },
   back: { fontSize: 13, color: "#777", textDecoration: "none" },
   h1: { fontSize: 24, fontWeight: 800, margin: "12px 0 20px" },

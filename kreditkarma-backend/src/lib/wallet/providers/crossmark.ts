@@ -16,6 +16,7 @@ import type {
 } from "../types";
 import { WalletCancelled, WalletError } from "../types";
 import { buildPaymentTx } from "../tx";
+import { pollFor } from "../detect";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function loadSdk(): Promise<any> {
@@ -45,11 +46,21 @@ export const crossmarkProvider: WalletProvider = {
   installUrl: "https://crossmark.io",
 
   async isAvailable() {
-    // Lightweight: the Crossmark extension injects window.crossmark. Checking
-    // the global avoids loading the SDK just to detect. The SDK is loaded only
-    // when the wallet is actually used.
+    // The Crossmark EXTENSION injects `window.xrpl.isCrossmark` (the SDK only
+    // later mirrors it onto `window.crossmark`). Poll for it — the content
+    // script often injects a beat after the page's own scripts. No SDK load
+    // needed to detect.
     if (typeof window === "undefined") return false;
-    return Boolean((window as unknown as { crossmark?: unknown }).crossmark);
+    const has = () => {
+      const w = window as unknown as {
+        xrpl?: { isCrossmark?: boolean };
+        crossmark?: unknown;
+      };
+      return Boolean(w.xrpl?.isCrossmark || w.crossmark);
+    };
+    // Crossmark's content script injects at document_start; 1.5s is ample and
+    // keeps the picker snappy for users without it.
+    return pollFor(has, 1500);
   },
 
   proveControl(ctx: ProveContext): ProveHandle {
