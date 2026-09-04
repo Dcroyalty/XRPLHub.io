@@ -5,9 +5,9 @@
 // Styling is intentionally plain — swap the classNames for your own design
 // tokens. The structure and the data wiring are what matter.
 
-import Link from "next/link";
 import { PLAN_ORDER, PLANS } from "@/lib/plans";
 import PlanCta from "./PlanCta";
+import FreeKeyModal from "./FreeKeyModal";
 
 export const metadata = {
   title: "XRPLScore — Pricing",
@@ -66,9 +66,7 @@ export default function PricingPage() {
               {isPaid ? (
                 <PlanCta planId={id} planName={p.name} />
               ) : (
-                <Link href="/checkout?plan=free" style={styles.ctaGhost}>
-                  Start free
-                </Link>
+                <FreeKeyModal />
               )}
             </article>
           );

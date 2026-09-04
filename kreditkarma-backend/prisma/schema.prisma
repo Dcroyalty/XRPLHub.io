@@ -150,18 +150,30 @@ model AdminLog {
 
 // -------- API keys ---------------------------------------------------------
 model ApiKey {
-  id         String        @id @default(cuid())
-  keyPrefix  String        @unique              // first 16 chars, indexed lookup
-  keyHash    String                              // sha256 of full key; raw never stored
-  name       String?
-  plan       String        @default("free")      // "free" | "starter" | "growth"
-  active     Boolean       @default(true)
-  createdAt  DateTime      @default(now())
-  lastUsedAt DateTime?
-  usage      UsageRecord[]
-  invoices   Invoice[]
+  id          String        @id @default(cuid())
+  keyPrefix   String        @unique              // first 16 chars, indexed lookup
+  keyHash     String                              // sha256 of full key; raw never stored
+  name        String?
+  plan        String        @default("free")      // "free" | "starter" | "growth" | "scale"
+  active      Boolean       @default(true)
+  ownerWallet String?       @unique               // set only for self-serve free keys — one per XRPL wallet
+  createdAt   DateTime      @default(now())
+  lastUsedAt  DateTime?
+  usage       UsageRecord[]
+  invoices    Invoice[]
 
   @@index([keyPrefix])
+}
+
+// -------- Self-serve free-key signup log (rate-limit source of truth) ------
+model FreeKeySignup {
+  id        String   @id @default(cuid())
+  ip        String
+  wallet    String?                              // set on a successful claim
+  step      String                               // "start" (SignIn payload created) | "claim" (key issued)
+  createdAt DateTime @default(now())
+
+  @@index([ip, createdAt])
 }
 
 // -------- Usage (also the billing signal) ----------------------------------

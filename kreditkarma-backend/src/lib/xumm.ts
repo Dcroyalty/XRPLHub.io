@@ -83,8 +83,9 @@ export interface CreatedPayload {
 }
 
 /**
- * Create a sign request. `options.submit` is always true — Xaman submits the
- * signed transaction to the ledger itself, same as the transaction-service flow.
+ * Create a sign request. `options.submit` defaults to true (Xaman submits the
+ * signed transaction to the ledger, like the transaction-service flow); pass
+ * `submit: false` for a SignIn payload where there is nothing to submit.
  */
 export async function createPayload(body: {
   txjson: Record<string, unknown>;
@@ -92,12 +93,13 @@ export async function createPayload(body: {
   identifier?: string;
   blob?: Record<string, unknown>;
   expireMinutes?: number;
+  submit?: boolean;
 }): Promise<CreatedPayload> {
   const res = await xummFetch(XUMM_PAYLOAD, {
     method: "POST",
     body: JSON.stringify({
       txjson: body.txjson,
-      options: { submit: true, expire: body.expireMinutes ?? 15 },
+      options: { submit: body.submit ?? true, expire: body.expireMinutes ?? 15 },
       custom_meta: {
         ...(body.identifier ? { identifier: body.identifier } : {}),
         ...(body.blob ? { blob: JSON.stringify(body.blob) } : {}),
@@ -124,7 +126,8 @@ export type PayloadState = "pending" | "signed" | "rejected" | "expired" | "not_
 export interface PayloadStatus {
   state: PayloadState;
   txid: string | null;
-  signer: string | null;
+  signer: string | null;     // the account that signed (for SignIn: the connected wallet)
+  identifier: string | null; // custom_meta.identifier we set at create time
 }
 
 export async function getPayloadStatus(uuid: string): Promise<PayloadStatus> {
@@ -132,10 +135,15 @@ export async function getPayloadStatus(uuid: string): Promise<PayloadStatus> {
   const data = await res.json().catch(() => ({}));
   const meta = data?.meta;
 
-  if (!meta?.exists) return { state: "not_found", txid: null, signer: null };
-  if (meta.expired) return { state: "expired", txid: null, signer: null };
-  if (meta.cancelled) return { state: "rejected", txid: null, signer: null };
-  if (!meta.signed) return { state: "pending", txid: null, signer: null };
+  const identifier =
+    (data?.custom_meta?.identifier as string | undefined) ??
+    (data?.payload?.custom_meta?.identifier as string | undefined) ??
+    null;
+
+  if (!meta?.exists) return { state: "not_found", txid: null, signer: null, identifier };
+  if (meta.expired) return { state: "expired", txid: null, signer: null, identifier };
+  if (meta.cancelled) return { state: "rejected", txid: null, signer: null, identifier };
+  if (!meta.signed) return { state: "pending", txid: null, signer: null, identifier };
 
   // Xaman has moved the txid between response shapes across versions — probe both.
   const txid =
@@ -147,5 +155,5 @@ export async function getPayloadStatus(uuid: string): Promise<PayloadStatus> {
     (data?.payload?.response?.account as string | undefined) ??
     null;
 
-  return { state: "signed", txid, signer };
+  return { state: "signed", txid, signer, identifier };
 }

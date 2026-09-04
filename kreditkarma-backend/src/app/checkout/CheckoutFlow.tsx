@@ -11,6 +11,7 @@
 //                                      ledger, marks paid, reveals the API key once
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import FreeKeyFlow from "./FreeKeyFlow";
 
 type PayFields = {
   address: string;
@@ -177,12 +178,7 @@ export default function CheckoutFlow({ plan }: { plan: string }) {
   // ---- terminal states -----------------------------------------------------
 
   if (isFree) {
-    return (
-      <p style={s.p}>
-        No payment needed. Ask us for a free key, or self-issue one with your admin
-        token via <code>POST /api/keys</code> using <code>{'{ plan: "free" }'}</code>.
-      </p>
-    );
+    return <FreeKeyFlow />;
   }
 
   if (status === "paid") {
