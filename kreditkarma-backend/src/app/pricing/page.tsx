@@ -31,7 +31,7 @@ export default function PricingPage() {
       <header style={styles.header}>
         <h1 style={styles.h1}>XRPLScore API</h1>
         <p style={styles.sub}>
-          A 300–850 risk score for any XRPL wallet, from 9 signals — the same
+          A 300–850 risk score for any XRPL wallet, from 8 signals — the same
           number the public site shows. One API call. Paid in RLUSD.
         </p>
       </header>

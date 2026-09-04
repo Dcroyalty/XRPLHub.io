@@ -1,7 +1,7 @@
 // src/lib/engine.ts
 // B2B surface over the ONE scoring engine (src/lib/xrplscore.ts). computeScore()
 // runs the exact same pipeline the public site runs — same mainnet nodes, same
-// 9 signals, same weights, same 300–850 math — so /api/v1/score, /api/x402/score
+// 8 signals, same weights, same 300–850 math — so /api/v1/score, /api/x402/score
 // and /api/score/<addr> can never return different numbers for the same wallet
 // at the same ledger state.
 
@@ -22,16 +22,15 @@ export interface ScoreResult {
   grade: string;           // Building | Fair | Good | Excellent | Exceptional
   tier: string;            // alias of grade (kept so older integrations don't break)
   percentile: number;      // peer percentile band
-  signals: {               // the 9 component scores, 0–100 each
+  signals: {               // the 8 component scores, 0–100 each (v1.1)
     accountAge: number;
-    txVelocity: number;
-    trustLines: number;
+    txActivity: number;
+    financialHealth: number;
+    tokenEngagement: number;
     dexActivity: number;
     ammActivity: number;
-    reserveRatio: number;
+    securityConfig: number;
     nftActivity: number;
-    securityFlags: number;
-    builderCommitment: number;
   };
   breakdown: ScoreBreakdownRow[];
   recommendations: ScoreRecommendation[];

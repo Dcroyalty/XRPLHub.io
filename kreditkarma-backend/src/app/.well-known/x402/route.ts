@@ -37,7 +37,7 @@ export async function GET(req: Request) {
       x402Version: X402_VERSION,
       name: "XRPLHub — XRPLScore™",
       description:
-        "On-chain wallet risk scoring for the XRP Ledger. 300–850 score from 9 signals, " +
+        "On-chain wallet risk scoring for the XRP Ledger. 300–850 score from 8 signals, " +
         "full risk reports, and ready-to-sign prebuilt XRPL transactions. " +
         "Pay per call in RLUSD — no account, no API key.",
       provider: { name: "XRPLHub.io", url: origin, contact: "support@xrplhub.io" },

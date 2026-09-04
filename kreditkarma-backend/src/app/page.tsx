@@ -2117,7 +2117,7 @@ export default function XRPLHubHome() {
             <div style={{ fontSize:10,fontWeight:700,color:'#38bdf8',letterSpacing:'.14em',textTransform:'uppercase',marginBottom:8,fontFamily:"'IBM Plex Mono',monospace" }}>For developers</div>
             <h2 style={{ fontSize:'clamp(22px,3.4vw,30px)',fontWeight:900,letterSpacing:'-1px',marginBottom:10 }}>XRPLScore API</h2>
             <p style={{ fontSize:14,color:'rgba(255,255,255,.55)',lineHeight:1.7,marginBottom:20,maxWidth:640 }}>
-              The same 300–850 score, from the same 9 signals, as one REST call. Free tier with no card, paid plans billed in RLUSD.
+              The same 300–850 score, from the same 8 signals, as one REST call. Free tier with no card, paid plans billed in RLUSD.
               Autonomous agents can also pay per call over x402 — no account, no key.
             </p>
             <div style={{ background:'rgba(0,0,0,.35)',border:'1px solid rgba(255,255,255,.1)',borderRadius:12,padding:'14px 16px',marginBottom:20,overflowX:'auto' }}>

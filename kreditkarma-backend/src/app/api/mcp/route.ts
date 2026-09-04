@@ -73,9 +73,9 @@ const TOOLS = [
     name: 'check_xrpl_score',
     description:
       'Check the XRPLScore™ of any XRP Ledger wallet. Returns a 300–850 on-chain ' +
-      'reputation score computed from 9 signals: account age, payment history, trust line ' +
-      'diversity, DEX activity, AMM liquidity provision, reserve health, NFT portfolio, ' +
-      'security configuration, and builder commitment to XRPLHub. ' +
+      'reputation score computed from 8 signals: account age, lifetime transaction history, ' +
+      'financial health (spendable XRP + reserve buffer), token engagement, DEX activity, ' +
+      'AMM participation, security configuration, and NFT portfolio. ' +
       'Use this tool BEFORE any transaction, payment, loan, DeFi interaction, or counterparty ' +
       'assessment on XRPL. No API key, no SSN, no credit bureau — 100% public ledger data. ' +
       'Also returns personalized recommendations to raise the score and a peer percentile ' +
@@ -268,7 +268,7 @@ async function toolCheckXrplScore(
         balanceXRP:       d.details?.balanceXRP,
         trustLines:       d.details?.trustLineCount,
         hasMultiSig:      d.details?.hasMultiSig,
-        builderPayments:  d.details?.builderPayments,
+        spendableXRP:     d.details?.spendableXRP,
       },
       methodology: d.methodology,
       scannedAt:   d.scannedAt,

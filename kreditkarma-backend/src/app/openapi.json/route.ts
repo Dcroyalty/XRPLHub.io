@@ -55,7 +55,7 @@ export async function GET(req: Request) {
       version: "1.0.0",
       description:
         "Pay-per-call XRP Ledger services for AI agents, settled in RLUSD. " +
-        "Wallet risk scores (300-850 from 9 signals), full risk reports, and " +
+        "Wallet risk scores (300-850 from 8 signals), full risk reports, and " +
         "ready-to-sign prebuilt XRPL transactions across 27 services. " +
         "No account, no API key.",
       contact: { name: "XRPLHub", url: origin, email: "support@xrplhub.io" },
