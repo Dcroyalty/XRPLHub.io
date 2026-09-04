@@ -7,10 +7,11 @@
 
 import Link from "next/link";
 import { PLAN_ORDER, PLANS } from "@/lib/plans";
+import PlanCta from "./PlanCta";
 
 export const metadata = {
   title: "XRPLScore — Pricing",
-  description: "Wallet risk scoring for the XRP Ledger. Priced per plan, paid in RLUSD.",
+  description: "Wallet risk scoring for the XRP Ledger. Priced per plan, paid in XRP or RLUSD.",
 };
 
 export default function PricingPage() {
@@ -32,7 +33,8 @@ export default function PricingPage() {
         <h1 style={styles.h1}>XRPLScore API</h1>
         <p style={styles.sub}>
           A 300–850 risk score for any XRPL wallet, from 8 signals — the same
-          number the public site shows. One API call. Paid in RLUSD.
+          number the public site shows. One API call. Pay in XRP or RLUSD —
+          connect Xaman and sign, no address typing.
         </p>
       </header>
 
@@ -62,9 +64,7 @@ export default function PricingPage() {
                 ))}
               </ul>
               {isPaid ? (
-                <Link href={`/checkout?plan=${id}`} style={styles.cta}>
-                  Get {p.name}
-                </Link>
+                <PlanCta planId={id} planName={p.name} />
               ) : (
                 <Link href="/checkout?plan=free" style={styles.ctaGhost}>
                   Start free

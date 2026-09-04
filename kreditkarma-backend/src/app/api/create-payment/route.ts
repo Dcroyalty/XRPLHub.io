@@ -3,9 +3,9 @@
 // Requires env vars: XUMM_API_KEY, XUMM_API_SECRET
 
 import { NextRequest, NextResponse } from 'next/server'
+import { createPayload, xummConfigured, XummRateLimitError } from '@/lib/xumm'
 
 const TREASURY     = 'rs59g3amo5iT6T64Cg96XXMAWuw3WPQcLF'
-const XUMM_API     = 'https://xumm.app/api/v1/platform/payload'
 const RLUSD_ISSUER = process.env.RLUSD_ISSUER || 'rMxCKbEDwqr76QuheSUMdEGf4B9xJ8m5De'
 
 // XRPL currency-code rule: 3 ASCII chars OR 40-char hex. "RLUSD" is 5 chars
@@ -43,9 +43,7 @@ export async function POST(req: NextRequest) {
   try {
     const { productId, currency, amount, email } = await req.json()
 
-    const apiKey    = process.env.XUMM_API_KEY
-    const apiSecret = process.env.XUMM_API_SECRET
-    if (!apiKey || !apiSecret) {
+    if (!xummConfigured()) {
       return NextResponse.json({ error: 'Payment gateway not configured. Contact support@xrplhub.io' }, { status: 503 })
     }
 
@@ -62,35 +60,27 @@ export async function POST(req: NextRequest) {
         : { currency: toCurrencyCode(currency || 'RLUSD'), issuer: RLUSD_ISSUER, value: String(amtNum) },
     }
 
-    const payload = {
-      txjson,
-      options: { submit: true, expire: 15 },
-      custom_meta: {
+    try {
+      const p = await createPayload({
+        txjson,
         identifier: `xrplhub_${productId}_${Date.now()}`,
-        blob: JSON.stringify({ productId, amount: amtNum, currency, email: email || '' }),
+        blob: { productId, amount: amtNum, currency, email: email || '' },
         instruction: `XRPLHub — ${NAMES[productId] || productId}\nAmount: ${amtNum} ${currency}\nDestination: Treasury`,
-      },
+        expireMinutes: 15,
+      })
+      return NextResponse.json({
+        uuid:       p.uuid,
+        qr_png:     p.qrPng,
+        deep_link:  p.deepLink,
+        expires_in: p.expiresIn,
+      })
+    } catch (err) {
+      if (err instanceof XummRateLimitError) {
+        return NextResponse.json({ error: 'Payment gateway is busy — please retry in a moment.' }, { status: 429 })
+      }
+      console.error('[create-payment] Xaman error:', err)
+      return NextResponse.json({ error: 'Payment gateway error. Please try again.' }, { status: 502 })
     }
-
-    const res = await fetch(XUMM_API, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey, 'X-API-Secret': apiSecret },
-      body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(10_000),
-    })
-    const data = await res.json()
-
-    if (!res.ok || !data?.uuid) {
-      console.error('[create-payment] Xaman error:', JSON.stringify(data))
-      return NextResponse.json({ error: data?.error?.reference || 'Payment gateway error. Please try again.' }, { status: 502 })
-    }
-
-    return NextResponse.json({
-      uuid:       data.uuid,
-      qr_png:     data.refs?.qr_png,
-      deep_link:  data.next?.always,
-      expires_in: 900,
-    })
   } catch (err) {
     console.error('[create-payment]', err)
     return NextResponse.json({ error: 'Payment initialization failed. Please try again.' }, { status: 500 })

@@ -6,8 +6,8 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { recordPurchase } from '@/lib/recordPurchase'
+import { getPayloadStatus, xummConfigured, XummRateLimitError } from '@/lib/xumm'
 
-const XUMM_STATUS = 'https://xumm.app/api/v1/platform/payload'
 const XRPL_API    = 'https://xrplcluster.com/'
 const XRPL_BACKUP = 'https://s1.ripple.com:51234/'
 const TREASURY    = 'rs59g3amo5iT6T64Cg96XXMAWuw3WPQcLF'
@@ -68,30 +68,25 @@ export async function GET(req: NextRequest) {
 
     if (!uuid) return NextResponse.json({ status: 'error', reason: 'Missing payment ID' }, { status: 400 })
 
-    const apiKey    = process.env.XUMM_API_KEY
-    const apiSecret = process.env.XUMM_API_SECRET
-    if (!apiKey || !apiSecret)
+    if (!xummConfigured())
       return NextResponse.json({ status: 'error', reason: 'Payment gateway not configured' }, { status: 503 })
 
-    const res  = await fetch(`${XUMM_STATUS}/${uuid}`, {
-      headers: { 'X-API-Key': apiKey, 'X-API-Secret': apiSecret },
-      signal: AbortSignal.timeout(8_000),
-    })
-    const data = await res.json()
-    const meta = data?.meta
+    // Xaman payload state — via the shared client (429 detection + backoff).
+    let payload
+    try {
+      payload = await getPayloadStatus(uuid)
+    } catch (e) {
+      if (e instanceof XummRateLimitError)
+        return NextResponse.json({ status: 'pending' }) // busy — keep polling
+      throw e
+    }
 
-    if (!meta?.exists)   return NextResponse.json({ status: 'error',    reason: 'Payment request not found' })
-    if (meta?.expired)   return NextResponse.json({ status: 'expired' })
-    if (meta?.cancelled) return NextResponse.json({ status: 'rejected', reason: 'Payment cancelled in Xaman' })
-    if (!meta?.signed)   return NextResponse.json({ status: 'pending' })
+    if (payload.state === 'not_found') return NextResponse.json({ status: 'error',    reason: 'Payment request not found' })
+    if (payload.state === 'expired')   return NextResponse.json({ status: 'expired' })
+    if (payload.state === 'rejected')  return NextResponse.json({ status: 'rejected', reason: 'Payment cancelled in Xaman' })
+    if (payload.state === 'pending')   return NextResponse.json({ status: 'pending' })
 
-    // FIX: Xaman returns txid under data.response.txid (NOT data.payload.response.txid).
-    // We probe both shapes for safety in case the API ever rewraps it.
-    const txHash =
-      (data?.response?.txid as string | undefined) ||
-      (data?.payload?.response?.txid as string | undefined) ||
-      ''
-
+    const txHash = payload.txid || ''
     if (!txHash) return NextResponse.json({ status: 'pending' })
 
     const verify = await verifyTx(txHash, amount, currency)
