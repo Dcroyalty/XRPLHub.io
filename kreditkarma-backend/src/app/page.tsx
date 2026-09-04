@@ -6,6 +6,12 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 const API_URL        = (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_API_URL) || '';
 const TREASURY       = 'rs59g3amo5iT6T64Cg96XXMAWuw3WPQcLF';
 const TREASURY_DOMAIN = 'xrplhub.xrp';
+// Shown when a visitor taps "Get XRPLScore" without entering their own wallet.
+// Ripple's RLUSD issuer — one of the best-behaved accounts on the ledger
+// (~721 / Good under XRPLScore v1.1), so the demo showcases the top of the range.
+// Always labelled as an example in the UI.
+const DEMO_WALLET       = 'rMxCKbEDwqr76QuheSUMdEGf4B9xJ8m5De';
+const DEMO_WALLET_LABEL = 'Example wallet — Ripple’s RLUSD issuer';
 const XAMAN_DL       = 'https://xaman.app/';
 const BG             = '/xrpl-background.jpg';
 
@@ -1014,7 +1020,7 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
 }
 
 // ─── SCORE MODAL ───
-function ScoreModal({ show, onClose, scoreData, loading, error, onRetry, walletAddress }: { show:boolean;onClose:()=>void;scoreData:ScoreData|null;loading:boolean;error:string|null;onRetry:()=>void;walletAddress:string }) {
+function ScoreModal({ show, onClose, scoreData, loading, error, onRetry, walletAddress, isExample, exampleLabel }: { show:boolean;onClose:()=>void;scoreData:ScoreData|null;loading:boolean;error:string|null;onRetry:()=>void;walletAddress:string;isExample?:boolean;exampleLabel?:string }) {
   const [animated, setAnimated] = useState(false);
   const grade = scoreData ? gradeScore(scoreData.ledgerScore) : null;
   const R = 52; const circ = 2 * Math.PI * R;
@@ -1049,7 +1055,12 @@ function ScoreModal({ show, onClose, scoreData, loading, error, onRetry, walletA
               ))}
             </div>
           )}
-          {walletAddress&&<p style={{ fontSize:10,color:'rgba(255,255,255,.22)',fontFamily:"'IBM Plex Mono',monospace",textAlign:'center',marginBottom:14,wordBreak:'break-all' }}>🔒 {walletAddress.slice(0,12)}…{walletAddress.slice(-6)}</p>}
+          {isExample&&(
+            <p style={{ fontSize:11,color:'rgba(255,255,255,.4)',textAlign:'center',marginBottom:12,lineHeight:1.5 }}>
+              {exampleLabel||'Example wallet'} — paste your own XRPL address above for your score.
+            </p>
+          )}
+          {walletAddress&&<p style={{ fontSize:10,color:'rgba(255,255,255,.22)',fontFamily:"'IBM Plex Mono',monospace",textAlign:'center',marginBottom:14,wordBreak:'break-all' }}>{isExample?'◈':'🔒'} {walletAddress.slice(0,12)}…{walletAddress.slice(-6)}</p>}
           <button onClick={onClose} style={{ ...Btn('green',undefined,{width:'100%',padding:'14px',fontSize:15}) }}>Done</button>
         </>
       )}
@@ -1663,6 +1674,7 @@ export default function XRPLHubHome() {
   const [scoreData, setScoreData]     = useState<ScoreData|null>(null);
   const [scoreLoading, setSL]         = useState(false);
   const [scoreError, setSE]           = useState<string|null>(null);
+  const [demoScore, setDemoScore]     = useState(false); // showing the example wallet, not the visitor's
   // Inline personalized credit-report state — populated automatically when a wallet is connected
   const [personalScore, setPersonalScore]     = useState<ScoreData & { breakdown?: Array<{signal:string;label:string;score:number;weight?:string;desc?:string}>; recommendations?: Array<{action:string;points:string;priority:'high'|'medium'|'low'}>; percentile?: number; percentileLabel?: string } | null>(null);
   const [personalLoading, setPersonalLoading] = useState(false);
@@ -1695,7 +1707,9 @@ export default function XRPLHubHome() {
   };
 
   const fetchScore = useCallback(async (address?: string) => {
-    const target = address || walletInput || connectedWallet || TREASURY;
+    const explicit = address || walletInput || connectedWallet;
+    const target = explicit || DEMO_WALLET;
+    setDemoScore(!explicit);
     setScoreData(null); setSE(null); setSL(true); setShowScore(true);
     try {
       const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 14000);
@@ -2165,7 +2179,7 @@ export default function XRPLHubHome() {
 
       {/* MODALS */}
       <ConnectWalletModal show={showConnect} onClose={()=>setShowConnect(false)} onConnected={handleWalletConnected} />
-      <ScoreModal show={showScore} onClose={()=>setShowScore(false)} scoreData={scoreData} loading={scoreLoading} error={scoreError} onRetry={()=>fetchScore(walletInput||connectedWallet)} walletAddress={walletInput||connectedWallet} />
+      <ScoreModal show={showScore} onClose={()=>setShowScore(false)} scoreData={scoreData} loading={scoreLoading} error={scoreError} onRetry={()=>fetchScore(walletInput||connectedWallet)} walletAddress={(walletInput||connectedWallet)||(demoScore?DEMO_WALLET:'')} isExample={demoScore} exampleLabel={DEMO_WALLET_LABEL} />
       <ProductModal show={!!activeProduct} onClose={()=>setAP(null)} product={activeProduct} connectedWallet={connectedWallet} />
       <DonateModal show={showDonate} onClose={()=>setShowDonate(false)} />
       <GrantModal show={showGrant} onClose={()=>setShowGrant(false)} connectedWallet={connectedWallet} user={user} />

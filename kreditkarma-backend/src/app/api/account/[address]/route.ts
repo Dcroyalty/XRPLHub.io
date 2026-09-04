@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAccountInfo, getAccountTrustLines } from "@/lib/xrpl-client";
 import { getRlusdConfig } from "@/lib/treasury";
+import { isRlusdCurrency } from "@/lib/rlusd";
 import { isValidClassicAddress } from "xrpl";
 
 export async function GET(
@@ -20,9 +21,9 @@ export async function GET(
       getAccountTrustLines(address),
     ]);
 
-    const { issuer, currency } = getRlusdConfig();
+    const { issuer } = getRlusdConfig();
     const rlusdLine = trustLines.find(
-      (t) => t.currency === currency && t.account === issuer
+      (t) => isRlusdCurrency(t.currency) && t.account === issuer
     );
 
     const balanceXRP = Number(accountData.Balance) / 1_000_000;

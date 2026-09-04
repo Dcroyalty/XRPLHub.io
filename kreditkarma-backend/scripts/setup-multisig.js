@@ -76,13 +76,16 @@ async function main() {
   // ── Step 2: Set up RLUSD trust line ───────────────────────────────────────
   console.log("\n[2/2] Setting up RLUSD trust line...");
 
-  const rlusdIssuer = process.env.RLUSD_ISSUER ?? "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh";
+  // Ripple's real mainnet RLUSD issuer (never an xrpl.org tutorial address).
+  const rlusdIssuer = process.env.RLUSD_ISSUER ?? "rMxCKbEDwqr76QuheSUMdEGf4B9xJ8m5De";
+  // "RLUSD" is 5 chars; the standard slot is 3. It MUST be the 40-char hex.
+  const rlusdCurrencyHex = "524C555344000000000000000000000000000000";
 
   const trustLineTx = {
     TransactionType: "TrustSet",
     Account: masterWallet.address,
     LimitAmount: {
-      currency: "RLUSD",
+      currency: rlusdCurrencyHex,
       issuer: rlusdIssuer,
       value: "1000000",
     },

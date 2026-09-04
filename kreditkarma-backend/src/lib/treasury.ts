@@ -16,6 +16,7 @@ import {
   xrpToDrops,
 } from "xrpl";
 import { getXrplClient } from "./xrpl-client";
+import { RLUSD_ISSUER, RLUSD_CURRENCY_HEX, isRlusdCurrency } from "./rlusd";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Config
@@ -44,9 +45,14 @@ export function getTreasuryConfig() {
 }
 
 export function getRlusdConfig() {
+  // One source of truth for both values (see src/lib/rlusd.ts). The currency
+  // MUST be the 40-char hex — "RLUSD" is 5 chars and xrpl.js mis-serialises it
+  // in a Payment/TrustSet Amount, and account_lines returns it hex-encoded so
+  // a `=== "RLUSD"` comparison never matches. The issuer fallback is Ripple's
+  // real mainnet RLUSD issuer, never an xrpl.org tutorial address.
   return {
-    issuer: process.env.RLUSD_ISSUER ?? "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh",
-    currency: "RLUSD",
+    issuer: RLUSD_ISSUER,
+    currency: RLUSD_CURRENCY_HEX,
   };
 }
 
@@ -60,7 +66,7 @@ export async function getTreasuryBalance(): Promise<{
 }> {
   const xrpl = await getXrplClient();
   const { address } = getTreasuryConfig();
-  const { issuer, currency } = getRlusdConfig();
+  const { issuer } = getRlusdConfig();
 
   const [accountInfo, trustLines] = await Promise.all([
     xrpl.request({
@@ -80,7 +86,7 @@ export async function getTreasuryBalance(): Promise<{
   const xrpBalance = Number(xrpDrops) / 1_000_000;
 
   const rlusdLine = (trustLines.result.lines as any[]).find(
-    (l) => l.currency === currency && l.account === issuer
+    (l) => isRlusdCurrency(l.currency) && l.account === issuer
   );
   const rlusdBalance = rlusdLine ? parseFloat(rlusdLine.balance) : 0;
 

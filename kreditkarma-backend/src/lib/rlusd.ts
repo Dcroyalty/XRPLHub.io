@@ -29,6 +29,35 @@ export const RLUSD_ISSUER =
 export const RLUSD_CURRENCY_HEX =
   "524C555344000000000000000000000000000000";
 
+/**
+ * Decode an XRPL currency code to its ASCII form. rippled returns 3-char ISO
+ * codes verbatim and everything else as a 40-char hex string; xrpl.js does NOT
+ * normalise this for you. "524C5553440000…" -> "RLUSD". Anything that is not a
+ * 40-char hex string is returned unchanged.
+ */
+export function decodeCurrency(code: string | undefined | null): string {
+  if (!code) return "";
+  if (!/^[0-9A-Fa-f]{40}$/.test(code)) return code;
+  const trimmed = code.replace(/(00)+$/i, "");
+  let out = "";
+  for (let i = 0; i + 1 < trimmed.length; i += 2) {
+    out += String.fromCharCode(parseInt(trimmed.slice(i, i + 2), 16));
+  }
+  return out || code;
+}
+
+/**
+ * True if a currency code from account_lines / delivered_amount is RLUSD,
+ * whether the ledger handed it back as the 40-char hex or (rarely) "RLUSD".
+ * Use this instead of `code === "RLUSD"` — that comparison is always false
+ * because RLUSD is 5 chars and comes back hex-encoded.
+ */
+export function isRlusdCurrency(code: string | undefined | null): boolean {
+  if (!code) return false;
+  if (code.toUpperCase() === RLUSD_CURRENCY_HEX) return true;
+  return decodeCurrency(code).toUpperCase() === "RLUSD";
+}
+
 // Your treasury wallet (the one already holding RLUSD). NOT the issuer.
 export const TREASURY_ADDRESS = process.env.TREASURY_ADDRESS ?? "";
 
