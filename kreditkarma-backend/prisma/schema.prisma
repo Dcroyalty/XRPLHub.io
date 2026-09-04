@@ -182,11 +182,15 @@ model UsageRecord {
 model Invoice {
   id             String    @id @default(cuid())
   plan           String                            // plan being purchased
-  amountRlusd    Decimal   @db.Decimal(20, 6)      // exact RLUSD to charge
+  amountRlusd    Decimal   @db.Decimal(20, 6)      // USD-denominated price (always set)
+  currency       String    @default("RLUSD")       // RLUSD | XRP — what the buyer pays in
+  amountXrp      Decimal?  @db.Decimal(20, 6)      // exact XRP to charge (XRP invoices)
+  xrpUsdRate     Decimal?  @db.Decimal(20, 6)      // XRP/USD rate locked at quote time
   destinationTag Int       @unique                 // 32-bit; one per invoice
   status         String    @default("pending")     // pending | paid | expired
   txHash         String?                            // set when matched on-ledger
-  deliveredRlusd Decimal?  @db.Decimal(20, 6)      // what actually arrived
+  deliveredRlusd Decimal?  @db.Decimal(20, 6)      // RLUSD that actually arrived
+  deliveredXrp   Decimal?  @db.Decimal(20, 6)      // XRP that actually arrived
   paidAt         DateTime?
   createdAt      DateTime  @default(now())
   expiresAt      DateTime

@@ -1,8 +1,8 @@
 "use client";
 // app/checkout/page.tsx
-// The checkout that used to be a dead link. Reads ?plan=, creates an invoice,
-// shows the manual-pay panel + Xaman deeplink, then polls until the payment
-// lands and reveals the API key once.
+// Reads ?plan=, lets the buyer pick XRP or RLUSD, creates an invoice, shows the
+// manual-pay panel + Xaman deeplink, then polls until the payment lands and
+// reveals the API key once.
 
 import { useEffect, useState, useCallback } from "react";
 
@@ -11,62 +11,72 @@ type PayFields = {
   destinationTag: number;
   amount: string;
   currency: string;
-  currencyHex: string;
-  issuer: string;
+  currencyHex?: string;
+  issuer?: string;
   warning: string;
 };
 
 type Invoice = {
   invoiceId: string;
   plan: string;
-  amountRlusd: number;
+  currency: "XRP" | "RLUSD";
+  priceUsd: number;
+  amount: number;
+  amountXrp: number | null;
+  xrpUsdRate: number | null;
   pay: PayFields;
   xamanDeeplink: string;
   statusUrl: string;
 };
 
-type Status = "loading" | "pending" | "paid" | "expired" | "error";
+type Status = "idle" | "loading" | "pending" | "paid" | "expired" | "error";
+type Currency = "XRP" | "RLUSD";
 
 export default function CheckoutPage() {
   const [plan, setPlan] = useState<string>("");
+  const [currency, setCurrency] = useState<Currency>("XRP"); // XRP is what the audience holds
   const [invoice, setInvoice] = useState<Invoice | null>(null);
-  const [status, setStatus] = useState<Status>("loading");
+  const [status, setStatus] = useState<Status>("idle");
   const [apiKey, setApiKey] = useState<string | null>(null);
   const [error, setError] = useState<string>("");
 
-  // read ?plan= without extra deps
   useEffect(() => {
     const p = new URLSearchParams(window.location.search).get("plan") ?? "";
     setPlan(p);
   }, []);
 
-  // free plan: no payment, just point them at key issuance
   useEffect(() => {
     if (plan === "free") setStatus("pending");
   }, [plan]);
 
-  // create the invoice for a paid plan
+  // (re)create the invoice whenever plan or currency changes
   useEffect(() => {
     if (!plan || plan === "free") return;
+    let cancelled = false;
+    setStatus("loading");
+    setInvoice(null);
+    setError("");
     (async () => {
       try {
         const res = await fetch("/api/checkout", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ plan }),
+          body: JSON.stringify({ plan, currency }),
         });
         const data = await res.json();
+        if (cancelled) return;
         if (!res.ok) throw new Error(data.message ?? "Could not start checkout.");
         setInvoice(data);
         setStatus("pending");
       } catch (e) {
+        if (cancelled) return;
         setError(e instanceof Error ? e.message : "Checkout failed.");
         setStatus("error");
       }
     })();
-  }, [plan]);
+    return () => { cancelled = true; };
+  }, [plan, currency]);
 
-  // poll for payment
   const poll = useCallback(async () => {
     if (!invoice) return;
     try {
@@ -85,7 +95,7 @@ export default function CheckoutPage() {
 
   useEffect(() => {
     if (status !== "pending" || !invoice) return;
-    const t = setInterval(poll, 4000); // ~4s; payment usually lands in ~5s
+    const t = setInterval(poll, 4000);
     return () => clearInterval(t);
   }, [status, invoice, poll]);
 
@@ -101,15 +111,6 @@ export default function CheckoutPage() {
     );
   }
 
-  if (status === "loading") return <Shell title="Starting checkout…" />;
-  if (status === "error") return <Shell title="Checkout error"><p style={s.err}>{error}</p></Shell>;
-  if (status === "expired")
-    return (
-      <Shell title="Invoice expired">
-        <p style={s.p}>This invoice timed out. Reload to start a new one.</p>
-      </Shell>
-    );
-
   if (status === "paid") {
     return (
       <Shell title="Paid ✓">
@@ -117,9 +118,7 @@ export default function CheckoutPage() {
         {apiKey ? (
           <>
             <pre style={s.key}>{apiKey}</pre>
-            <p style={s.warn}>
-              Store it now — it cannot be shown again.
-            </p>
+            <p style={s.warn}>Store it now — it cannot be shown again.</p>
           </>
         ) : (
           <p style={s.p}>Your key was already issued for this invoice.</p>
@@ -127,22 +126,55 @@ export default function CheckoutPage() {
       </Shell>
     );
   }
+  if (status === "expired")
+    return (
+      <Shell title="Invoice expired">
+        <p style={s.p}>This invoice timed out. Reload to start a new one.</p>
+      </Shell>
+    );
 
-  // pending + invoice ready = show the pay panel
-  if (!invoice) return <Shell title="Starting checkout…" />;
-  const { pay } = invoice;
   return (
-    <Shell title={`Pay ${invoice.amountRlusd.toLocaleString()} RLUSD`}>
-      <a href={invoice.xamanDeeplink} style={s.xaman}>
-        Open in Xaman
-      </a>
-      <p style={s.or}>or send manually (e.g. from an exchange):</p>
-      <Field label="Send to" value={pay.address} />
-      <Field label="Destination tag (required)" value={String(pay.destinationTag)} highlight />
-      <Field label="Amount" value={`${pay.amount} RLUSD`} />
-      <Field label="Issuer" value={pay.issuer} />
-      <p style={s.warn}>{pay.warning}</p>
-      <p style={s.polling}>Waiting for payment… this page updates itself.</p>
+    <Shell title={`Get ${plan || "your plan"} — $${invoice?.priceUsd ?? ""}/mo`}>
+      <div style={s.toggle}>
+        {(["XRP", "RLUSD"] as Currency[]).map((c) => (
+          <button
+            key={c}
+            onClick={() => setCurrency(c)}
+            style={{ ...s.toggleBtn, ...(currency === c ? s.toggleOn : {}) }}
+          >
+            Pay in {c}
+          </button>
+        ))}
+      </div>
+
+      {status === "loading" && <p style={s.polling}>Getting a quote…</p>}
+      {status === "error" && <p style={s.err}>{error}</p>}
+
+      {status === "pending" && invoice && (
+        <>
+          <div style={s.amountBox}>
+            <div style={s.amountBig}>
+              {invoice.amount} {invoice.currency}
+            </div>
+            {invoice.currency === "XRP" && invoice.xrpUsdRate && (
+              <div style={s.amountSub}>
+                ≈ ${invoice.priceUsd} at ${invoice.xrpUsdRate.toFixed(4)}/XRP · locked for 30 min
+              </div>
+            )}
+          </div>
+
+          <a href={invoice.xamanDeeplink} style={s.xaman}>Open in Xaman</a>
+          <p style={s.or}>or send manually (e.g. from an exchange):</p>
+          <Field label="Send to" value={invoice.pay.address} />
+          <Field label="Destination tag (required)" value={String(invoice.pay.destinationTag)} highlight />
+          <Field label="Amount" value={`${invoice.pay.amount} ${invoice.currency}`} />
+          {invoice.currency === "RLUSD" && invoice.pay.issuer && (
+            <Field label="Issuer" value={invoice.pay.issuer} />
+          )}
+          <p style={s.warn}>{invoice.pay.warning}</p>
+          <p style={s.polling}>Waiting for payment… this page updates itself.</p>
+        </>
+      )}
     </Shell>
   );
 }
@@ -162,6 +194,7 @@ function Field({ label, value, highlight }: { label: string; value: string; high
 function Shell({ title, children }: { title: string; children?: React.ReactNode }) {
   return (
     <main style={s.page}>
+      <a href="/pricing" style={s.back}>← plans</a>
       <h1 style={s.h1}>{title}</h1>
       {children}
     </main>
@@ -169,10 +202,17 @@ function Shell({ title, children }: { title: string; children?: React.ReactNode 
 }
 
 const s: Record<string, React.CSSProperties> = {
-  page: { maxWidth: 520, margin: "0 auto", padding: "48px 20px", fontFamily: "system-ui, sans-serif" },
-  h1: { fontSize: 26, fontWeight: 800, marginBottom: 20 },
+  page: { maxWidth: 520, margin: "0 auto", padding: "32px 20px 48px", fontFamily: "system-ui, sans-serif" },
+  back: { fontSize: 13, color: "#777", textDecoration: "none" },
+  h1: { fontSize: 24, fontWeight: 800, margin: "12px 0 20px" },
   p: { color: "#444", lineHeight: 1.5 },
-  err: { color: "#b00020" },
+  err: { color: "#b00020", marginTop: 12 },
+  toggle: { display: "flex", gap: 8, marginBottom: 18 },
+  toggleBtn: { flex: 1, padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd", background: "#fafafa", fontWeight: 700, fontSize: 14, cursor: "pointer", fontFamily: "inherit" },
+  toggleOn: { borderColor: "#111", background: "#111", color: "#fff" },
+  amountBox: { textAlign: "center", padding: "14px 0 18px" },
+  amountBig: { fontSize: 30, fontWeight: 800 },
+  amountSub: { fontSize: 12, color: "#888", marginTop: 4 },
   xaman: { display: "block", textAlign: "center", padding: "14px 16px", borderRadius: 12, background: "#111", color: "#fff", textDecoration: "none", fontWeight: 700 },
   or: { textAlign: "center", color: "#888", margin: "16px 0 8px", fontSize: 14 },
   field: { marginBottom: 12 },

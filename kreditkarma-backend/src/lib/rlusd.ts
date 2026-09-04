@@ -67,25 +67,42 @@ export function deliveredRlusd(meta: TransactionMetadata | undefined): number | 
   return null;
 }
 
+/**
+ * Pull the XRP amount (in drops) that ACTUALLY arrived. delivered_amount is a
+ * bare string for XRP. Returns drops as a number, or null if this tx delivered
+ * an issued token (not XRP) or nothing.
+ */
+export function deliveredXrpDrops(meta: TransactionMetadata | undefined): number | null {
+  const d = (meta as unknown as { delivered_amount?: unknown })?.delivered_amount;
+  if (d === undefined || d === null || d === "unavailable") return null;
+  if (typeof d !== "string") return null; // issued currency object -> not XRP
+  const drops = Number(d);
+  return Number.isFinite(drops) && drops >= 0 ? drops : null;
+}
+
+export type PayCurrency = "RLUSD" | "XRP";
+
 export interface PaymentMatch {
   paid: boolean;
   txHash?: string;
   deliveredRlusd?: number;
+  deliveredXrp?: number;
   destinationTag?: number;
 }
 
 /**
- * Look for a settled RLUSD payment to the treasury carrying `destinationTag`
- * that delivered at least `expectedRlusd`. Serverless-safe: opens a client,
+ * Look for a settled payment to the treasury carrying `destinationTag` that
+ * delivered at least `expected` in `currency`. Serverless-safe: opens a client,
  * queries account_tx, closes. No long-lived socket required.
  */
 export async function findPayment(
   destinationTag: number,
-  expectedRlusd: number,
-  opts: { treasury?: string; endpoint?: string; ledgerLookback?: number } = {}
+  expected: number,
+  opts: { currency?: PayCurrency; treasury?: string; endpoint?: string } = {}
 ): Promise<PaymentMatch> {
   const treasury = opts.treasury ?? TREASURY_ADDRESS;
   if (!treasury) throw new Error("TREASURY_ADDRESS is not set");
+  const currency: PayCurrency = opts.currency ?? "RLUSD";
 
   const client = new Client(opts.endpoint ?? XRPL_ENDPOINT);
   await client.connect();
@@ -117,14 +134,29 @@ export async function findPayment(
       const code = (meta as unknown as { TransactionResult?: string }).TransactionResult;
       if (code !== "tesSUCCESS") continue;
 
-      const delivered = deliveredRlusd(meta);
-      if (delivered !== null && delivered + 1e-6 >= expectedRlusd) {
-        return {
-          paid: true,
-          txHash: (tx.hash as string) ?? (entry.hash as string),
-          deliveredRlusd: delivered,
-          destinationTag,
-        };
+      if (currency === "XRP") {
+        const drops = deliveredXrpDrops(meta);
+        if (drops !== null) {
+          const xrp = drops / 1_000_000;
+          if (xrp + 1e-6 >= expected) {
+            return {
+              paid: true,
+              txHash: (tx.hash as string) ?? (entry.hash as string),
+              deliveredXrp: xrp,
+              destinationTag,
+            };
+          }
+        }
+      } else {
+        const delivered = deliveredRlusd(meta);
+        if (delivered !== null && delivered + 1e-6 >= expected) {
+          return {
+            paid: true,
+            txHash: (tx.hash as string) ?? (entry.hash as string),
+            deliveredRlusd: delivered,
+            destinationTag,
+          };
+        }
       }
     }
     return { paid: false };
@@ -132,6 +164,9 @@ export async function findPayment(
     await client.disconnect();
   }
 }
+
+const TAG_WARNING =
+  "Destination tag is REQUIRED. A payment without this exact tag cannot be matched to your order.";
 
 /**
  * Fields a human needs to pay an invoice by hand (exchange withdrawal, or a
@@ -145,7 +180,35 @@ export function manualPayFields(amountRlusd: number, destinationTag: number) {
     currency: "RLUSD",
     currencyHex: RLUSD_CURRENCY_HEX,
     issuer: RLUSD_ISSUER,
-    warning:
-      "Destination tag is REQUIRED. A payment without this exact tag cannot be matched to your order.",
+    warning: TAG_WARNING,
   };
+}
+
+/** Manual-pay panel data for an XRP invoice (no issuer / currency code). */
+export function manualPayFieldsXrp(amountXrp: number, destinationTag: number) {
+  return {
+    address: TREASURY_ADDRESS,
+    destinationTag,
+    amount: amountXrp.toFixed(6),
+    currency: "XRP",
+    warning: TAG_WARNING,
+  };
+}
+
+/** xumm:// deeplink for either currency. */
+export function xamanDeeplink(
+  currency: "RLUSD" | "XRP",
+  amount: number,
+  destinationTag: number
+): string {
+  const params = new URLSearchParams({
+    to: TREASURY_ADDRESS,
+    amount: amount.toFixed(6),
+    dt: String(destinationTag),
+  });
+  if (currency === "RLUSD") {
+    params.set("currency", RLUSD_CURRENCY_HEX);
+    params.set("issuer", RLUSD_ISSUER);
+  }
+  return `https://xumm.app/detect/request?${params.toString()}`;
 }
