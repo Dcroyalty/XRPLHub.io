@@ -82,7 +82,7 @@ export function rlusdRequirements(opts: {
     name: opts.name ?? "XRPLScore - Wallet Risk Score",
     description:
       opts.description ??
-      "300-850 on-chain risk score for any XRPL wallet, from 9 signals. Pay per call in RLUSD.",
+      "300-850 on-chain creditworthiness score for any XRPL wallet, from 8 signals. Pay per call in RLUSD, no signup.",
     extra: {
       invoiceId: opts.invoiceId,
       sourceTag: X402_SOURCE_TAG,

@@ -14,6 +14,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/xrplscore-db";
 import { PRICE_PER_TX_PRODUCT_RLUSD, TREASURY_ADDRESS } from "@/lib/paycall";
 import { buildServiceTx } from "@/app/api/execute/txBuilder";
+import { SERVICE_IDS } from "@/app/api/execute/serviceCatalog";
 import {
   X402_VERSION,
   decodeHeader,
@@ -34,17 +35,14 @@ export const dynamic = "force-dynamic";
 const RESOURCE = "/api/x402/tx";
 const isAddr = (v: string) => v.startsWith("r") && v.length >= 25 && v.length <= 35;
 
-const KNOWN = new Set([
-  "checkcreate","checkcash","checkcancel","escrow","paychannel","desttagreq","desttag",
-  "regkey","rippling","globalfreeze","freezeline","issuerdecl","issuercfg","dexorder",
-  "dextrade","smartswap","ammlaunch","ammentry","tickets","nftmint","nftburn","nftoffer",
-  "identity","did","compliance","credentialissue","permdomain",
-]);
+const KNOWN = new Set(SERVICE_IDS);
 
-const NAME = "XRPLHub â€” Prebuilt XRPL Transaction (27 services)";
+const NAME = "XRPLHub — Prebuilt XRPL Transaction (35 actions)";
 const DESC =
-  "Ready-to-sign XRPL transaction for any of 27 services (CheckCreate, Escrow, NFT, AMM, " +
-  "TrustSet, DID, and more). Pay per call in RLUSD; sign the returned txjson with your own wallet.";
+  "Get a ready-to-sign XRPL transaction JSON for any of 35 actions — CheckCreate, Escrow, TrustSet, " +
+  "NFT mint/sell/burn, AMM create/deposit, DEX order, MPT issue/send, multisig, DID, credentials, " +
+  "permissioned domains, and more. Send ?productId=<id>&account=r<signer>; get back the exact txjson " +
+  "plus a safety tier. You sign it with your own wallet. Pay per call in RLUSD, no signup.";
 
 function extractParams(url: URL): Record<string, string> {
   const out: Record<string, string> = {};

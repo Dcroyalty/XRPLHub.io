@@ -1,36 +1,135 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# XRPLHub.io
 
-## Getting Started
+**On-chain creditworthiness for the XRP Ledger.** XRPLHub gives any XRPL wallet a
+300–850 credit-style score (**XRPLScore**) computed from 8 public-ledger signals,
+sells ready-to-sign prebuilt XRPL transactions for 35 actions, issues signed
+verifiable score credentials, and runs an on-chain community micro-grant fund.
 
-First, run the development server:
+- **Live app:** https://www.xrplhub.io
+- **The wallet score is free and unauthenticated.** Paid actions settle in **XRP or RLUSD** — no account, no signup.
+- Next.js + TypeScript on Vercel · Neon Postgres (Prisma) · Xaman (XUMM) for signing.
+
+The production app is the Next.js project in [`kreditkarma-backend/`](./kreditkarma-backend).
+
+---
+
+## XRPLScore
+
+A 300–850 number on an **absolute scale** (like FICO — not a percentile that
+drifts with the population), from 8 signals:
+
+| Signal | What it measures |
+|---|---|
+| Account age | Age from the wallet's genuine first transaction |
+| Transaction activity | Lifetime on-chain activity (log curve, no cap) |
+| Financial health | Spendable XRP + buffer above the real reserve line |
+| Token engagement | Trust lines to issued assets |
+| DEX activity | Order history on the native DEX |
+| AMM participation | Liquidity-pool activity |
+| Security config | Multisig, regular key, domain, escrow |
+| NFT activity | NFT portfolio + trading |
+
+The same number is returned everywhere: the public site, the free endpoint, the
+paid API, the x402 endpoints, and the MCP server.
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+# Free, no key, any wallet:
+curl https://www.xrplhub.io/api/score/rMxCKbEDwqr76QuheSUMdEGf4B9xJ8m5De
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+---
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## For AI agents
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### MCP server
 
-## Learn More
+Streamable HTTP, JSON-RPC 2.0, no auth.
 
-To learn more about Next.js, take a look at the following resources:
+```
+https://www.xrplhub.io/api/mcp
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+claude mcp add xrplhub --url https://www.xrplhub.io/api/mcp
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+| Tool | What you get | Cost |
+|---|---|---|
+| `check_xrpl_score` | 300–850 score, grade, percentile, 8-signal breakdown, tips. Param: `wallet_address`. | free |
+| `list_xrpl_services` | All 35 `build_xrpl_transaction` actions, each with params + examples. No params. | free |
+| `build_xrpl_transaction` | Ready-to-sign txjson for one of 35 XRPL actions. Params: `product_id`, `wallet_address`, `params`. | free |
+| `issue_score_credential` | Signed, tamper-evident score certificate + public verify URL, 90 days. Params: `wallet_address`, `currency`, `uuid`. | 1 XRP / 1 RLUSD |
+| `submit_grant_application` | Apply for a 1–100 RLUSD community micro-grant. Params: `wallet_address`, `category`, `amount`, `description`. | free |
+| `donate_to_community_fund` | Donate XRP or RLUSD to the grant treasury. Params: `amount`, `currency`, `donor_wallet`, `message`. | free |
 
-## Deploy on Vercel
+The transaction tools return an **unsigned txjson** — the wallet owner signs it in
+their own wallet. XRPLHub never signs for anyone.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### x402 (pay-per-call, RLUSD, no signup)
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- Discovery: https://www.xrplhub.io/.well-known/x402
+- OpenAPI 3.1: https://www.xrplhub.io/openapi.json
+- `GET /api/x402/score?wallet=r...` — 300–850 score + 8 signals
+- `GET /api/x402/report?wallet=r...` — score + risk flags + recommendations + on-chain snapshot
+- `GET /api/x402/tx?productId=<id>&account=r...` — one prebuilt XRPL transaction (35 actions)
+
+### llms.txt
+
+https://www.xrplhub.io/llms.txt
+
+---
+
+## B2B API (subscription)
+
+Buy a key at https://www.xrplhub.io/pricing — pay in **XRP or RLUSD**, connect
+Xaman and sign (no address typing), no signup.
+
+```bash
+curl -H "Authorization: Bearer xrs_live_..." \
+  "https://www.xrplhub.io/api/v1/score?wallet=rMxCKbEDwqr76QuheSUMdEGf4B9xJ8m5De"
+```
+
+| Plan | Price | Included | Rate limit |
+|---|---|---|---|
+| Free | $0 | 500 scored calls/mo | 15 req/min |
+| Starter | $29/mo | 10,000 | 60 req/min |
+| Growth | $149/mo | 100,000 (overage billed) | 300 req/min |
+| Scale | $499/mo | 1,000,000 (overage billed) | 1,000 req/min |
+
+---
+
+## Community grants
+
+Donate XRP or RLUSD to the treasury; anyone can apply for a 1–100 RLUSD
+micro-grant (rent, utilities, groceries, medical, transport, childcare). AI
+triages each application, a human approves, and approved funds go straight to the
+applicant's wallet. Every donation and payout is on-ledger.
+
+Treasury: `rs59g3amo5iT6T64Cg96XXMAWuw3WPQcLF` ·
+[view on XRPScan](https://xrpscan.com/account/rs59g3amo5iT6T64Cg96XXMAWuw3WPQcLF)
+
+---
+
+## Development
+
+```bash
+cd kreditkarma-backend
+npm install
+cp .env.example .env   # fill in the values
+npx prisma generate
+npm run dev
+```
+
+See [`kreditkarma-backend/.env.example`](./kreditkarma-backend/.env.example) for
+every environment variable the app reads.
+
+---
+
+## Links
+
+- Site: https://www.xrplhub.io
+- Pricing: https://www.xrplhub.io/pricing
+- OpenAPI: https://www.xrplhub.io/openapi.json
+- x402 discovery: https://www.xrplhub.io/.well-known/x402
+- MCP: https://www.xrplhub.io/api/mcp
+- Contact: support@xrplhub.io

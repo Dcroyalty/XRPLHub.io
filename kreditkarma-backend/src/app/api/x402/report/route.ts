@@ -30,10 +30,12 @@ export const dynamic = "force-dynamic";
 
 const RESOURCE = "/api/x402/report";
 
-const NAME = "XRPLHub â€” Full Wallet Risk Report";
+const NAME = "XRPLHub — Full Wallet Risk Report";
 const DESC =
-  "Score plus machine-readable risk flags, weighted signal detail, and an on-chain " +
-  "snapshot (balance, trust lines, activity, counterparties). Pay per call in RLUSD.";
+  "Get a full creditworthiness report for one XRPL wallet: the 300–850 score, letter grade, " +
+  "machine-readable risk flags, all 8 weighted signals, ranked recommendations, and an on-chain " +
+  "snapshot (balance, spendable XRP, trust lines, tx count, DEX/AMM/NFT activity). " +
+  "Send ?wallet=<r-address>. Pay per call in RLUSD, no signup.";
 
 function issueChallenge() {
   const invoiceId = statelessInvoiceId("x402:report");
