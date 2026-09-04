@@ -176,6 +176,20 @@ model FreeKeySignup {
   @@index([ip, createdAt])
 }
 
+// -------- SignIn challenge for injected wallets (Crossmark / GemWallet) ----
+// The wallet signs `hex`; the server verifies the signature recovers to the
+// claimed address. Single-use (consumedAt) + short TTL — a replayable
+// challenge is a free-key farm.
+model SignInChallenge {
+  id         String    @id @default(cuid())
+  hex        String    @unique               // 32 random bytes, hex — what the wallet signs
+  ip         String
+  createdAt  DateTime  @default(now())
+  consumedAt DateTime?
+
+  @@index([createdAt])
+}
+
 // -------- Usage (also the billing signal) ----------------------------------
 model UsageRecord {
   id        String   @id @default(cuid())

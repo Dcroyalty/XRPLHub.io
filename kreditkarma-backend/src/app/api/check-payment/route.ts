@@ -61,32 +61,44 @@ export async function GET(req: NextRequest) {
   try {
     const p          = req.nextUrl.searchParams
     const uuid       = p.get('uuid')
+    const hashParam  = p.get('hash')            // injected-wallet path: client submitted the tx itself
     const productId  = p.get('productId') || ''
     const amount     = parseFloat(p.get('amount') || '0')
     const currency   = p.get('currency') || 'XRP'
     const email      = p.get('email') || ''
 
-    if (!uuid) return NextResponse.json({ status: 'error', reason: 'Missing payment ID' }, { status: 400 })
+    if (!uuid && !hashParam)
+      return NextResponse.json({ status: 'error', reason: 'Missing payment ID' }, { status: 400 })
 
-    if (!xummConfigured())
-      return NextResponse.json({ status: 'error', reason: 'Payment gateway not configured' }, { status: 503 })
+    // ---- resolve the on-ledger tx hash from either path ----
+    let txHash = ''
+    if (hashParam) {
+      // Injected wallet (Crossmark / GemWallet) already broadcast the tx.
+      if (!/^[0-9A-Fa-f]{64}$/.test(hashParam))
+        return NextResponse.json({ status: 'error', reason: 'Bad transaction hash' }, { status: 400 })
+      txHash = hashParam
+    } else {
+      if (!xummConfigured())
+        return NextResponse.json({ status: 'error', reason: 'Payment gateway not configured' }, { status: 503 })
 
-    // Xaman payload state — via the shared client (429 detection + backoff).
-    let payload
-    try {
-      payload = await getPayloadStatus(uuid)
-    } catch (e) {
-      if (e instanceof XummRateLimitError)
-        return NextResponse.json({ status: 'pending' }) // busy — keep polling
-      throw e
+      // Xaman payload state — via the shared client (429 detection + backoff).
+      let payload
+      try {
+        payload = await getPayloadStatus(uuid as string)
+      } catch (e) {
+        if (e instanceof XummRateLimitError)
+          return NextResponse.json({ status: 'pending' }) // busy — keep polling
+        throw e
+      }
+
+      if (payload.state === 'not_found') return NextResponse.json({ status: 'error',    reason: 'Payment request not found' })
+      if (payload.state === 'expired')   return NextResponse.json({ status: 'expired' })
+      if (payload.state === 'rejected')  return NextResponse.json({ status: 'rejected', reason: 'Payment cancelled in Xaman' })
+      if (payload.state === 'pending')   return NextResponse.json({ status: 'pending' })
+
+      txHash = payload.txid || ''
     }
 
-    if (payload.state === 'not_found') return NextResponse.json({ status: 'error',    reason: 'Payment request not found' })
-    if (payload.state === 'expired')   return NextResponse.json({ status: 'expired' })
-    if (payload.state === 'rejected')  return NextResponse.json({ status: 'rejected', reason: 'Payment cancelled in Xaman' })
-    if (payload.state === 'pending')   return NextResponse.json({ status: 'pending' })
-
-    const txHash = payload.txid || ''
     if (!txHash) return NextResponse.json({ status: 'pending' })
 
     const verify = await verifyTx(txHash, amount, currency)

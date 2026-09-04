@@ -1,58 +1,136 @@
 "use client";
 // app/checkout/FreeKeyFlow.tsx
-// Self-serve free tier: connect Xaman (SignIn — proves wallet control, no funds
-// move) -> one free API key per wallet. Shared by the /pricing "Start free"
-// modal and /checkout?plan=free.
+// Self-serve free tier: prove wallet control -> one free API key per wallet.
+// Shared by the /pricing "Start free" modal and /checkout?plan=free.
 //
-//   1. POST /api/free-key/start  -> Xaman SignIn payload (QR + deeplink)
-//   2. poll POST /api/free-key/claim { uuid } every 3s
-//        pending -> keep polling
-//        issued  -> show the key ONCE
-//        already_claimed / rejected / expired / rate_limited -> explain
+//   1. POST /api/free-key/start -> { challenge, xaman payload?, xamanAvailable }
+//   2. pick a wallet (Xaman default; Crossmark / GemWallet if detected)
+//   3a. Xaman  -> show QR, poll POST /api/free-key/claim { uuid }
+//   3b. ext    -> provider.proveControl(challenge) -> POST /api/free-key/claim { proof }
+//   4. issued -> show the key ONCE
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import WalletPicker from "@/lib/wallet/WalletPicker";
+import {
+  getProvider,
+  resolveProviderOptions,
+  WalletCancelled,
+  type ProviderOption,
+  type ProveContext,
+} from "@/lib/wallet";
 
 type Phase =
-  | "idle" | "opening" | "waiting" | "issued"
+  | "idle" | "loading" | "picker" | "xaman-wait" | "ext-wait" | "issued"
   | "already_claimed" | "revoked" | "rejected" | "expired" | "rate_limited"
-  | "inactive_wallet" | "error";
+  | "bad_signature" | "inactive_wallet" | "error";
+
+type StartData = {
+  challenge: { id: string; hex: string };
+  uuid: string | null;
+  qrPng: string | null;
+  deepLink: string | null;
+  xamanAvailable: boolean;
+};
 
 export default function FreeKeyFlow() {
   const [phase, setPhase] = useState<Phase>("idle");
   const [msg, setMsg] = useState("");
   const [apiKey, setApiKey] = useState<string | null>(null);
+
+  const [options, setOptions] = useState<ProviderOption[]>([]);
+  const [selected, setSelected] = useState<string | null>(null);
+  const startData = useRef<StartData | null>(null);
   const [qr, setQr] = useState<string | null>(null);
   const [link, setLink] = useState<string | null>(null);
-  const uuid = useRef<string | null>(null);
+
+  const applyStatus = (status: string, key?: string) => {
+    if (status === "issued") {
+      setApiKey(key ?? null);
+      setPhase("issued");
+    } else if (
+      ["already_claimed", "revoked", "rejected", "expired", "rate_limited", "bad_signature", "inactive_wallet"].includes(status)
+    ) {
+      setPhase(status as Phase);
+    }
+  };
 
   const start = useCallback(async () => {
-    setPhase("opening");
+    setPhase("loading");
     setMsg("");
     try {
       const res = await fetch("/api/free-key/start", { method: "POST" });
       const data = await res.json();
-      if (!res.ok || !data.uuid) {
+      if (!res.ok || !data.challenge) {
         setPhase(res.status === 429 ? "rate_limited" : "error");
         setMsg(data.message ?? "Could not start. Try again shortly.");
         return;
       }
-      uuid.current = data.uuid;
-      setQr(data.qrPng ?? null);
-      setLink(data.deepLink ?? null);
-      setPhase("waiting");
-      if (data.deepLink && /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)) {
-        window.location.href = data.deepLink;
-      }
+      startData.current = data as StartData;
+      const opts = await resolveProviderOptions({ xamanAvailable: !!data.xamanAvailable });
+      setOptions(opts);
+      const firstUsable = opts.find((o) => o.available);
+      setSelected(firstUsable?.provider.id ?? null);
+      setPhase("picker");
     } catch {
       setPhase("error");
-      setMsg("Could not reach Xaman. Try again shortly.");
+      setMsg("Could not reach the server. Try again shortly.");
     }
   }, []);
 
-  // poll claim
+  const pick = useCallback(async (id: string) => {
+    const sd = startData.current;
+    const provider = getProvider(id);
+    if (!sd || !provider) return;
+
+    const ctx: ProveContext = {
+      challengeId: sd.challenge.id,
+      challengeHex: sd.challenge.hex,
+      xamanUuid: sd.uuid,
+      xamanQrPng: sd.qrPng,
+      xamanDeepLink: sd.deepLink,
+    };
+    const handle = provider.proveControl(ctx);
+
+    if (provider.id === "xaman") {
+      setQr(handle.qrPng);
+      setLink(handle.deepLink);
+      setPhase("xaman-wait");
+      if (handle.deepLink && /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)) {
+        window.location.href = handle.deepLink;
+      }
+      return;
+    }
+
+    // extension: run the SDK, then one claim POST
+    setPhase("ext-wait");
+    setMsg(`Approve the request in ${provider.label}…`);
+    try {
+      const body = await handle.body;
+      const res = await fetch("/api/free-key/claim", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      applyStatus(data.status, data.key);
+      if (!data.status || data.status === "pending") {
+        setPhase("error");
+        setMsg("Unexpected response. Try again.");
+      }
+    } catch (e) {
+      if (e instanceof WalletCancelled) {
+        setPhase("rejected");
+      } else {
+        setPhase("error");
+        setMsg(e instanceof Error ? e.message : "Signing failed. Try again.");
+      }
+    }
+  }, []);
+
+  // Xaman poll (unchanged behaviour)
   useEffect(() => {
-    if (phase !== "waiting" || !uuid.current) return;
-    const id = uuid.current;
+    if (phase !== "xaman-wait" || !startData.current?.uuid) return;
+    const id = startData.current.uuid;
     const t = setInterval(async () => {
       try {
         const res = await fetch("/api/free-key/claim", {
@@ -61,23 +139,8 @@ export default function FreeKeyFlow() {
           body: JSON.stringify({ uuid: id }),
         });
         const data = await res.json();
-        switch (data.status) {
-          case "pending": return;
-          case "issued":
-            setApiKey(data.key);
-            setPhase("issued");
-            return;
-          case "already_claimed":
-          case "revoked":
-          case "rejected":
-          case "expired":
-          case "rate_limited":
-          case "inactive_wallet":
-            setPhase(data.status);
-            return;
-          default:
-            return; // transient — keep polling
-        }
+        if (data.status === "pending") return;
+        applyStatus(data.status, data.key);
       } catch {
         /* keep polling */
       }
@@ -85,12 +148,11 @@ export default function FreeKeyFlow() {
     return () => clearInterval(t);
   }, [phase]);
 
-  // ---- terminal / status screens ----
-
+  // ---- terminal screens ----
   if (phase === "issued") {
     return (
       <div>
-        <p style={s.p}>Wallet verified. Here is your free API key ({"200 calls / mo, 10 rpm"}):</p>
+        <p style={s.p}>Wallet verified. Your free API key (200 calls / mo, 10 rpm):</p>
         <pre style={s.key}>{apiKey}</pre>
         <p style={s.warn}>Store it now — it cannot be shown again.</p>
         <pre style={s.code}>{`curl -H "authorization: Bearer ${apiKey ?? "xrs_live_..."}" \\
@@ -129,39 +191,67 @@ export default function FreeKeyFlow() {
       </div>
     );
   }
+  if (phase === "bad_signature") {
+    return (
+      <div>
+        <p style={s.p}>That signature couldn’t be verified. Try again, or use a different wallet.</p>
+        <button onClick={start} style={s.btn}>Try again</button>
+      </div>
+    );
+  }
   if (phase === "rejected" || phase === "expired") {
     return (
       <div>
-        <p style={s.p}>{phase === "rejected" ? "You declined the sign-in request." : "The sign-in request expired."}</p>
+        <p style={s.p}>{phase === "rejected" ? "You declined the request." : "The request expired."}</p>
         <button onClick={start} style={s.btn}>Try again</button>
       </div>
     );
   }
 
   // ---- active ----
+  if (phase === "picker") {
+    return (
+      <div>
+        <p style={s.p}>
+          Connect a wallet to claim a free key — 200 scored calls/month, 10 requests/minute.
+          You sign a one-tap request; no transaction, no funds move, no signup.
+        </p>
+        <WalletPicker options={options} selected={selected} onSelect={setSelected} />
+        <button
+          onClick={() => selected && pick(selected)}
+          disabled={!selected}
+          style={s.btn}
+        >
+          {selected ? `Continue with ${getProvider(selected)?.label}` : "Pick a wallet"}
+        </button>
+      </div>
+    );
+  }
+  if (phase === "xaman-wait") {
+    return (
+      <div style={s.box}>
+        <p style={s.h}>Approve the sign-in in Xaman</p>
+        {qr && <img alt="Scan with Xaman" style={s.qr} src={qr} />}
+        {link && <a href={link} target="_blank" rel="noreferrer" style={s.btn}>Open in Xaman</a>}
+        <p style={s.polling}>Waiting… this updates itself once you sign.</p>
+      </div>
+    );
+  }
+  if (phase === "ext-wait") {
+    return <p style={s.polling}>{msg || "Waiting for your wallet…"}</p>;
+  }
+
+  // idle / loading / error
   return (
     <div>
-      {phase === "idle" || phase === "opening" || phase === "error" ? (
-        <>
-          <p style={s.p}>
-            Connect your Xaman wallet to claim a free key — 200 scored calls/month, 10 requests/minute.
-            You sign a one-tap sign-in request; no transaction, no funds move, no signup.
-          </p>
-          <button onClick={start} disabled={phase === "opening"} style={s.btn}>
-            {phase === "opening" ? "Opening Xaman…" : "Connect with Xaman"}
-          </button>
-          {phase === "error" && <p style={s.err}>{msg}</p>}
-        </>
-      ) : (
-        <div style={s.box}>
-          <p style={s.h}>Approve the sign-in in Xaman</p>
-          {qr && <img alt="Scan with Xaman" style={s.qr} src={qr} />}
-          {link && (
-            <a href={link} target="_blank" rel="noreferrer" style={s.btn}>Open in Xaman</a>
-          )}
-          <p style={s.polling}>Waiting… this updates itself once you sign.</p>
-        </div>
-      )}
+      <p style={s.p}>
+        Connect a wallet to claim a free key — 200 scored calls/month, 10 requests/minute.
+        No transaction, no funds move, no signup.
+      </p>
+      <button onClick={start} disabled={phase === "loading"} style={s.btn}>
+        {phase === "loading" ? "Loading…" : "Connect a wallet"}
+      </button>
+      {phase === "error" && <p style={s.err}>{msg}</p>}
     </div>
   );
 }

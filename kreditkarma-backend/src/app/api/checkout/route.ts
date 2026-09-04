@@ -14,6 +14,7 @@ import {
   TREASURY_ADDRESS,
 } from "@/lib/rlusd";
 import { xrpUsd } from "@/lib/xrpPrice";
+import { xummConfigured } from "@/lib/xumm";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -105,6 +106,7 @@ export async function POST(req: Request) {
       expiresAt: invoice.expiresAt,
       pay,
       xamanDeeplink: xamanDeeplink(currency, payAmount, invoice.destinationTag),
+      xamanAvailable: xummConfigured(),
       statusUrl: `/api/checkout/status?id=${invoice.id}`,
     },
     { status: 201 }

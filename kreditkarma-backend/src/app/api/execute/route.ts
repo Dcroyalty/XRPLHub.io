@@ -37,9 +37,6 @@ export async function POST(req: NextRequest) {
 
     const apiKey = process.env.XUMM_API_KEY;
     const apiSecret = process.env.XUMM_API_SECRET;
-    if (!apiKey || !apiSecret) {
-      return NextResponse.json({ error: 'Execution gateway not configured. Contact support@xrplhub.io' }, { status: 503 });
-    }
     if (!productId || !account) {
       return NextResponse.json({ error: 'productId and account are required' }, { status: 400 });
     }
@@ -65,33 +62,38 @@ export async function POST(req: NextRequest) {
       }, { status: 409 });
     }
 
-    // Create the Xaman sign request (no submit:false — we DO submit it to the ledger).
-    const payload = {
-      txjson: built.txjson,
-      options: { submit: true, expire: 15 },
-      custom_meta: {
-        identifier: `xrplhub_exec_${productId}_${Date.now()}`,
-        blob: JSON.stringify({ productId, account, payTxHash }),
-        instruction: `XRPLHub — ${built.label}\nSign to execute your service on XRPL mainnet.`,
-      },
-    };
-
-    const res = await fetch(XUMM_API, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey, 'X-API-Secret': apiSecret },
-      body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(10_000),
-    });
-    const data = await res.json();
-    if (!res.ok || !data?.uuid) {
-      console.error('[execute] Xaman error:', JSON.stringify(data));
-      return NextResponse.json({ error: data?.error?.reference || 'Execution gateway error. Please try again.' }, { status: 502 });
+    // Xaman sign request — only when Xaman is configured. An injected wallet
+    // (Crossmark / GemWallet) submits `txjson` itself and polls verify?hash=.
+    let xaman: { uuid: string; qr_png: string | null; deep_link: string | null } | null = null;
+    if (apiKey && apiSecret) {
+      const payload = {
+        txjson: built.txjson,
+        options: { submit: true, expire: 15 },
+        custom_meta: {
+          identifier: `xrplhub_exec_${productId}_${Date.now()}`,
+          blob: JSON.stringify({ productId, account, payTxHash }),
+          instruction: `XRPLHub — ${built.label}\nSign to execute your service on XRPL mainnet.`,
+        },
+      };
+      const res = await fetch(XUMM_API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey, 'X-API-Secret': apiSecret },
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(10_000),
+      });
+      const data = await res.json();
+      if (res.ok && data?.uuid) {
+        xaman = { uuid: data.uuid, qr_png: data.refs?.qr_png ?? null, deep_link: data.next?.always ?? null };
+      } else {
+        console.error('[execute] Xaman error:', JSON.stringify(data));
+      }
     }
 
     return NextResponse.json({
-      uuid: data.uuid,
-      qr_png: data.refs?.qr_png,
-      deep_link: data.next?.always,
+      uuid: xaman?.uuid ?? null,
+      qr_png: xaman?.qr_png ?? null,
+      deep_link: xaman?.deep_link ?? null,
+      txjson: built.txjson,           // injected-wallet path submits this
       label: built.label,
       tier: built.tier,
       expires_in: 900,

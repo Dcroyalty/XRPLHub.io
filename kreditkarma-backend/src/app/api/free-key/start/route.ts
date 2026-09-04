@@ -1,7 +1,12 @@
 // app/api/free-key/start/route.ts
-// POST -> creates a Xaman SignIn payload for a free-tier key claim.
-// No body. The buyer signs in Xaman to prove wallet control; the wallet
-// address is read back server-side in /api/free-key/claim.
+// POST -> starts a free-tier key claim. Returns:
+//   - challenge { id, hex }     : single-use, 10-min, IP-bound. An injected
+//                                 wallet (Crossmark / GemWallet) signs `hex`;
+//                                 the server verifies it in /api/free-key/claim.
+//   - uuid / qrPng / deepLink   : Xaman SignIn payload (only when Xaman is
+//                                 configured). Kept at top level so the
+//                                 existing Xaman flow is unchanged.
+// No body. Per-IP rate limited either way.
 
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/xrplscore-db";
@@ -18,14 +23,8 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
-  if (!xummConfigured()) {
-    return NextResponse.json(
-      { error: "xaman_unavailable", message: "Free signup is temporarily unavailable — email support@xrplhub.io." },
-      { status: 503 }
-    );
-  }
-
   const ip = clientIp(req);
+
   const hourAgo = new Date(Date.now() - 60 * 60_000);
   const recent = await prisma.freeKeySignup.count({
     where: { ip, step: "start", createdAt: { gte: hourAgo } },
@@ -37,34 +36,38 @@ export async function POST(req: Request) {
     );
   }
 
-  const identifier = FREE_KEY_IDENTIFIER_PREFIX + randomBytes(12).toString("hex");
+  // Challenge for injected wallets — always issued.
+  const hex = randomBytes(32).toString("hex").toUpperCase();
+  const challenge = await prisma.signInChallenge.create({ data: { hex, ip } });
 
-  try {
-    const p = await createPayload({
-      txjson: { TransactionType: "SignIn" },
-      submit: false,
-      identifier,
-      instruction: "XRPLHub — claim your free API key\nSign in to prove you control this wallet. No transaction, no funds move.",
-      expireMinutes: SIGNIN_EXPIRE_MINUTES,
-    });
-    await prisma.freeKeySignup.create({ data: { ip, step: "start" } });
-    return NextResponse.json({
-      uuid: p.uuid,
-      qrPng: p.qrPng,
-      deepLink: p.deepLink,
-      expiresIn: SIGNIN_EXPIRE_MINUTES * 60,
-    });
-  } catch (e) {
-    if (e instanceof XummRateLimitError) {
-      return NextResponse.json(
-        { error: "busy", message: "Xaman is busy — try again in a moment." },
-        { status: 429 }
-      );
+  // Xaman SignIn payload — only when Xaman is configured.
+  let xaman: { uuid: string; qrPng: string | null; deepLink: string | null } | null = null;
+  if (xummConfigured()) {
+    try {
+      const p = await createPayload({
+        txjson: { TransactionType: "SignIn" },
+        submit: false,
+        identifier: FREE_KEY_IDENTIFIER_PREFIX + randomBytes(12).toString("hex"),
+        instruction:
+          "XRPLHub — claim your free API key\nSign in to prove you control this wallet. No transaction, no funds move.",
+        expireMinutes: SIGNIN_EXPIRE_MINUTES,
+      });
+      xaman = { uuid: p.uuid, qrPng: p.qrPng, deepLink: p.deepLink };
+    } catch (e) {
+      if (!(e instanceof XummRateLimitError)) console.error("[free-key/start] xaman", e);
+      // fall through — the injected path still works
     }
-    console.error("[free-key/start]", e);
-    return NextResponse.json(
-      { error: "xaman_error", message: "Could not open Xaman. Try again shortly." },
-      { status: 502 }
-    );
   }
+
+  await prisma.freeKeySignup.create({ data: { ip, step: "start" } });
+
+  return NextResponse.json({
+    challenge: { id: challenge.id, hex },
+    // Xaman fields at top level (unchanged shape for the existing flow):
+    uuid: xaman?.uuid ?? null,
+    qrPng: xaman?.qrPng ?? null,
+    deepLink: xaman?.deepLink ?? null,
+    xamanAvailable: xaman != null,
+    expiresIn: SIGNIN_EXPIRE_MINUTES * 60,
+  });
 }

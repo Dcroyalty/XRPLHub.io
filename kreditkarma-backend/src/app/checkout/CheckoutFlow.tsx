@@ -12,6 +12,13 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import FreeKeyFlow from "./FreeKeyFlow";
+import WalletPicker from "@/lib/wallet/WalletPicker";
+import {
+  getProvider,
+  resolveProviderOptions,
+  WalletCancelled,
+  type ProviderOption,
+} from "@/lib/wallet";
 
 type PayFields = {
   address: string;
@@ -33,12 +40,14 @@ type Invoice = {
   xrpUsdRate: number | null;
   pay: PayFields;
   xamanDeeplink: string;
+  xamanAvailable?: boolean;
   statusUrl: string;
 };
 
 type Currency = "XRP" | "RLUSD";
 type Status = "loading" | "pending" | "paid" | "expired" | "error";
 type XamanState = "idle" | "opening" | "waiting" | "signed" | "rejected" | "expired" | "error";
+type ExtState = "idle" | "submitting" | "submitted" | "rejected" | "error";
 
 export default function CheckoutFlow({ plan }: { plan: string }) {
   const [currency, setCurrency] = useState<Currency>("XRP"); // what the audience already holds
@@ -53,6 +62,12 @@ export default function CheckoutFlow({ plan }: { plan: string }) {
   const [xamanQr, setXamanQr] = useState<string | null>(null);
   const [xamanLink, setXamanLink] = useState<string | null>(null);
   const xamanUuid = useRef<string | null>(null);
+
+  // Wallet picker + injected-wallet state
+  const [walletOpts, setWalletOpts] = useState<ProviderOption[]>([]);
+  const [walletSel, setWalletSel] = useState<string>("xaman");
+  const [ext, setExt] = useState<ExtState>("idle");
+  const [extMsg, setExtMsg] = useState("");
 
   const isFree = plan === "free";
 
@@ -80,6 +95,16 @@ export default function CheckoutFlow({ plan }: { plan: string }) {
         if (!res.ok) throw new Error(data.message ?? "Could not start checkout.");
         setInvoice(data);
         setStatus("pending");
+        setExt("idle");
+        setExtMsg("");
+        resolveProviderOptions({ xamanAvailable: data.xamanAvailable !== false })
+          .then((opts) => {
+            if (cancelled) return;
+            setWalletOpts(opts);
+            const first = opts.find((o) => o.available)?.provider.id ?? "xaman";
+            setWalletSel(first);
+          })
+          .catch(() => {});
       } catch (e) {
         if (cancelled) return;
         setError(e instanceof Error ? e.message : "Checkout failed.");
@@ -175,6 +200,42 @@ export default function CheckoutFlow({ plan }: { plan: string }) {
     }
   }, [invoice]);
 
+  // Injected wallet (Crossmark / GemWallet): build + submit the Payment in the
+  // extension, then let the AUTHORITATIVE /api/checkout/status poll confirm it
+  // on-ledger (it matches by destination tag, same as the Xaman path).
+  const payWithExtension = useCallback(
+    async (providerId: string) => {
+      if (!invoice) return;
+      const provider = getProvider(providerId);
+      if (!provider) return;
+      setExt("submitting");
+      setExtMsg(`Approve the payment in ${provider.label}…`);
+      try {
+        const handle = provider.submitPayment({
+          invoiceId: invoice.invoiceId,
+          to: invoice.pay.address,
+          amount: String(invoice.amount),
+          currency: invoice.currency,
+          issuer: invoice.pay.issuer ?? null,
+          currencyHex: invoice.pay.currencyHex ?? null,
+          destinationTag: invoice.pay.destinationTag,
+        });
+        await handle.result; // { via: "injected", txHash }
+        setExt("submitted");
+        setExtMsg("Payment sent. Confirming on the ledger…");
+      } catch (e) {
+        if (e instanceof WalletCancelled) {
+          setExt("rejected");
+          setExtMsg("You declined the payment. Try again or pay manually.");
+        } else {
+          setExt("error");
+          setExtMsg(e instanceof Error ? e.message : "Could not submit the payment. Pay manually below.");
+        }
+      }
+    },
+    [invoice]
+  );
+
   // ---- terminal states -----------------------------------------------------
 
   if (isFree) {
@@ -233,30 +294,63 @@ export default function CheckoutFlow({ plan }: { plan: string }) {
             )}
           </div>
 
-          {/* ---- Xaman connect: one pre-filled sign request ---- */}
-          {xaman === "waiting" ? (
-            <div style={s.xamanBox}>
-              <p style={s.xamanH}>Approve the payment in Xaman</p>
-              {xamanQr && <img alt="Scan with Xaman" style={s.qr} src={xamanQr} />}
-              {xamanLink && (
-                <a href={xamanLink} target="_blank" rel="noreferrer" style={s.xaman}>
-                  Open in Xaman
-                </a>
-              )}
-              <p style={s.polling}>Amount, destination and tag are already filled in — just sign.</p>
-            </div>
-          ) : (
-            <button onClick={openXaman} disabled={xaman === "opening"} style={s.xaman}>
-              {xaman === "opening" ? "Opening Xaman…" : "Pay with Xaman"}
-            </button>
+          {/* ---- wallet picker (Xaman default; extensions if detected) ---- */}
+          {walletOpts.length > 1 && xaman !== "waiting" && ext === "idle" && (
+            <WalletPicker options={walletOpts} selected={walletSel} onSelect={setWalletSel} />
           )}
 
-          {xaman === "signed" && <p style={s.okMsg}>{xamanMsg}</p>}
-          {(xaman === "rejected" || xaman === "expired" || xaman === "error") && (
-            <p style={s.warn}>{xamanMsg} </p>
+          {/* ---- Xaman: one pre-filled sign request (unchanged) ---- */}
+          {walletSel === "xaman" && (
+            <>
+              {xaman === "waiting" ? (
+                <div style={s.xamanBox}>
+                  <p style={s.xamanH}>Approve the payment in Xaman</p>
+                  {xamanQr && <img alt="Scan with Xaman" style={s.qr} src={xamanQr} />}
+                  {xamanLink && (
+                    <a href={xamanLink} target="_blank" rel="noreferrer" style={s.xaman}>
+                      Open in Xaman
+                    </a>
+                  )}
+                  <p style={s.polling}>Amount, destination and tag are already filled in — just sign.</p>
+                </div>
+              ) : (
+                <button onClick={openXaman} disabled={xaman === "opening"} style={s.xaman}>
+                  {xaman === "opening" ? "Opening Xaman…" : "Pay with Xaman"}
+                </button>
+              )}
+              {xaman === "signed" && <p style={s.okMsg}>{xamanMsg}</p>}
+              {(xaman === "rejected" || xaman === "expired" || xaman === "error") && (
+                <>
+                  <p style={s.warn}>{xamanMsg} </p>
+                  <button onClick={openXaman} style={s.retry}>Try Xaman again</button>
+                </>
+              )}
+            </>
           )}
-          {(xaman === "rejected" || xaman === "expired" || xaman === "error") && (
-            <button onClick={openXaman} style={s.retry}>Try Xaman again</button>
+
+          {/* ---- Injected wallet (Crossmark / GemWallet) ---- */}
+          {walletSel !== "xaman" && (
+            <>
+              {ext === "submitted" ? (
+                <p style={s.okMsg}>{extMsg}</p>
+              ) : (
+                <button
+                  onClick={() => payWithExtension(walletSel)}
+                  disabled={ext === "submitting"}
+                  style={s.xaman}
+                >
+                  {ext === "submitting"
+                    ? `Opening ${getProvider(walletSel)?.label}…`
+                    : `Pay with ${getProvider(walletSel)?.label}`}
+                </button>
+              )}
+              {(ext === "rejected" || ext === "error") && (
+                <>
+                  <p style={s.warn}>{extMsg}</p>
+                  <button onClick={() => payWithExtension(walletSel)} style={s.retry}>Try again</button>
+                </>
+              )}
+            </>
           )}
 
           {/* ---- manual fallback ---- */}

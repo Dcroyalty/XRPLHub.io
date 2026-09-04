@@ -8,7 +8,65 @@
 //   3. per-IP cap on issued keys      (CLAIM_PER_IP_PER_DAY)
 //   4. Xaman SignIn itself — the wallet cryptographically signs our payload
 
+import { verify as verifySignature, deriveAddress } from "ripple-keypairs";
+
 export const FREE_KEY_IDENTIFIER_PREFIX = "xrplhub_freekey_";
+
+// A SignIn challenge older than this can't be claimed. Matches the Xaman
+// payload expiry so both paths behave the same.
+export const CHALLENGE_TTL_MS = 10 * 60_000;
+
+/**
+ * Verify an injected-wallet (Crossmark / GemWallet) proof of control.
+ *
+ * Gate on free-key issuance — must be strict:
+ *   1. the public key must derive to the address the client claims (bind key <-> address)
+ *   2. the signature must verify against `challengeHex` under that public key
+ *      (bind signature <-> our single-use challenge)
+ *
+ * Wallets differ on whether `signMessage` signs the raw hex or the hex of the
+ * challenge's UTF-8 bytes, so we accept a signature that verifies against
+ * either encoding — the security properties (right key, right challenge) hold
+ * regardless of which byte string was signed.
+ */
+export function verifyInjectedProof(input: {
+  address: string;
+  publicKey: string;
+  signature: string;
+  challengeHex: string;
+}): { ok: true } | { ok: false; reason: string } {
+  const { address, publicKey, signature, challengeHex } = input;
+
+  if (!/^[0-9A-Fa-f]{2,}$/.test(publicKey) || !/^[0-9A-Fa-f]{2,}$/.test(signature)) {
+    return { ok: false, reason: "malformed publicKey or signature" };
+  }
+
+  let derived: string;
+  try {
+    derived = deriveAddress(publicKey);
+  } catch {
+    return { ok: false, reason: "publicKey does not derive to an address" };
+  }
+  if (derived !== address) {
+    return { ok: false, reason: "signature does not recover to the claimed address" };
+  }
+
+  const candidates = [
+    challengeHex.toUpperCase(),
+    challengeHex.toLowerCase(),
+    Buffer.from(challengeHex, "utf8").toString("hex").toUpperCase(),
+  ];
+  const good = candidates.some((msg) => {
+    try {
+      return verifySignature(msg, signature, publicKey);
+    } catch {
+      return false;
+    }
+  });
+  if (!good) return { ok: false, reason: "signature does not verify over the challenge" };
+
+  return { ok: true };
+}
 
 // Rolling-window IP limits (counted in Postgres via FreeKeySignup rows).
 export const START_PER_IP_PER_HOUR = 8;

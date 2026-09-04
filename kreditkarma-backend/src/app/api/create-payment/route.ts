@@ -43,15 +43,13 @@ export async function POST(req: NextRequest) {
   try {
     const { productId, currency, amount, email } = await req.json()
 
-    if (!xummConfigured()) {
-      return NextResponse.json({ error: 'Payment gateway not configured. Contact support@xrplhub.io' }, { status: 503 })
-    }
-
     const amtNum = parseFloat(amount)
     if (!amtNum || amtNum <= 0) {
       return NextResponse.json({ error: 'Invalid amount' }, { status: 400 })
     }
 
+    // Canonical fee Payment to the treasury. Same object for Xaman and for an
+    // injected wallet that submits it itself.
     const txjson: Record<string, unknown> = {
       TransactionType: 'Payment',
       Destination: TREASURY,
@@ -60,27 +58,38 @@ export async function POST(req: NextRequest) {
         : { currency: toCurrencyCode(currency || 'RLUSD'), issuer: RLUSD_ISSUER, value: String(amtNum) },
     }
 
-    try {
-      const p = await createPayload({
-        txjson,
-        identifier: `xrplhub_${productId}_${Date.now()}`,
-        blob: { productId, amount: amtNum, currency, email: email || '' },
-        instruction: `XRPLHub — ${NAMES[productId] || productId}\nAmount: ${amtNum} ${currency}\nDestination: Treasury`,
-        expireMinutes: 15,
-      })
-      return NextResponse.json({
-        uuid:       p.uuid,
-        qr_png:     p.qrPng,
-        deep_link:  p.deepLink,
-        expires_in: p.expiresIn,
-      })
-    } catch (err) {
-      if (err instanceof XummRateLimitError) {
-        return NextResponse.json({ error: 'Payment gateway is busy — please retry in a moment.' }, { status: 429 })
+    // Injected-wallet clients only need the txjson + treasury; skip Xaman.
+    let xaman: { uuid: string; qr_png: string | null; deep_link: string | null; expires_in: number } | null = null
+    if (xummConfigured()) {
+      try {
+        const p = await createPayload({
+          txjson,
+          identifier: `xrplhub_${productId}_${Date.now()}`,
+          blob: { productId, amount: amtNum, currency, email: email || '' },
+          instruction: `XRPLHub — ${NAMES[productId] || productId}\nAmount: ${amtNum} ${currency}\nDestination: Treasury`,
+          expireMinutes: 15,
+        })
+        xaman = { uuid: p.uuid, qr_png: p.qrPng, deep_link: p.deepLink, expires_in: p.expiresIn }
+      } catch (err) {
+        if (err instanceof XummRateLimitError) {
+          return NextResponse.json({ error: 'Payment gateway is busy — please retry in a moment.' }, { status: 429 })
+        }
+        console.error('[create-payment] Xaman error:', err)
+        // fall through with txjson-only so an injected wallet can still pay
       }
-      console.error('[create-payment] Xaman error:', err)
-      return NextResponse.json({ error: 'Payment gateway error. Please try again.' }, { status: 502 })
     }
+
+    return NextResponse.json({
+      // Xaman fields at top level — unchanged shape for the existing flow:
+      uuid:       xaman?.uuid ?? null,
+      qr_png:     xaman?.qr_png ?? null,
+      deep_link:  xaman?.deep_link ?? null,
+      expires_in: xaman?.expires_in ?? 900,
+      // Injected-wallet fields:
+      txjson,
+      treasury:   TREASURY,
+      productLabel: NAMES[productId] || productId,
+    })
   } catch (err) {
     console.error('[create-payment]', err)
     return NextResponse.json({ error: 'Payment initialization failed. Please try again.' }, { status: 500 })

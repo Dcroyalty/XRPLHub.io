@@ -11,7 +11,7 @@ const XUMM_STATUS = 'https://xumm.app/api/v1/platform/payload';
 const XRPL_API    = 'https://xrplcluster.com/';
 const XRPL_BACKUP = 'https://s1.ripple.com:51234/';
 
-async function txResult(txHash: string): Promise<string | null> {
+async function fetchTx(txHash: string): Promise<Record<string, unknown> | null> {
   for (const url of [XRPL_API, XRPL_BACKUP]) {
     try {
       const res = await fetch(url, {
@@ -21,16 +21,47 @@ async function txResult(txHash: string): Promise<string | null> {
         signal: AbortSignal.timeout(8_000),
       });
       const d = await res.json();
-      const meta = d?.result?.meta as Record<string, unknown> | undefined;
-      if (meta?.TransactionResult) return meta.TransactionResult as string;
+      if (d?.result?.Account) return d.result as Record<string, unknown>;
     } catch { continue; }
   }
   return null;
 }
 
+async function txResult(txHash: string): Promise<string | null> {
+  const tx = await fetchTx(txHash);
+  const meta = tx?.meta as Record<string, unknown> | undefined;
+  return (meta?.TransactionResult as string) ?? null;
+}
+
 export async function GET(req: NextRequest) {
   try {
     const uuid = req.nextUrl.searchParams.get('uuid');
+    const hashParam = req.nextUrl.searchParams.get('hash');   // injected-wallet path
+    const account = req.nextUrl.searchParams.get('account') ?? '';
+    const productId = req.nextUrl.searchParams.get('productId') ?? '';
+    const payTxHash = req.nextUrl.searchParams.get('payTxHash') ?? '';
+
+    // ---- injected wallet: verify the service tx it broadcast, on-ledger ----
+    if (hashParam) {
+      if (!/^[0-9A-Fa-f]{64}$/.test(hashParam))
+        return NextResponse.json({ status: 'error', reason: 'bad hash' }, { status: 400 });
+      const tx = await fetchTx(hashParam);
+      if (!tx) return NextResponse.json({ status: 'pending', txHash: hashParam });
+      const meta = tx.meta as Record<string, unknown> | undefined;
+      const result = meta?.TransactionResult as string | undefined;
+      if (!result) return NextResponse.json({ status: 'pending', txHash: hashParam });
+      if (result !== 'tesSUCCESS') return NextResponse.json({ status: 'failed', txHash: hashParam, result });
+      if (account && tx.Account !== account)
+        return NextResponse.json({ status: 'failed', txHash: hashParam, result: 'wrong signer' });
+      try {
+        await recordPurchase({
+          productId, sender: account || null, txHash: payTxHash || null,
+          serviceTxHash: hashParam, status: 'DELIVERED', deliveredAt: new Date().toISOString(),
+        });
+      } catch {}
+      return NextResponse.json({ status: 'delivered', txHash: hashParam });
+    }
+
     if (!uuid) return NextResponse.json({ error: 'uuid required' }, { status: 400 });
 
     const apiKey = process.env.XUMM_API_KEY;

@@ -1,6 +1,13 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import WalletPicker from '@/lib/wallet/WalletPicker';
+import {
+  getProvider as getWalletProvider,
+  resolveProviderOptions,
+  WalletCancelled,
+  type ProviderOption,
+} from '@/lib/wallet';
 
 // BUILD_MARKER_2026_06_03_FINAL  // unique tag to verify this exact file shipped
 const API_URL        = (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_API_URL) || '';
@@ -651,6 +658,11 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
   const [countdown, setCountdown] = useState(900);
   const [verifiedTx, setVerifiedTx] = useState('');
   const [payError, setPayError] = useState('');
+  // multi-wallet (Xaman default; Crossmark / GemWallet if detected)
+  const [walletOpts, setWalletOpts] = useState<ProviderOption[]>([]);
+  const [walletSel, setWalletSel]   = useState('xaman');
+  const [payHash, setPayHash]       = useState('');       // injected-wallet fee-payment tx
+  const [exHash, setExHash]         = useState('');       // injected-wallet service tx
   // execution (service fulfillment) state
   const [exForm, setExForm]     = useState<Record<string,string>>({});
   const [exStatus, setExStatus] = useState<'form'|'building'|'signing'|'delivered'|'failed'|'caution'>('form');
@@ -718,13 +730,90 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
     return () => { stop = true; if (exPollRef.current) clearTimeout(exPollRef.current); };
   }, [exStatus, exUuid]); // eslint-disable-line
 
+  // detect installed extension wallets when the modal opens
+  useEffect(() => {
+    if (!show) return;
+    let live = true;
+    resolveProviderOptions({ xamanAvailable: true })
+      .then((o) => { if (live) { setWalletOpts(o); setWalletSel(o.find((x) => x.available)?.provider.id ?? 'xaman'); } })
+      .catch(() => {});
+    return () => { live = false; };
+  }, [show]);
+
+  // injected fee-payment: poll check-payment?hash= until the ledger confirms it
+  useEffect(() => {
+    if (payStatus !== 'waiting' || !payHash || !product) return;
+    let stop = false;
+    const poll = async () => {
+      try {
+        const params = new URLSearchParams({ hash: payHash, productId: product.id, amount: String(price), currency, email });
+        const res = await fetch(`${API_URL}/api/check-payment?${params}`);
+        const data = await res.json();
+        if (stop) return;
+        if (data.status === 'verified') { setVerifiedTx(data.txHash || payHash); setPayStatus('done'); setStep('success'); }
+        else if (data.status === 'failed' || data.status === 'rejected') { setPayStatus('idle'); setPayError(data.reason || 'Payment failed on the ledger.'); }
+        else { setTimeout(poll, 3000); }
+      } catch { if (!stop) setTimeout(poll, 5000); }
+    };
+    poll();
+    return () => { stop = true; };
+  }, [payStatus, payHash]); // eslint-disable-line
+
+  // injected service-execution: poll execute/verify?hash=
+  useEffect(() => {
+    if (exStatus !== 'signing' || !exHash || !product) return;
+    let stop = false;
+    const poll = async () => {
+      try {
+        const params = new URLSearchParams({ hash: exHash, account: connectedWallet, productId: product.id, payTxHash: verifiedTx });
+        const res = await fetch(`${API_URL}/api/execute/verify?${params}`);
+        const data = await res.json();
+        if (stop) return;
+        if (data.status === 'delivered') { setExTx(data.txHash || exHash); setExStatus('delivered'); }
+        else if (data.status === 'failed') { setExError(`Ledger rejected it: ${data.result || 'failed'}`); setExStatus('failed'); }
+        else { setTimeout(poll, 3000); }
+      } catch { if (!stop) setTimeout(poll, 5000); }
+    };
+    poll();
+    return () => { stop = true; };
+  }, [exStatus, exHash]); // eslint-disable-line
+
   if (!product) return null;
+
+  // Pay the service fee with an injected wallet, then let the on-ledger poll confirm.
+  const buyWithExtension = async (providerId: string) => {
+    if (!product) return;
+    const provider = getWalletProvider(providerId);
+    if (!provider) return;
+    setPayStatus('creating'); setPayError('');
+    try {
+      const cr = await fetch(`${API_URL}/api/create-payment`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ productId: product.id, currency, amount: price, email }),
+      });
+      const cd = await cr.json();
+      if (!cr.ok || !cd.treasury) throw new Error(cd.error || 'Could not start payment');
+      const handle = provider.submitPayment({
+        productId: product.id, to: cd.treasury, amount: String(price), currency,
+        issuer: (cd.txjson?.Amount as { issuer?: string })?.issuer ?? null,
+        currencyHex: (cd.txjson?.Amount as { currency?: string })?.currency ?? null,
+      });
+      const r = await handle.result; // { via:'injected', txHash }
+      setPayHash(r.via === 'injected' ? r.txHash : '');
+      setPayStatus('waiting');
+    } catch (e: unknown) {
+      if (e instanceof WalletCancelled) setPayError('You declined the payment.');
+      else setPayError(e instanceof Error ? e.message : 'Payment failed');
+      setPayStatus('idle');
+    }
+  };
 
   const handleClose = () => {
     cancelRef.current = true; if (pollRef.current) clearTimeout(pollRef.current); if (exPollRef.current) clearTimeout(exPollRef.current);
     onClose();
     setTimeout(() => { setStep('info'); setEmail(''); setTierIdx(0); setPayStatus('idle'); setUuid(''); setQrUrl(''); setDeepLnk(''); setCountdown(900); setVerifiedTx(''); setPayError(''); cancelRef.current = false;
-      setExForm({}); setExStatus('form'); setExUuid(''); setExQr(''); setExLink(''); setExTx(''); setExError(''); setExLabel(''); setCautionOk(false); }, 300);
+      setExForm({}); setExStatus('form'); setExUuid(''); setExQr(''); setExLink(''); setExTx(''); setExError(''); setExLabel(''); setCautionOk(false);
+      setPayHash(''); setExHash(''); setWalletSel('xaman'); }, 300);
   };
 
   const handleBuyNow = async () => {
@@ -749,8 +838,25 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
       const data = await res.json();
       if (res.status === 409 && data.requiresConfirmation) { setExLabel(data.label||''); setExStatus('caution'); return; }
       if (res.status === 422 && data.needsParams) { setExError('Please fill: ' + data.needsParams.join(', ')); setExStatus('form'); return; }
-      if (!res.ok || !data.uuid) throw new Error(data.error || 'Could not build your service transaction');
-      setExUuid(data.uuid); setExQr(data.qr_png); setExLink(data.deep_link); setExLabel(data.label||''); setExStatus('signing');
+      if (!res.ok || (!data.uuid && !data.txjson)) throw new Error(data.error || 'Could not build your service transaction');
+      setExLabel(data.label||'');
+
+      if (walletSel !== 'xaman' && data.txjson) {
+        // injected wallet signs + submits the service tx itself
+        const provider = getWalletProvider(walletSel);
+        if (!provider?.submitTx) throw new Error('This wallet cannot sign that transaction.');
+        setExStatus('signing');
+        try {
+          const { txHash } = await provider.submitTx(data.txjson);
+          setExHash(txHash);
+        } catch (e) {
+          if (e instanceof WalletCancelled) { setExError('You declined the signature.'); setExStatus('form'); }
+          else { setExError(e instanceof Error ? e.message : 'Signing failed'); setExStatus('form'); }
+        }
+        return;
+      }
+
+      setExUuid(data.uuid); setExQr(data.qr_png); setExLink(data.deep_link); setExStatus('signing');
     } catch (e:unknown) { setExError(e instanceof Error ? e.message : 'Execution failed'); setExStatus('form'); }
   };
 
@@ -784,7 +890,7 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
               </div>
             ))}
             {exError && <p style={{ fontSize:12,color:'#fca5a5',marginBottom:10 }}>⚠️ {exError}</p>}
-            <button disabled={!connectedWallet} onClick={()=>handleExecute(false)} style={{ ...Btn('color',product.color,{width:'100%',padding:'14px',fontSize:15,marginTop:6,opacity:connectedWallet?1:.4}) }}>⚡ Build &amp; Sign in Xaman →</button>
+            <button disabled={!connectedWallet} onClick={()=>handleExecute(false)} style={{ ...Btn('color',product.color,{width:'100%',padding:'14px',fontSize:15,marginTop:6,opacity:connectedWallet?1:.4}) }}>⚡ Build &amp; Sign{walletSel !== 'xaman' ? ` with ${getWalletProvider(walletSel)?.label ?? 'wallet'}` : ' in Xaman'} →</button>
             <p style={{ fontSize:11,color:'rgba(255,255,255,.26)',textAlign:'center',marginTop:10 }}>AI builds the exact XRPL transaction · you approve it in your own wallet · we verify on-chain</p>
           </>
         )}
@@ -817,14 +923,20 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
           <>
             <div style={{ display:'flex',alignItems:'center',gap:8,background:'rgba(16,185,129,.08)',border:'1px solid rgba(16,185,129,.25)',borderRadius:12,padding:'10px 16px',marginBottom:14 }}>
               <span style={{ width:8,height:8,borderRadius:'50%',background:'#10b981',boxShadow:'0 0 12px #10b981',animation:'pulse 1.4s infinite' }} />
-              <span style={{ fontSize:13,fontWeight:700,color:'#10b981' }}>Sign in Xaman to execute…</span>
+              <span style={{ fontSize:13,fontWeight:700,color:'#10b981' }}>{exUuid ? 'Sign in Xaman to execute…' : 'Sign in your wallet to execute…'}</span>
             </div>
-            <div style={{ background:'#fff',borderRadius:18,padding:12,width:200,height:200,margin:'0 auto 12px',display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 0 30px rgba(16,185,129,.15)' }}>
-              <img src={exQr || qrImg(`https://xumm.app/sign/${exUuid}`)} alt="Sign" style={{ width:'100%',height:'100%',borderRadius:8 }} />
-            </div>
-            <div style={{ textAlign:'center',marginBottom:14 }}>
-              <a href={exLink || `https://xumm.app/sign/${exUuid}`} target="_blank" rel="noopener noreferrer" style={{ display:'inline-flex',alignItems:'center',gap:8,background:'#10b981',color:'#000',fontWeight:800,fontSize:14,padding:'13px 28px',borderRadius:99,textDecoration:'none' }}>📱 Open in Xaman — Sign →</a>
-            </div>
+            {exUuid ? (
+              <>
+                <div style={{ background:'#fff',borderRadius:18,padding:12,width:200,height:200,margin:'0 auto 12px',display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 0 30px rgba(16,185,129,.15)' }}>
+                  <img src={exQr || qrImg(`https://xumm.app/sign/${exUuid}`)} alt="Sign" style={{ width:'100%',height:'100%',borderRadius:8 }} />
+                </div>
+                <div style={{ textAlign:'center',marginBottom:14 }}>
+                  <a href={exLink || `https://xumm.app/sign/${exUuid}`} target="_blank" rel="noopener noreferrer" style={{ display:'inline-flex',alignItems:'center',gap:8,background:'#10b981',color:'#000',fontWeight:800,fontSize:14,padding:'13px 28px',borderRadius:99,textDecoration:'none' }}>📱 Open in Xaman — Sign →</a>
+                </div>
+              </>
+            ) : (
+              <p style={{ textAlign:'center',color:'rgba(255,255,255,.55)',fontSize:13,margin:'16px 0' }}>Approve the transaction in your wallet…</p>
+            )}
             <p style={{ textAlign:'center',fontSize:11,color:'rgba(255,255,255,.28)' }}>We confirm your service transaction on XRPL mainnet before marking it delivered.</p>
           </>
         )}
@@ -904,17 +1016,25 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
             </div>
             <span style={{ fontSize:12,color:'rgba(255,255,255,.4)',fontFamily:"'IBM Plex Mono',monospace" }}>⏱ {fmt(countdown)}</span>
           </div>
-          <div style={{ background:'#fff',borderRadius:18,padding:12,width:200,height:200,margin:'0 auto 12px',display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 0 30px rgba(16,185,129,.15)' }}>
-            <img src={qrUrl || qrImg(`https://xumm.app/sign/${uuid}`)} alt="Pay" style={{ width:'100%',height:'100%',borderRadius:8 }} />
-          </div>
-          <div style={{ textAlign:'center',marginBottom:14 }}>
-            <a href={deepLnk || `https://xumm.app/sign/${uuid}`} target="_blank" rel="noopener noreferrer"
-              style={{ display:'inline-flex',alignItems:'center',gap:8,background:'#10b981',color:'#000',fontWeight:800,fontSize:14,padding:'13px 28px',borderRadius:99,textDecoration:'none',boxShadow:'0 4px 20px rgba(16,185,129,.35)' }}>
-              📱 Open in Xaman — Sign Now →
-            </a>
-          </div>
+          {uuid ? (
+            <>
+              <div style={{ background:'#fff',borderRadius:18,padding:12,width:200,height:200,margin:'0 auto 12px',display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 0 30px rgba(16,185,129,.15)' }}>
+                <img src={qrUrl || qrImg(`https://xumm.app/sign/${uuid}`)} alt="Pay" style={{ width:'100%',height:'100%',borderRadius:8 }} />
+              </div>
+              <div style={{ textAlign:'center',marginBottom:14 }}>
+                <a href={deepLnk || `https://xumm.app/sign/${uuid}`} target="_blank" rel="noopener noreferrer"
+                  style={{ display:'inline-flex',alignItems:'center',gap:8,background:'#10b981',color:'#000',fontWeight:800,fontSize:14,padding:'13px 28px',borderRadius:99,textDecoration:'none',boxShadow:'0 4px 20px rgba(16,185,129,.35)' }}>
+                  📱 Open in Xaman — Sign Now →
+                </a>
+              </div>
+            </>
+          ) : (
+            <p style={{ textAlign:'center',color:'rgba(255,255,255,.55)',fontSize:13,margin:'18px 0' }}>
+              Approve the payment in your wallet — this confirms on the ledger automatically.
+            </p>
+          )}
           <div style={{ background:'rgba(255,255,255,.04)',border:'1px solid rgba(255,255,255,.07)',borderRadius:14,padding:'14px 18px',marginBottom:12 }}>
-            {[['1','Scan QR or tap "Open in Xaman"'],['2',`Review the pre-filled ${price} ${currency} payment`],['3','Slide to confirm — we verify it on-chain']].map(([n,t]) => (
+            {[['1',uuid?'Scan QR or tap "Open in Xaman"':'Approve in your wallet'],['2',`Review the pre-filled ${price} ${currency} payment`],['3','Confirm — we verify it on-chain']].map(([n,t]) => (
               <div key={n} style={{ display:'flex',alignItems:'flex-start',gap:12,marginBottom:n==='3'?0:10 }}>
                 <span style={{ width:22,height:22,borderRadius:'50%',background:`${product.color}20`,border:`1px solid ${product.color}40`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:800,color:product.color,flexShrink:0 }}>{n}</span>
                 <span style={{ fontSize:13,color:'rgba(255,255,255,.6)',lineHeight:1.5,paddingTop:2 }}>{t}</span>
@@ -961,12 +1081,23 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
           </div>
           <label style={LBL}>Email for Receipt (optional)</label>
           <input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@example.com" style={{ ...INP, marginBottom:16 }} />
+          {walletOpts.length > 1 && (
+            <div style={{ marginBottom:14 }}>
+              <label style={LBL}>Wallet</label>
+              <WalletPicker options={walletOpts} selected={walletSel} onSelect={setWalletSel} />
+            </div>
+          )}
           <div style={{ background:'rgba(16,185,129,.05)',border:'1px solid rgba(16,185,129,.15)',borderRadius:12,padding:'11px 14px',marginBottom:16,fontSize:12,color:'rgba(255,255,255,.45)',lineHeight:1.6 }}>
-            <strong style={{ color:'#10b981' }}>How it works:</strong> Tap below → Xaman opens pre-filled → slide to sign → we verify the transaction on XRPL mainnet → service activates.
+            <strong style={{ color:'#10b981' }}>How it works:</strong> Sign the pre-filled {price} {currency} payment → we verify it on XRPL mainnet → service activates.
           </div>
           <div style={{ display:'flex',gap:10 }}>
             <button onClick={()=>setStep('info')} style={{ ...Btn('ghost',undefined,{flex:1}) }}>← Back</button>
-            <button onClick={handleBuyNow} style={{ ...Btn('color',product.color,{flex:2,fontSize:15}) }}>📱 Pay {price} {currency} →</button>
+            <button
+              onClick={() => (walletSel === 'xaman' ? handleBuyNow() : buyWithExtension(walletSel))}
+              style={{ ...Btn('color',product.color,{flex:2,fontSize:15}) }}
+            >
+              {walletSel === 'xaman' ? '📱' : ''} Pay {price} {currency} →
+            </button>
             {TEST_MODE && <p style={{ fontSize:10,color:'#f59e0b',textAlign:'center',marginTop:6,fontWeight:700,letterSpacing:'.08em' }}>⚠️ TEST MODE — real launch price is {displayPrice} {currency}</p>}
           </div>
         </>
