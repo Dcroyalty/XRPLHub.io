@@ -39,11 +39,12 @@ export async function GET(req: Request) {
     return NextResponse.json({ status: "expired" });
   }
 
-  // Ask the ledger. Reads meta.delivered_amount under the hood.
-  const match = await findPayment(
-    invoice.destinationTag,
-    Number(invoice.amountRlusd)
-  );
+  // Ask the ledger, in the currency this invoice was quoted in.
+  const isXrp = invoice.currency === "XRP";
+  const expected = isXrp ? Number(invoice.amountXrp) : Number(invoice.amountRlusd);
+  const match = await findPayment(invoice.destinationTag, expected, {
+    currency: isXrp ? "XRP" : "RLUSD",
+  });
 
   if (!match.paid) {
     return NextResponse.json({ status: "pending" });
@@ -56,7 +57,8 @@ export async function GET(req: Request) {
     data: {
       status: "paid",
       txHash: match.txHash,
-      deliveredRlusd: match.deliveredRlusd,
+      deliveredRlusd: match.deliveredRlusd ?? undefined,
+      deliveredXrp: match.deliveredXrp ?? undefined,
       paidAt: new Date(),
       apiKey: {
         create: {
@@ -78,8 +80,9 @@ export async function GET(req: Request) {
   return NextResponse.json({
     status: "paid",
     plan: invoice.plan,
+    currency: invoice.currency,
     txHash: match.txHash,
-    delivered: match.deliveredRlusd,
+    delivered: isXrp ? match.deliveredXrp : match.deliveredRlusd,
     key: gen.full, // shown ONCE
     note: "Store this key now. It cannot be shown again.",
   });
