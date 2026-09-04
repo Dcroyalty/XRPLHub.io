@@ -45,8 +45,8 @@ const TOOLS = [
     name: 'issue_score_credential',
     description:
       "Get a signed, tamper-evident certificate of a wallet's XRPLScore that any counterparty can " +
-      "verify online without trusting the holder — the free score isn't provable to a third party, " +
-      'this is. Two calls: first returns a Xaman payment request (1 XRP or 1 RLUSD, valid 90 days); ' +
+      "verify without trusting the holder — the free score isn't provable to a third party, this is. " +
+      'Two calls: first returns a Xaman payment request (1 XRP or 1 RLUSD, valid 90 days); ' +
       'call again with the same wallet_address + returned uuid after signing to get certId and verifyUrl. ' +
       'Params: wallet_address (r..., required), currency (XRP|RLUSD, default XRP), uuid (2nd call only). No signup.',
     inputSchema: {

@@ -1,0 +1,38 @@
+name: Publish to MCP Registry
+
+# Publishes server.json (the remote MCP server at https://www.xrplhub.io/api/mcp)
+# to the official MCP Registry — https://registry.modelcontextprotocol.io.
+#
+# Auth is GitHub OIDC: no secrets, no PAT. The registry accepts the
+# `io.github.Dcroyalty/*` namespace because this workflow runs in the
+# Dcroyalty/XRPLHub.io repo.
+#
+# Trigger it by pushing a version tag that matches server.json's `version`:
+#   git tag v1.3.0 && git push origin v1.3.0
+# Bump `version` in server.json, then tag the matching vX.Y.Z, for every update.
+# Can also be run by hand from the Actions tab (workflow_dispatch).
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write   # required for OIDC
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install mcp-publisher
+        run: |
+          curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
+
+      - name: Authenticate (GitHub OIDC)
+        run: ./mcp-publisher login github-oidc
+
+      - name: Publish server.json
+        run: ./mcp-publisher publish

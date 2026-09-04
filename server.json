@@ -1,0 +1,19 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.Dcroyalty/xrplhub",
+  "title": "XRPLHub — XRPLScore & XRPL actions",
+  "description": "Free XRPL wallet creditworthiness scores, ready-to-sign txjson for 35 XRPL actions, and more.",
+  "version": "1.3.0",
+  "repository": {
+    "url": "https://github.com/Dcroyalty/XRPLHub.io",
+    "source": "github",
+    "subfolder": "kreditkarma-backend"
+  },
+  "websiteUrl": "https://www.xrplhub.io",
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://www.xrplhub.io/api/mcp"
+    }
+  ]
+}
