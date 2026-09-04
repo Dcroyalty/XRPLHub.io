@@ -52,6 +52,13 @@ export const CRED_NAMESPACE = "io.xrplhub.score.v1";
 const PUBLIC_ORIGIN = "https://www.xrplhub.io";
 const MAX_URI_BYTES = 256; // XLS-70 URI limit
 
+// Shown on every verification surface. Required — these are unsolicited,
+// unaccepted, opinion-based ratings and that must be unmistakable.
+export const UNSOLICITED_DISCLOSURE =
+  "Unsolicited rating. This assessment was produced by XRPLHub from public XRP Ledger data. " +
+  "The subject did not request it, has not accepted it, and no relationship or endorsement is implied. " +
+  "Ratings are opinions based on on-chain activity, not financial advice.";
+
 // ── TIERS ────────────────────────────────────────────────────────────────────
 // Only POSITIVE tiers are ever issued. A failing score gets NO credential.
 export type ScoreTier = "min750" | "min700" | "min650" | "min600";

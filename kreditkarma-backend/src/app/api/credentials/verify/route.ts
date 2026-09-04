@@ -10,6 +10,7 @@ import {
   credentialType,
   EXPECTED_ISSUER,
   CRED_NAMESPACE,
+  UNSOLICITED_DISCLOSURE,
   type ScoreTier,
 } from "@/lib/credentials";
 
@@ -39,6 +40,7 @@ export async function GET(req: Request) {
       if (r.found) {
         return NextResponse.json({
           namespace: CRED_NAMESPACE,
+          disclosure: UNSOLICITED_DISCLOSURE,
           ...r,
           validForGating: r.found && r.accepted && !r.expired,
         });
@@ -46,6 +48,7 @@ export async function GET(req: Request) {
     }
     return NextResponse.json({
       namespace: CRED_NAMESPACE,
+      disclosure: UNSOLICITED_DISCLOSURE,
       found: false,
       accepted: false,
       expired: false,

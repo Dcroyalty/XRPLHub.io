@@ -18,6 +18,7 @@ import {
   eligibleTier,
   credentialType,
   EXPECTED_ISSUER,
+  UNSOLICITED_DISCLOSURE,
   type ScoreTier,
 } from "@/lib/credentials";
 
@@ -85,6 +86,16 @@ export default async function VerifyWalletPage({ params }: { params: Promise<{ a
             XRPLScore Credential · Verification
           </div>
           <a href="https://www.xrplhub.io" style={{ color: dim, fontSize: 12, textDecoration: "none" }}>XRPLHub.io ↗</a>
+        </div>
+
+        {/* ── Required disclosure ── */}
+        <div style={{
+          border: "1px solid rgba(251,191,36,.35)", background: "rgba(251,191,36,.08)",
+          borderRadius: 14, padding: "14px 16px", marginBottom: 18,
+          fontSize: 12.5, lineHeight: 1.65, color: "rgba(253,224,151,.95)",
+        }}>
+          <strong style={{ color: "#fbbf24" }}>Unsolicited rating.</strong>{" "}
+          {UNSOLICITED_DISCLOSURE.replace("Unsolicited rating. ", "")}
         </div>
 
         {/* ── The on-ledger attestation ── */}

@@ -158,6 +158,18 @@ Expiration)` remains the authoritative attestation; the page just renders it.
 The page and API must serve 200 for the subject **before** any credential is
 issued to it.
 
+### Required disclosure
+
+Every verification surface (the page and `/api/credentials/verify` JSON) carries,
+verbatim:
+
+> **Unsolicited rating.** This assessment was produced by XRPLHub from public XRP
+> Ledger data. The subject did not request it, has not accepted it, and no
+> relationship or endorsement is implied. Ratings are opinions based on on-chain
+> activity, not financial advice.
+
+Source of truth: `UNSOLICITED_DISCLOSURE` in `src/lib/credentials.ts`.
+
 ---
 
 ## 6. Transactions & costs (mainnet)
