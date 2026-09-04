@@ -194,14 +194,20 @@ export class AccountNotFoundError extends Error {
 
 // ─── THE SCORER ──────────────────────────────────────────────────────────────
 
+const RIPPLE_EPOCH_OFFSET = 946_684_800; // seconds between 1970-01-01 and 2000-01-01
+
 export async function scoreWallet(address: string): Promise<XrplScoreResult> {
-  const [infoRes, linesRes, txRes, offersRes, nftsRes, escrowRes] = await Promise.all([
+  const [infoRes, linesRes, txRes, offersRes, nftsRes, escrowRes, firstTxRes] = await Promise.all([
     xrplCall("account_info",    { account: address, ledger_index: "validated" }),
     xrplCall("account_lines",   { account: address, limit: 200 }).catch(() => ({})),
     xrplCall("account_tx",      { account: address, limit: 400, ledger_index_min: -1, ledger_index_max: -1 }).catch(() => ({})),
     xrplCall("account_offers",  { account: address }).catch(() => ({})),
     xrplCall("account_nfts",    { account: address }).catch(() => ({})),
     xrplCall("account_objects", { account: address, type: "escrow" }).catch(() => ({})),
+    // The genuine FIRST transaction (oldest). account_tx caps at `limit`, so the
+    // oldest of the 400 above is NOT the account's first tx for any wallet with
+    // >400 lifetime txs — hence a dedicated forward:true, limit:1 lookup.
+    xrplCall("account_tx", { account: address, limit: 1, forward: true, ledger_index_min: -1, ledger_index_max: -1 }).catch(() => ({})),
   ]);
 
   const info = infoRes as { result?: { account_data?: Record<string, unknown>; error?: string } };
@@ -221,10 +227,17 @@ export async function scoreWallet(address: string): Promise<XrplScoreResult> {
   const txCount    = transactions.length;
   const sequence   = (accountInfo.Sequence as number) || 0;
 
-  const firstTx     = transactions[transactions.length - 1];
-  const firstLedger = (firstTx?.tx?.ledger_index as number) || 0;
-  const ledgerAge   = firstLedger > 0 ? (95_000_000 - firstLedger) : 0;
-  const accountAgeDays = Math.max(0, Math.floor(ledgerAge / 1440));
+  // Account age from the FIRST tx's on-ledger close time (Ripple-epoch seconds),
+  // not a hardcoded ledger-height guess. `date` is `tx.date` (API v1) or
+  // `tx_json.date` (v2). Falls back to 0 = "unknown age" if unavailable.
+  const firstEntry = ((firstTxRes as { result?: { transactions?: Array<{ tx?: Record<string, unknown>; tx_json?: Record<string, unknown> }> } })
+    ?.result?.transactions ?? [])[0];
+  const firstTxDate = (firstEntry?.tx?.date ?? firstEntry?.tx_json?.date) as number | undefined;
+  const nowSec = Math.floor(Date.now() / 1000);
+  const accountAgeDays =
+    typeof firstTxDate === "number"
+      ? Math.max(0, Math.floor((nowSec - (firstTxDate + RIPPLE_EPOCH_OFFSET)) / 86_400))
+      : 0;
 
   const hasOffers  = offers.length > 0;
   const dexTxCount = transactions.filter((t) =>
