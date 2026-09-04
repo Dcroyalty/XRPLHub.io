@@ -9,7 +9,7 @@ import { NextResponse } from "next/server";
 import { isAdmin } from "@/lib/adminAuth";
 import { prisma } from "@/lib/xrplscore-db";
 import { isValidXrplAddress } from "@/lib/xrplscore";
-import { issueScoreCredential } from "@/lib/credentials";
+import { issueScoreCredential, ScoreNotEligibleError, ELIGIBILITY_FLOOR } from "@/lib/credentials";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -47,6 +47,13 @@ export async function POST(req: Request) {
     const result = await issueScoreCredential(wallet, { verificationUri });
     return NextResponse.json(result, { status: 201 });
   } catch (err) {
+    if (err instanceof ScoreNotEligibleError) {
+      // No CredentialCreate, no reserve, no on-chain negative attestation.
+      return NextResponse.json(
+        { error: "not_eligible", message: err.message, score: err.score, floor: ELIGIBILITY_FLOOR },
+        { status: 422 }
+      );
+    }
     const message = err instanceof Error ? err.message : "issue failed";
     // A network-guard rejection ("REFUSING: ...") lands here as a 500 — by design.
     return NextResponse.json({ error: "issue_failed", message }, { status: 500 });

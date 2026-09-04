@@ -37,19 +37,41 @@ const TYPE_PREFIX = "XRPLSCORE_";
 const PUBLIC_ORIGIN = "https://www.xrplhub.io";
 const MAX_URI_HEX = 256; // xrpl.js MAX_URI_LENGTH (128 bytes)
 
-export type ScoreTier = "750PLUS" | "700PLUS" | "650PLUS" | "600PLUS" | "BELOW600";
+// Only POSITIVE tiers are ever issued. A failing score gets NO credential:
+// a public on-chain negative attestation would never be accepted, so the
+// issuer would carry the 0.2 XRP reserve forever on an object that also
+// insults the subject. Below 600 (and unscored) -> "not eligible", no tx.
+export type ScoreTier = "750PLUS" | "700PLUS" | "650PLUS" | "600PLUS";
 
-export function tierForScore(score: number | null): ScoreTier {
-  if (score == null) return "BELOW600"; // unscored (not on mainnet) = lowest
+export const ELIGIBILITY_FLOOR = 600;
+
+/** The tier a score qualifies for, or null if it is not eligible for issuance. */
+export function eligibleTier(score: number | null): ScoreTier | null {
+  if (score == null) return null;      // not activated on mainnet -> not eligible
   if (score >= 750) return "750PLUS";
   if (score >= 700) return "700PLUS";
   if (score >= 650) return "650PLUS";
-  if (score >= 600) return "600PLUS";
-  return "BELOW600";
+  if (score >= ELIGIBILITY_FLOOR) return "600PLUS";
+  return null;                          // below the floor -> not eligible
 }
 
 export function credentialType(tier: ScoreTier): string {
   return TYPE_PREFIX + tier; // e.g. "XRPLSCORE_750PLUS"
+}
+
+/** Thrown when a wallet's score does not qualify for a credential. */
+export class ScoreNotEligibleError extends Error {
+  readonly score: number | null;
+  readonly floor = ELIGIBILITY_FLOOR;
+  constructor(score: number | null) {
+    super(
+      score == null
+        ? "Subject is not an activated account on XRPL mainnet — not eligible for a credential."
+        : `Score ${score} is below the ${ELIGIBILITY_FLOOR} eligibility floor — no credential issued.`
+    );
+    this.name = "ScoreNotEligibleError";
+    this.score = score;
+  }
 }
 
 /** Accept an ascii type ("XRPLSCORE_750PLUS") or a hex string; return upper hex. */
@@ -158,7 +180,7 @@ export interface IssueResult {
   issuer: string;
   subject: string;
   tier: ScoreTier;
-  score: number | null;
+  score: number;               // always >= ELIGIBILITY_FLOOR (ineligible throws)
   credentialType: string;      // ascii
   credentialTypeHex: string;
   expirationRipple: number;
@@ -170,7 +192,10 @@ export interface IssueResult {
 /**
  * Score `subjectAddress` with the live 9-signal engine, map to a tier, and
  * issue a native CredentialCreate on DEVNET from DEVNET_CREDENTIAL_ISSUER_SEED.
- * A subject not activated on mainnet is treated as the lowest tier (BELOW600).
+ *
+ * Only scores >= 600 are issued. Below the floor (or not on mainnet) throws
+ * ScoreNotEligibleError BEFORE any connection or transaction — no Credential
+ * Create, no reserve, no on-chain negative attestation.
  */
 export async function issueScoreCredential(
   subjectAddress: string,
@@ -187,17 +212,21 @@ export async function issueScoreCredential(
     score = s.ledgerScore;
   } catch (err) {
     if (!(err instanceof AccountNotFoundError)) throw err;
-    score = null; // not on mainnet -> lowest tier
+    score = null; // not on mainnet
   }
-  const tier = tierForScore(score);
+
+  // 2. Eligibility gate — fail before touching the network.
+  const tier = eligibleTier(score);
+  if (tier === null || score === null) throw new ScoreNotEligibleError(score);
+
   const typeAscii = credentialType(tier);
   const typeHex = convertStringToHex(typeAscii).toUpperCase();
 
-  // 2. Expiration: 90 days out, Ripple-epoch seconds.
+  // 3. Expiration: 90 days out, Ripple-epoch seconds.
   const expUnixMs = Date.now() + VALIDITY_DAYS * 86_400_000;
   const expirationRipple = unixTimeToRippleTime(expUnixMs);
 
-  // 3. URI: off-ledger pointer, hex.
+  // 4. URI: off-ledger pointer, hex.
   const uri = opts.verificationUri ?? defaultVerificationUri(subjectAddress);
   const uriHex = convertStringToHex(uri).toUpperCase();
 
