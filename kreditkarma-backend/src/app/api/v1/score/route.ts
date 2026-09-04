@@ -6,7 +6,7 @@
 import { NextResponse } from "next/server";
 import { extractKey, resolveApiKey } from "@/lib/keys";
 import { guard } from "@/lib/guard";
-import { computeScore, isValidXrplAddress } from "@/lib/engine";
+import { computeScore, isValidXrplAddress, AccountNotFoundError } from "@/lib/engine";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic"; // never cache the auth'd response itself
@@ -57,12 +57,14 @@ async function handle(wallet: string | null, req: Request) {
       }
     );
   } catch (err) {
-    // computeScore throws until you wire it. Surface a clear 501, not a 500.
+    if (err instanceof AccountNotFoundError) {
+      return NextResponse.json(
+        { error: "not_found", message: "That wallet is not an activated account on XRPL mainnet." },
+        { status: 404 }
+      );
+    }
     const message = err instanceof Error ? err.message : "scoring failed";
-    return NextResponse.json(
-      { error: "not_implemented", message },
-      { status: 501 }
-    );
+    return NextResponse.json({ error: "scoring_failed", message }, { status: 502 });
   }
 }
 

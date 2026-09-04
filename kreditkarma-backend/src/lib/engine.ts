@@ -1,66 +1,63 @@
 // src/lib/engine.ts
-// WIRED to your existing scorer. computeScore() now runs the exact same
-// pipeline your website uses, so the API and the site can never return
-// different numbers for the same wallet:
-//
-//   address -> buildAccountSnapshot()  (src/lib/xrpl-client.ts)
-//           -> calculateLedgerScore()  (src/lib/ledger-score.ts)
-//           -> { total, tier, components, positives, negatives, tips }
-//
-// We surface that as a clean B2B response below.
+// B2B surface over the ONE scoring engine (src/lib/xrplscore.ts). computeScore()
+// runs the exact same pipeline the public site runs — same mainnet nodes, same
+// 9 signals, same weights, same 300–850 math — so /api/v1/score, /api/x402/score
+// and /api/score/<addr> can never return different numbers for the same wallet
+// at the same ledger state.
 
-import { buildAccountSnapshot } from "@/lib/xrpl-client";
-import { calculateLedgerScore } from "@/lib/ledger-score";
+import {
+  scoreWallet,
+  isValidXrplAddress,
+  type ScoreBreakdownRow,
+  type ScoreRecommendation,
+  type XrplScoreDetails,
+} from "@/lib/xrplscore";
+
+export { isValidXrplAddress };
+export { AccountNotFoundError } from "@/lib/xrplscore";
 
 export interface ScoreResult {
-  wallet: string;        // the address that was scored
-  score: number;         // 300–850 (your ScoreBreakdown.total)
-  tier: string;          // POOR | FAIR | GOOD | VERY_GOOD | EXCELLENT
-  signals: {             // your 5 component scores, 0–100 each
+  wallet: string;          // the address that was scored
+  score: number;           // 300–850  (=== the site's ledgerScore)
+  grade: string;           // Building | Fair | Good | Excellent | Exceptional
+  tier: string;            // alias of grade (kept so older integrations don't break)
+  percentile: number;      // peer percentile band
+  signals: {               // the 9 component scores, 0–100 each
     accountAge: number;
-    txVolumeVariety: number;
-    ammDefi: number;
-    trustLinesRlusd: number;
-    accountHealth: number;
+    txVelocity: number;
+    trustLines: number;
+    dexActivity: number;
+    ammActivity: number;
+    reserveRatio: number;
+    nftActivity: number;
+    securityFlags: number;
+    builderCommitment: number;
   };
-  insights: {            // your human-readable output
-    positives: string[];
-    negatives: string[];
-    tips: string[];
-  };
-  computedAt: string;    // ISO timestamp
+  breakdown: ScoreBreakdownRow[];
+  recommendations: ScoreRecommendation[];
+  details: XrplScoreDetails;
+  methodology: string;
+  computedAt: string;      // ISO timestamp
 }
 
 /**
- * Score a single XRPL wallet using your production scoring engine.
- * Throws if the wallet can't be fetched (e.g. account not found) — the API
- * route turns that into a clean error response.
+ * Score a single XRPL wallet using the production scoring engine.
+ * Throws AccountNotFoundError if the address is not an activated mainnet
+ * account; the API route turns that into a clean 404.
  */
 export async function computeScore(wallet: string): Promise<ScoreResult> {
-  const snapshot = await buildAccountSnapshot(wallet);
-  const b = calculateLedgerScore(snapshot);
-
+  const r = await scoreWallet(wallet);
   return {
-    wallet,
-    score: b.total,
-    tier: b.tier,
-    signals: {
-      accountAge: b.components.accountAge.raw,
-      txVolumeVariety: b.components.txVolumeVariety.raw,
-      ammDefi: b.components.ammDefi.raw,
-      trustLinesRlusd: b.components.trustLinesRlusd.raw,
-      accountHealth: b.components.accountHealth.raw,
-    },
-    insights: {
-      positives: b.positives,
-      negatives: b.negatives,
-      tips: b.tips,
-    },
+    wallet: r.address,
+    score: r.ledgerScore,
+    grade: r.grade,
+    tier: r.grade,
+    percentile: r.percentile,
+    signals: r.signals as ScoreResult["signals"],
+    breakdown: r.breakdown,
+    recommendations: r.recommendations,
+    details: r.details,
+    methodology: r.methodology,
     computedAt: new Date().toISOString(),
   };
-}
-
-/** Cheap sanity check so bad input fails at the door, not deep in scoring. */
-export function isValidXrplAddress(addr: string): boolean {
-  return /^r[1-9A-HJ-NP-Za-km-z]{24,34}$/.test(addr);
 }
