@@ -11,13 +11,13 @@
 // holder (clawback, freeze, require-auth, non-transferable) alongside the
 // issuer's own XRPLScore, account age, verified domain, and credentials —
 // the risk read, not the listing.
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getMptRisk, MPT_ISSUANCE_ID_RE } from "@/lib/mpt";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET(_req: Request, { params }: { params: { issuanceId: string } }) {
+export async function GET(_req: NextRequest, { params }: { params: { issuanceId: string } }) {
   const issuanceId = (params.issuanceId ?? "").trim();
   if (!MPT_ISSUANCE_ID_RE.test(issuanceId)) {
     return NextResponse.json(

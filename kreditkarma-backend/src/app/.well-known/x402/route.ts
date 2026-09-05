@@ -22,7 +22,7 @@ import {
   TREASURY_ADDRESS,
 } from "@/lib/paycall";
 import { BUILDABLE_SERVICE_IDS } from "@/app/api/execute/serviceCatalog";
-import { BASE_PAY_TO, BASE_NETWORK, USDC_BASE_ASSET, CDP_FACILITATOR_URL, PRICE_PER_SCORE_USDC } from "@/lib/x402Base";
+import { BASE_PAY_TO, BASE_NETWORK, USDC_BASE_ASSET, CDP_FACILITATOR_URL, PRICE_PER_SCORE_USDC, PRICE_PER_MPT_USDC } from "@/lib/x402Base";
 import { PLANS, type PlanId } from "@/lib/plans";
 import { USDC_PLAN_OUTPUT_SCHEMA, usdcPlanOutputExample } from "@/lib/checkoutUsdc";
 import { walletProp, SCORE_OUTPUT_SCHEMA as scoreOutputSchema, SCORE_OUTPUT_EXAMPLE as scoreOutputExample } from "@/lib/scoreSchema";
@@ -102,6 +102,54 @@ function usdcScoreResource(origin: string) {
     },
     outputSchema: scoreOutputSchema,
     outputExample: scoreOutputExample,
+  };
+}
+
+// MPT issuer risk — the paid, full-detail view. The free /api/mpt/{id}
+// covers issuance facts + issuer powers + issuer score.
+function usdcMptResource(origin: string) {
+  return {
+    resource: `${origin}/api/x402/usdc/mpt/{mptokenIssuanceID}`,
+    method: "GET",
+    name: "MPT issuer risk (full) — pay per call in USDC on Base",
+    description:
+      "Full risk view of one XLS-33 Multi-Purpose Token issuance: issuer powers (clawback, freeze, " +
+      "require-auth, non-transferable) plus the issuer's XRPLScore, account age, xrp-ledger.toml-verified " +
+      "domain, and credentials held. Live reads, cross-checked against Bithomp. Not found returns " +
+      "'unknown', never 'does not exist'. $0.01 USDC on Base. Path segment: the 48-hex MPTokenIssuanceID.",
+    x402Version: 1,
+    scheme: "exact",
+    network: BASE_NETWORK,
+    asset: USDC_BASE_ASSET,
+    assetSymbol: "USDC",
+    payTo: BASE_PAY_TO,
+    maxTimeoutSeconds: 300,
+    facilitator: CDP_FACILITATOR_URL,
+    noSignup: true,
+    amount: PRICE_PER_MPT_USDC.toFixed(6),
+    inputSchema: {
+      type: "object",
+      properties: {
+        mptokenIssuanceID: {
+          type: "string",
+          pattern: "^[0-9A-Fa-f]{48}$",
+          description: "The MPTokenIssuanceID — 48 hex chars (XLS-33 192-bit id). Passed as the last URL path segment.",
+          example: "0641C7D1F9C6BB3B75EA31B353A54E2EFAC423498EF25045",
+        },
+      },
+      required: ["mptokenIssuanceID"],
+    },
+    outputSchema: {
+      type: "object",
+      properties: {
+        found: { type: "boolean" },
+        source: { type: "object" },
+        issuer: { type: "string" },
+        issuerPowers: { type: "object" },
+        issuerRisk: { type: "object" },
+        related: { type: "array" },
+      },
+    },
   };
 }
 
@@ -272,6 +320,7 @@ export async function GET(req: Request) {
           },
         },
         usdcScoreResource(origin),
+        usdcMptResource(origin),
         usdcPlanResource(origin, "starter"),
         usdcPlanResource(origin, "growth"),
         usdcPlanResource(origin, "scale"),

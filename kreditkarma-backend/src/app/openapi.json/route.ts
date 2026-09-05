@@ -553,6 +553,34 @@ export async function GET(req: Request) {
           },
         },
       },
+
+      "/api/x402/usdc/mpt/{issuanceId}": {
+        get: {
+          operationId: "mptRiskFull",
+          summary: "MPT issuance risk — full issuer detail (x402, $0.01 USDC on Base)",
+          description:
+            "Everything /api/mpt/{issuanceId} returns plus the parts that cost real live work: issuer " +
+            "account age, blackhole check, xrp-ledger.toml domain verification, the full credential list, " +
+            "the Bithomp cross-check, and a `related` cross-sell block. x402 exact scheme, USDC on Base " +
+            "via the CDP facilitator. No signup.",
+          tags: ["Tokens"],
+          parameters: [{
+            name: "issuanceId", in: "path", required: true,
+            description: "The MPTokenIssuanceID — 48 hexadecimal characters.",
+            schema: { type: "string", pattern: "^[0-9A-Fa-f]{48}$" },
+            example: "0641C7D1F9C6BB3B75EA31B353A54E2EFAC423498EF25045",
+          }],
+          "x-payment-info": {
+            price: { mode: "fixed", currency: "USD", amount: "0.010000" },
+            protocols: [{ x402: {} }],
+            description: "Full MPT issuer risk view, USDC on Base via the CDP x402 facilitator.",
+          },
+          responses: {
+            "200": { description: "Full risk view — see /api/mpt/{issuanceId} 200 schema plus issuerRisk.{accountAgeDays,blackholed,domain,domainVerified,credentials} and a related[] block." },
+            "402": { description: "Payment Required — x402 challenge. Pay in USDC on Base and retry with the X-PAYMENT header." },
+          },
+        },
+      },
     },
   };
 

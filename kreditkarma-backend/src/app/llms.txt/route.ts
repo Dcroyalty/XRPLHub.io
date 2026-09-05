@@ -59,11 +59,12 @@ a finished count).
 
 The risk view of one MPT issuance, not a listing — what the issuer can do to a
 holder (clawback, freeze, require-auth, non-transferable) alongside the
-issuer's own XRPLScore, account age, verified domain and credentials. Live
-reads from the validated ledger, cross-checked against Bithomp's index; an
-issuance not found returns "unknown", never "does not exist".
+issuer's own XRPLScore. Live reads from the validated ledger; an issuance not
+found returns "unknown", never "does not exist". All ~34 MPT issuers on XRPL
+are scored.
 
-- GET ${origin}/api/mpt/<48-hex MPTokenIssuanceID> — issuer powers + issuer trust for one MPT issuance, live
+- GET ${origin}/api/mpt/<48-hex MPTokenIssuanceID> — free: issuance facts + issuer powers + issuer score/grade
+- GET ${origin}/api/x402/usdc/mpt/<48-hex id> — $0.01 USDC on Base (x402): full issuer risk — account age, xrp-ledger.toml-verified domain, credentials held, Bithomp cross-check
 
 ## For AI agents
 
@@ -80,7 +81,7 @@ MCP server (Streamable HTTP, JSON-RPC 2.0, no auth):
   - get_account_credentials — every XLS-70 credential an account holds, live. Param: wallet_address. Free.
   - get_issuer_credentials — everything an issuer has issued (types, subject count, acceptance rate), from the census. Param: issuer_address. Free.
   - check_domain_eligibility — does an account hold a credential satisfying a PermissionedDomain, live. Params: wallet_address, domain_id. Free.
-  - check_mpt_risk — issuer powers (clawback/freeze/auth/transferable) + issuer trust (XRPLScore, age, domain, credentials) for one MPT issuance, live. Param: issuance_id. Free.
+  - check_mpt_risk — issuer powers (clawback/freeze/auth/transferable) + issuer XRPLScore for one MPT issuance, live. Param: issuance_id. Free basic; $0.01 USDC (x402) for full issuer risk.
 
 x402 pay-per-call (RLUSD, t54 facilitator, no signup):
 - Discovery: ${origin}/.well-known/x402
@@ -88,6 +89,10 @@ x402 pay-per-call (RLUSD, t54 facilitator, no signup):
 - GET ${origin}/api/x402/score?wallet=r... — 300-850 score + 8 signals
 - GET ${origin}/api/x402/report?wallet=r... — score + risk flags + recommendations + on-chain snapshot
 - GET ${origin}/api/x402/tx?productId=<id>&account=r... — one prebuilt XRPL transaction (35 actions)
+
+x402 pay-per-call (USDC on Base, CDP facilitator, no signup):
+- POST ${origin}/api/x402/usdc/score — 300-850 score, $0.01
+- GET ${origin}/api/x402/usdc/mpt/<48-hex id> — full MPT issuer risk, $0.01
 
 ## B2B API (subscription)
 

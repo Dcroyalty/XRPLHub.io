@@ -10,6 +10,7 @@
 import { NextResponse } from "next/server";
 import { isValidXrplAddress } from "@/lib/engine";
 import { listCredentialsHeldBy } from "@/lib/credentialLookup";
+import { scoreLink, verifyPageLink } from "@/lib/related";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -25,6 +26,12 @@ export async function GET(req: Request) {
 
   try {
     const credentials = await listCredentialsHeldBy(address);
+    // Relevant follow-ups: how does this account score, and — if it holds an
+    // XRPLScore credential — where does it verify.
+    const related = [scoreLink(address)];
+    if (credentials.some((c) => c.credentialTypeDecoded.startsWith("io.xrplhub.score"))) {
+      related.push(verifyPageLink(address));
+    }
     return NextResponse.json({
       address,
       source: "live",
@@ -38,6 +45,7 @@ export async function GET(req: Request) {
         expirationISO: c.expirationISO,
         uri: c.uriDecoded,
       })),
+      related,
     });
   } catch (err) {
     console.error("[credentials/account]", err);

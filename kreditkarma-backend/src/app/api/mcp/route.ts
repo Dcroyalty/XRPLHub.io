@@ -138,10 +138,11 @@ export const TOOLS = [
     name: 'check_mpt_risk',
     description:
       "Get the risk view of one XLS-33 Multi-Purpose Token issuance before touching it: what the issuer " +
-      "CAN DO to a holder (clawback, freeze, require-auth, whether it's transferable at all) plus whether " +
-      "the ISSUER is trustworthy (its XRPLScore, account age, verified domain, credentials held). Live " +
-      "reads from the validated ledger. Every response states its source and returns 'unknown' — never " +
-      "'does not exist' — when an issuance isn't found. Params: issuance_id (48-hex MPTokenIssuanceID, required). Free, no signup.",
+      "CAN DO to a holder (clawback, freeze, require-auth, whether it's transferable at all) plus the " +
+      "issuer's XRPLScore. Free. For the full issuer picture — account age, xrp-ledger.toml-verified " +
+      "domain, credentials held, Bithomp cross-check — GET /api/x402/usdc/mpt/{id} pays $0.01 USDC on " +
+      "Base via x402. Every response states its source and returns 'unknown', never 'does not exist', " +
+      "when an issuance isn't found. Params: issuance_id (48-hex MPTokenIssuanceID, required). No signup.",
     inputSchema: {
       type: 'object',
       properties: {

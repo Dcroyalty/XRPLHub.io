@@ -12,6 +12,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/xrplscore-db";
 import { isValidXrplAddress } from "@/lib/engine";
 import { convertHexToString } from "xrpl";
+import { scoreLink } from "@/lib/related";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -74,5 +75,8 @@ export async function GET(req: Request) {
       expired: r.expirationRipple != null && nowRipple != null ? r.expirationRipple <= nowRipple : null,
       expirationISO: r.expirationRipple != null ? rippleToISO(r.expirationRipple) : null,
     })),
+    // Whether to trust an issuer's credentials starts with whether to trust
+    // the issuer.
+    related: [scoreLink(address)],
   });
 }

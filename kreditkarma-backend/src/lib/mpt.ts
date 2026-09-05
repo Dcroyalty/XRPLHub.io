@@ -17,6 +17,7 @@ import { connectMainnetOrThrow } from "./credentials";
 import { listCredentialsHeldBy, type LiveCredential } from "./credentialLookup";
 import { scoreWallet, AccountNotFoundError } from "./xrplscore";
 import { bithompMptLookup, bithompConfigured } from "./bithomp";
+import { reportLink, credentialsAccountLink, mptFullLink, type RelatedLink } from "./related";
 
 export const MPT_ISSUANCE_ID_RE = /^[0-9A-Fa-f]{48}$/; // 192-bit MPTokenIssuanceID
 
@@ -66,13 +67,16 @@ export interface MptRisk {
   issuerRisk: {
     xrplScore: number | null;
     grade: string | null;
-    accountAgeDays: number | null;
-    blackholed: boolean;
-    domain: string | null;
-    domainVerified: boolean; // issuer address listed in the domain's xrp-ledger.toml
-    credentialsHeld: number;
-    credentials: { issuer: string; type: string; accepted: boolean; expired: boolean }[];
+    // full lookups only:
+    accountAgeDays?: number | null;
+    blackholed?: boolean;
+    domain?: string | null;
+    domainVerified?: boolean; // issuer address listed in the domain's xrp-ledger.toml
+    credentialsHeld?: number;
+    credentials?: { issuer: string; type: string; accepted: boolean; expired: boolean }[];
   } | null;
+  related?: RelatedLink[];
+  tier: "basic" | "full";
 }
 
 /** Best-effort check: is `address` listed in https://<domain>/.well-known/xrp-ledger.toml ? */
@@ -92,7 +96,8 @@ async function verifyDomain(domain: string, address: string): Promise<boolean> {
   }
 }
 
-export async function getMptRisk(issuanceId: string): Promise<MptRisk> {
+export async function getMptRisk(issuanceId: string, opts: { full?: boolean } = {}): Promise<MptRisk> {
+  const full = opts.full ?? false;
   const id = issuanceId.toUpperCase();
   const client = await connectMainnetOrThrow();
 
@@ -123,6 +128,7 @@ export async function getMptRisk(issuanceId: string): Promise<MptRisk> {
     return {
       issuanceId: id,
       found: false,
+      tier: full ? "full" : "basic",
       source: {
         ledger: "not present on the validated ledger",
         bithompIndex: bithompStr,
@@ -140,23 +146,57 @@ export async function getMptRisk(issuanceId: string): Promise<MptRisk> {
   const issuer = String(node.Issuer);
   const flags = Number(node.Flags ?? 0);
 
-  // Issuer risk — score + account_info + credentials, in parallel where safe.
-  const [scoreRes, acctRes, creds] = await Promise.allSettled([
-    scoreWallet(issuer),
-    client.request({ command: "account_info", account: issuer, ledger_index: "validated", signer_lists: true }),
-    listCredentialsHeldBy(issuer),
-  ]);
+  // BASIC: just the score. FULL: + account_info (domain, blackhole) +
+  // credentials + xrp-ledger.toml domain verification.
+  const tasks: Promise<unknown>[] = [scoreWallet(issuer)];
+  if (full) {
+    tasks.push(
+      client.request({ command: "account_info", account: issuer, ledger_index: "validated", signer_lists: true }),
+      listCredentialsHeldBy(issuer)
+    );
+  }
+  const settled = await Promise.allSettled(tasks);
   await client.disconnect().catch(() => {});
 
-  let xrplScore: number | null = null, gradeStr: string | null = null, accountAgeDays: number | null = null;
+  const scoreRes = settled[0] as PromiseSettledResult<Awaited<ReturnType<typeof scoreWallet>>>;
+  let xrplScore: number | null = null, gradeStr: string | null = null;
   if (scoreRes.status === "fulfilled") {
     xrplScore = scoreRes.value.ledgerScore;
     gradeStr = scoreRes.value.grade;
-    accountAgeDays = scoreRes.value.details?.accountAgeDays ?? null;
   } else if (!(scoreRes.reason instanceof AccountNotFoundError)) {
     // non-fatal — leave nulls
   }
 
+  const issuerPowers = {
+    clawback: (flags & F.canClawback) !== 0,
+    canFreeze: (flags & F.canLock) !== 0,
+    currentlyFrozen: (flags & F.locked) !== 0,
+    requiresAuth: (flags & F.requireAuth) !== 0,
+    transferable: (flags & F.canTransfer) !== 0,
+  };
+  const issuance = {
+    assetScale: Number(node.AssetScale ?? 0),
+    maximumAmount: node.MaximumAmount != null ? String(node.MaximumAmount) : null,
+    outstandingAmount: String(node.OutstandingAmount ?? "0"),
+    transferFeeBps: Number(node.TransferFee ?? 0) / 10,
+    metadata: parseMetadata(node.MPTokenMetadata as string | undefined),
+  };
+
+  if (!full) {
+    return {
+      issuanceId: id, found: true, tier: "basic",
+      source: { ledger: "MPTokenIssuance present on the validated ledger (live read)", bithompIndex: bithompStr, interpretation: "exists" },
+      issuer, issuance, issuerPowers,
+      issuerRisk: { xrplScore, grade: gradeStr },
+      related: [mptFullLink(id)],
+    };
+  }
+
+  const acctRes = settled[1] as PromiseSettledResult<{ result: unknown }>;
+  const creds = settled[2] as PromiseSettledResult<LiveCredential[]>;
+
+  let accountAgeDays: number | null =
+    scoreRes.status === "fulfilled" ? scoreRes.value.details?.accountAgeDays ?? null : null;
   let domain: string | null = null, blackholed = false;
   if (acctRes.status === "fulfilled") {
     const d = (acctRes.value.result as unknown as { account_data: Record<string, unknown> }).account_data;
@@ -166,48 +206,23 @@ export async function getMptRisk(issuanceId: string): Promise<MptRisk> {
     const hasSignerList = Array.isArray(d.signer_lists) && d.signer_lists.length > 0;
     blackholed = masterDisabled && !hasSignerList && !d.RegularKey;
   }
-
   const domainVerified = domain ? await verifyDomain(domain, issuer) : false;
-
   const credList: LiveCredential[] = creds.status === "fulfilled" ? creds.value : [];
 
+  const related: RelatedLink[] = [reportLink(issuer)];
+  if (credList.length > 0) related.push(credentialsAccountLink(issuer));
+
   return {
-    issuanceId: id,
-    found: true,
-    source: {
-      ledger: "MPTokenIssuance present on the validated ledger (live read)",
-      bithompIndex: bithompStr,
-      interpretation: "exists",
-    },
-    issuer,
-    issuance: {
-      assetScale: Number(node.AssetScale ?? 0),
-      maximumAmount: node.MaximumAmount != null ? String(node.MaximumAmount) : null,
-      outstandingAmount: String(node.OutstandingAmount ?? "0"),
-      transferFeeBps: Number(node.TransferFee ?? 0) / 10,
-      metadata: parseMetadata(node.MPTokenMetadata as string | undefined),
-    },
-    issuerPowers: {
-      clawback: (flags & F.canClawback) !== 0,
-      canFreeze: (flags & F.canLock) !== 0,
-      currentlyFrozen: (flags & F.locked) !== 0,
-      requiresAuth: (flags & F.requireAuth) !== 0,
-      transferable: (flags & F.canTransfer) !== 0,
-    },
+    issuanceId: id, found: true, tier: "full",
+    source: { ledger: "MPTokenIssuance present on the validated ledger (live read)", bithompIndex: bithompStr, interpretation: "exists" },
+    issuer, issuance, issuerPowers,
     issuerRisk: {
-      xrplScore,
-      grade: gradeStr,
-      accountAgeDays,
-      blackholed,
-      domain,
-      domainVerified,
+      xrplScore, grade: gradeStr, accountAgeDays, blackholed, domain, domainVerified,
       credentialsHeld: credList.length,
       credentials: credList.map((c) => ({
-        issuer: c.issuer,
-        type: c.credentialTypeDecoded,
-        accepted: c.accepted,
-        expired: c.expired,
+        issuer: c.issuer, type: c.credentialTypeDecoded, accepted: c.accepted, expired: c.expired,
       })),
     },
+    related,
   };
 }

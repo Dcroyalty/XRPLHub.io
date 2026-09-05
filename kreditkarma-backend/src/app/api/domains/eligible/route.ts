@@ -13,6 +13,7 @@
 import { NextResponse } from "next/server";
 import { isValidXrplAddress } from "@/lib/engine";
 import { checkDomainEligibility } from "@/lib/credentialLookup";
+import { scoreLink, credentialsAccountLink } from "@/lib/related";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -65,6 +66,9 @@ export async function GET(req: Request) {
         accepted: c.accepted,
         expired: c.expired,
       })),
+      // Eligibility is a yes/no; the follow-up is always "so is this account
+      // trustworthy" and "what else does it hold".
+      related: [scoreLink(address), credentialsAccountLink(address)],
     });
   } catch (err) {
     console.error("[domains/eligible]", err);
