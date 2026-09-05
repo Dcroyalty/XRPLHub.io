@@ -17,6 +17,7 @@ import { scoreLink, credentialsAccountLink } from "@/lib/related";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 30;
 
 const DOMAIN_ID_RE = /^[0-9A-Fa-f]{64}$/;
 
@@ -59,6 +60,8 @@ export async function GET(req: Request) {
           }
         : null,
       acceptedCredentials: result.domain.acceptedCredentials ?? [],
+      // Scoped to the domain's AcceptedCredentials that this subject actually
+      // holds — probed directly, no owner-directory walk.
       heldCredentials: result.heldCredentials.map((c) => ({
         issuer: c.issuer,
         credentialType: c.credentialTypeDecoded,

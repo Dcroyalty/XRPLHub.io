@@ -14,8 +14,18 @@
 // returns every credential where it's either party, pending or accepted,
 // with no risk of missing a not-yet-accepted one.
 
-import { convertHexToString } from "xrpl";
+import { convertHexToString, convertStringToHex } from "xrpl";
 import { connectMainnetOrThrow, validatedLedgerCloseTimeRipple } from "./credentials";
+
+// A full owner-directory walk (account_objects with a type filter) is O(the
+// whole directory) server-side — rippled scans every entry looking for the
+// handful that match the type. For a normal account that's one fast page; for
+// an exchange-scale account (tens of thousands of trust lines) it's dozens of
+// round trips and 15-40s. We cap the walk at this budget and return
+// `complete: false` rather than let a request hang past the function timeout.
+// The targeted path — probeCredentials / ?issuer= — sidesteps the walk
+// entirely with direct ledger_entry lookups and is always fast + exact.
+const OWNER_WALK_BUDGET_MS = 20_000;
 
 export interface LiveCredential {
   objectIndex: string;
@@ -65,38 +75,62 @@ function rippleToISO(ripple: number): string {
   return new Date((ripple + 946_684_800) * 1000).toISOString();
 }
 
-/** Every Credential object naming `role` as either party, paginated. */
-async function fetchAccountCredentials(address: string) {
-  const client = await connectMainnetOrThrow();
+/** Every Credential object naming the account as either party, paginated,
+ *  bounded by OWNER_WALK_BUDGET_MS. `complete` is false if the budget ran out
+ *  before the owner directory was fully scanned. */
+async function fetchAccountCredentials(
+  address: string
+): Promise<{ nodes: Record<string, unknown>[]; nowRipple: number; complete: boolean }> {
+  const client = await connectMainnetOrThrow({ fastWalk: true });
   try {
     const nowRipple = await validatedLedgerCloseTimeRipple(client);
     const nodes: Record<string, unknown>[] = [];
     let marker: unknown = undefined;
+    let complete = true;
+    const deadline = Date.now() + OWNER_WALK_BUDGET_MS;
     do {
       const res = await client.request({
         command: "account_objects",
         account: address,
         type: "credential",
         ledger_index: "validated",
-        limit: 200,
+        limit: 400,
         ...(marker ? { marker } : {}),
       } as unknown as Parameters<typeof client.request>[0]);
       const result = res.result as { account_objects?: Record<string, unknown>[]; marker?: unknown };
       nodes.push(...(result.account_objects ?? []));
       marker = result.marker;
+      if (marker && Date.now() >= deadline) {
+        complete = false;
+        break;
+      }
     } while (marker);
-    return { nodes, nowRipple };
+    return { nodes, nowRipple, complete };
   } finally {
     await client.disconnect().catch(() => {});
   }
 }
 
-/** Every credential where `address` is the Subject — held, pending or accepted. */
+export interface HeldCredentialsResult {
+  credentials: LiveCredential[];
+  /** false when the owner directory was too large to scan fully within budget. */
+  complete: boolean;
+}
+
+/** Every credential where `address` is the Subject, with a completeness flag. */
+export async function listCredentialsHeldByDetailed(address: string): Promise<HeldCredentialsResult> {
+  const { nodes, nowRipple, complete } = await fetchAccountCredentials(address);
+  return {
+    credentials: nodes.filter((n) => String(n.Subject) === address).map((n) => toLiveCredential(n, nowRipple)),
+    complete,
+  };
+}
+
+/** Every credential where `address` is the Subject — held, pending or accepted.
+ *  Back-compat shape (array only); use listCredentialsHeldByDetailed when the
+ *  caller needs to know the walk was truncated. */
 export async function listCredentialsHeldBy(address: string): Promise<LiveCredential[]> {
-  const { nodes, nowRipple } = await fetchAccountCredentials(address);
-  return nodes
-    .filter((n) => String(n.Subject) === address)
-    .map((n) => toLiveCredential(n, nowRipple));
+  return (await listCredentialsHeldByDetailed(address)).credentials;
 }
 
 /** Every credential `address` has issued, regardless of accept status. */
@@ -105,6 +139,64 @@ export async function listCredentialsIssuedBy(address: string): Promise<LiveCred
   return nodes
     .filter((n) => String(n.Issuer) === address)
     .map((n) => toLiveCredential(n, nowRipple));
+}
+
+// ── Targeted lookups (no owner-directory walk) ───────────────────────────────
+
+export interface CredentialPair {
+  issuer: string;
+  /** hex OR ascii — normalized here. */
+  credentialType: string;
+}
+
+/**
+ * Direct ledger_entry lookups for specific (issuer, credentialType) pairs
+ * against one subject. O(pairs), one connection, no owner-directory scan —
+ * safe for any account regardless of how many trust lines it holds. This is
+ * the correct primitive for "does X hold a credential from issuer Y" and for
+ * domain eligibility (probe exactly the domain's AcceptedCredentials).
+ */
+export async function probeCredentials(
+  subject: string,
+  pairs: CredentialPair[]
+): Promise<{ credentials: LiveCredential[]; nowRipple: number }> {
+  if (pairs.length === 0) {
+    const client = await connectMainnetOrThrow();
+    try {
+      return { credentials: [], nowRipple: await validatedLedgerCloseTimeRipple(client) };
+    } finally {
+      await client.disconnect().catch(() => {});
+    }
+  }
+  const client = await connectMainnetOrThrow();
+  try {
+    const nowRipple = await validatedLedgerCloseTimeRipple(client);
+    const seen = new Set<string>();
+    const out: LiveCredential[] = [];
+    for (const p of pairs) {
+      const typeHex = /^[0-9A-Fa-f]+$/.test(p.credentialType)
+        ? p.credentialType.toUpperCase()
+        : convertStringToHex(p.credentialType).toUpperCase();
+      const key = `${p.issuer}:${typeHex}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      try {
+        const res = await client.request({
+          command: "ledger_entry",
+          ledger_index: "validated",
+          credential: { subject, issuer: p.issuer, credential_type: typeHex },
+        } as unknown as Parameters<typeof client.request>[0]);
+        const node = (res.result as { node?: Record<string, unknown> }).node ?? null;
+        if (node) out.push(toLiveCredential(node, nowRipple));
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (!/entryNotFound|not.*found/i.test(msg)) throw err;
+      }
+    }
+    return { credentials: out, nowRipple };
+  } finally {
+    await client.disconnect().catch(() => {});
+  }
 }
 
 // ── PermissionedDomain (live) ────────────────────────────────────────────────
@@ -156,7 +248,7 @@ export interface EligibilityResult {
   domain: DomainInfo;
   address: string;
   satisfiedBy: LiveCredential | null; // the credential that granted membership, if any
-  heldCredentials: LiveCredential[];  // everything the address holds, for transparency
+  heldCredentials: LiveCredential[];  // the domain's AcceptedCredentials that this subject actually holds (direct-probed)
   reason: string;
 }
 
@@ -166,19 +258,25 @@ export interface EligibilityResult {
  * matches ANY entry in the domain's AcceptedCredentials.
  */
 export async function checkDomainEligibility(address: string, domainId: string): Promise<EligibilityResult> {
-  const [domain, heldCredentials] = await Promise.all([
-    getDomain(domainId),
-    listCredentialsHeldBy(address),
-  ]);
+  const domain = await getDomain(domainId);
 
   if (!domain.found) {
     return {
-      eligible: false, domain, address, satisfiedBy: null, heldCredentials,
+      eligible: false, domain, address, satisfiedBy: null, heldCredentials: [],
       reason: "No PermissionedDomain exists at that DomainID on the validated ledger.",
     };
   }
 
   const accepts = domain.acceptedCredentials ?? [];
+  // Probe exactly the domain's AcceptedCredentials against this subject with
+  // direct ledger_entry lookups — no owner-directory walk, so this stays fast
+  // and exact even for exchange-scale accounts. heldCredentials here is
+  // therefore scoped to the pairs this domain actually gates on.
+  const { credentials: heldCredentials } = await probeCredentials(
+    address,
+    accepts.map((a) => ({ issuer: a.issuer, credentialType: a.credentialType }))
+  );
+
   const satisfiedBy =
     heldCredentials.find(
       (c) =>
