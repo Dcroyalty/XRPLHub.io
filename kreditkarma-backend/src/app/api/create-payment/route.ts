@@ -30,7 +30,7 @@ const NAMES: Record<string, string> = {
   ammentry:'AMM Liquidity Entry', smartswap:'Smart Swap Router', paychannel:'Payment Channel',
   nftmint:'NFT Minter', nftburn:'NFT Burn Certificate', nftoffer:'NFT Offer Creator',
   identity:'On-Chain Identity', did:'DID Creator', compliance:'Compliance Bundle',
-  escrow:'Escrow Setup', credit:'XRPLScore Builder',
+  escrow:'Escrow Setup',
   mptissue:'Multi-Purpose Token Issuance', mptsend:'Send MPT', trustsend:'Trust Line + Send Currency',
   globalfreeze:'Global Freeze', freezeline:'Freeze a Trust Line',
   checkcreate:'Create a Check', checkcash:'Cash a Check', checkcancel:'Cancel a Check',

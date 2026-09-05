@@ -38,13 +38,22 @@ const trunc = (a: string) => a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '';
 const qrImg = (d: string, sz = 200) =>
   `https://api.qrserver.com/v1/create-qr-code/?size=${sz}x${sz}&data=${encodeURIComponent(d)}&color=10b981&bgcolor=030407&qzone=2&format=svg`;
 
-// ─── Wordmark: xrpl (green) + Hub (blue) + .io (red) ───
+// ─── Brand gradient: green -> blue, the same two colors as the hero wordmark
+// (#10b981, #38bdf8). One shared constant so the header logo and the hero
+// wordmark can never drift apart. No red — it clashed with the palette.
+const BRAND_GRADIENT = 'linear-gradient(135deg,#10b981,#38bdf8)';
+const brandGradientText: React.CSSProperties = {
+  background: BRAND_GRADIENT,
+  WebkitBackgroundClip: 'text',
+  WebkitTextFillColor: 'transparent',
+  backgroundClip: 'text',
+};
+
+// ─── Wordmark: xrplHub.io in the brand green-to-blue gradient ───
 function Wordmark({ size = 18 }: { size?: number }) {
   return (
-    <span style={{ fontWeight: 900, letterSpacing: '-.5px', lineHeight: 1, fontSize: size }}>
-      <span style={{ color: '#10b981' }}>xrpl</span>
-      <span style={{ color: '#38bdf8' }}>Hub</span>
-      <span style={{ color: '#ef4444' }}>.io</span>
+    <span style={{ fontWeight: 900, letterSpacing: '-.5px', lineHeight: 1, fontSize: size, ...brandGradientText }}>
+      xrplHub.io
     </span>
   );
 }
@@ -254,17 +263,6 @@ const PRODUCTS = [
     aiDetail:'AI assembles PermissionedDomainSet with your accepted credential set. Enables compliant, gated DeFi access on the XRP Ledger.',
     features:['PermissionedDomainSet built to spec','Credential-gated access','Compliant DeFi','You sign once in Xaman','TX hash receipt'] },
 
-  // CREDIT
-  { id:'credit', cat:'XRPLScore', emoji:'📈', name:'XRPLScore Builder', featured:false, tag:'POPULAR', comingSoon:false, color:'#10b981', priceRLUSD:15, priceXRP:50, isMonthly:true,
-    amendment:'Payment · On-chain reputation', tagline:'Build your XRPLScore with monthly on-chain payments',
-    desc:'The first on-chain reputation builder native to the XRP Ledger. Each monthly payment writes a verifiable record to your wallet history that feeds directly into your proprietary XRPLScore — the more consistent your on-chain activity, the higher your score climbs. This is XRPLHub\u2019s own score, computed from the ledger. No FICO. No credit bureaus. No SSN. Just your own verifiable XRPL reputation.',
-    aiDetail:'Each monthly payment is recorded on-chain with a structured memo and factors into your 8-signal XRPLScore (transaction velocity, account age, reserve ratio, and more). Build a consistent on-chain history and watch your score rise over time.',
-    tiers:[
-      { name:'Starter', priceRLUSD:15, priceXRP:50,  color:'#34d399', perks:'XRPLScore tracking · monthly on-chain record · email alerts' },
-      { name:'Builder', priceRLUSD:25, priceXRP:80,  color:'#10b981', perks:'All Starter · score-history graph · trend simulator' },
-      { name:'Pro',     priceRLUSD:35, priceXRP:115, color:'#f59e0b', perks:'All Builder · priority signals · full score-history export' },
-    ],
-    features:['Monthly payment recorded on-chain','Directly strengthens your XRPLScore','First on-chain reputation builder on XRPL','Cancel anytime · TX hash receipts'] },
 ] as const;
 
 type Product = typeof PRODUCTS[number];
@@ -1503,7 +1501,6 @@ function FAQModal({ show, onClose }: { show:boolean; onClose:()=>void }) {
     ['What is XRPLScore™?',"XRPLScore™ is XRPLHub's proprietary on-chain rating — 300 to 850, computed live from your XRPL wallet. No SSN, no credit bureau, no FICO affiliation. It's your verifiable on-chain reputation."],
     ['How do the XRPL Services work?','You pay in Xaman and get a TX hash. Our AI verifies the transaction on XRPL mainnet, confirms the amount and destination, and activates your service within one ledger close (~4 seconds).'],
     ['How does the grant system work?',"Donate XRP/RLUSD to the public treasury (viewable on XRPScan). Anyone in need can apply for $25–$100. AI assists by summarizing and flagging each application for the human reviewer; a person makes every approval decision. Approved funds then go directly to the recipient's XRPL wallet."],
-    ['What is the XRPLScore Builder?','A monthly subscription that builds verifiable on-chain history, raising your XRPLScore over time. The first reputation builder native to the XRP Ledger.'],
     ['Do I need a Xaman wallet?','Yes — Xaman is the XRPL wallet, free on iOS and Android at xaman.app. Payments are a single QR scan and swipe.'],
     ['Is XRPLHub a bank?','No. Not a bank, broker, insurer, or FDIC institution. XRPLHub is a financial technology platform on the XRP Ledger. All services are on-chain operational tools.'],
   ];
@@ -1537,24 +1534,22 @@ function TermsModal({ show, onClose }: { show:boolean; onClose:()=>void }) {
       <div style={{ maxHeight:'60vh',overflowY:'auto',paddingRight:8 }}>
         <p style={P}>By using xrplhub.io you agree to these Terms in full.</p>
         <span style={H}>1. Who We Are</span>
-        <p style={P}>XRPLHub is a financial technology platform on the XRP Ledger providing XRPL Services, XRPLScore, the XRPLScore Builder, and a community grant program. We are not a bank, broker-dealer, investment advisor, insurer, or FDIC-insured institution.</p>
+        <p style={P}>XRPLHub is a financial technology platform on the XRP Ledger providing XRPL Services, XRPLScore, and a community grant program. We are not a bank, broker-dealer, investment advisor, insurer, or FDIC-insured institution.</p>
         <span style={H}>2. Eligibility</span>
         <p style={P}>You must be 18+ and legally able to enter contracts in your jurisdiction. Service unavailable where prohibited by law, including OFAC-sanctioned regions.</p>
         <span style={H}>3. XRPL Services & AI Verification</span>
         <p style={P}>Services are on-chain operational tools. You pay in Xaman, and our AI verifies the transaction on XRPL mainnet. <strong style={{ color:'rgba(255,255,255,.8)' }}>All XRPL transactions are final and irrevocable.</strong> Services are not insurance contracts, securities, or financial instruments.</p>
         <span style={H}>4. XRPLScore™</span>
         <p style={P}>XRPLScore™ is our proprietary on-chain assessment derived from public XRPL wallet data. It is not a FICO score, consumer credit report, or NRSRO rating, and has no affiliation with any credit bureau. The XRPLScore™ name, methodology, signal weighting, and underlying framework are intellectual property of XRPLHub and are available for commercial licensing.</p>
-        <span style={H}>5. XRPLScore Builder</span>
-        <p style={P}>Monthly subscriptions build on-chain history that factors into your XRPLScore. Subscriptions cancel at end-of-cycle. All payments are non-refundable (irrevocable XRPL transactions).</p>
-        <span style={H}>6. Community Grant Program</span>
+        <span style={H}>5. Community Grant Program</span>
         <p style={P}>Donations are voluntary and irrevocable. Applications are triaged with AI assistance to help our reviewer prioritize; all approval and denial decisions are made by a human. AI is advisory only and never automatically approves or denies an application. Submission does not guarantee disbursement. Grants range $25–$100 subject to treasury availability.</p>
-        <span style={H}>7. Your Wallet — Your Responsibility</span>
+        <span style={H}>6. Your Wallet — Your Responsibility</span>
         <p style={P}>You are solely responsible for your XRPL wallet, private keys, and seed phrases. XRPLHub never has access to your private keys. Lost keys result in permanent, unrecoverable loss.</p>
-        <span style={H}>8. Prohibited Uses</span>
+        <span style={H}>7. Prohibited Uses</span>
         <p style={P}>No use for money laundering, fraud, terrorist financing, false grant applications, score manipulation, reverse engineering, or automated scraping beyond normal human use.</p>
-        <span style={H}>9. Disclaimers & Liability</span>
+        <span style={H}>8. Disclaimers & Liability</span>
         <p style={P}>PLATFORM PROVIDED "AS IS." LIABILITY CAPPED AT THE GREATER OF $100 OR 12-MONTH PAYMENTS. NO INDIRECT, CONSEQUENTIAL, OR PUNITIVE DAMAGES.</p>
-        <span style={H}>10. Contact</span>
+        <span style={H}>9. Contact</span>
         <p style={P}><a href="mailto:legal@xrplhub.io" style={{ color:'#10b981' }}>legal@xrplhub.io</a></p>
       </div>
       <button onClick={onClose} style={{ ...Btn('ghost',undefined,{marginTop:18,width:'100%'}) }}>Close</button>
@@ -1646,9 +1641,9 @@ function pctLabel(score: number): { percentile:number; label:string } {
   return { percentile: 15, label: 'Early on-chain footprint' };
 }
 
-function PersonalCreditReport({ wallet, data, history, onSubscribe, loading }: {
+function PersonalCreditReport({ wallet, data, history, loading }: {
   wallet: string; data: PersonalData | null; history: Array<{score:number;scannedAt:string}>;
-  onSubscribe: () => void; loading: boolean;
+  loading: boolean;
 }) {
   if (loading && !data) {
     return (
@@ -1739,16 +1734,6 @@ function PersonalCreditReport({ wallet, data, history, onSubscribe, loading }: {
           </div>
         </div>
       )}
-
-      {/* BUILDER CTA — keeps the subscription path one tap away */}
-      <div style={{ background:'linear-gradient(135deg, rgba(16,185,129,.08), rgba(56,189,248,.05), rgba(6,6,22,.85))', border:'1px solid rgba(16,185,129,.25)', borderRadius:16, padding:'20px 22px', display:'flex', alignItems:'center', justifyContent:'space-between', gap:14, flexWrap:'wrap' }}>
-        <div style={{ flex:1, minWidth:240 }}>
-          <div style={{ fontSize:10, fontWeight:800, color:'#10b981', letterSpacing:'.14em', textTransform:'uppercase', marginBottom:4, fontFamily:"'IBM Plex Mono',monospace" }}>XRPLScore Builder</div>
-          <div style={{ fontSize:16, fontWeight:800, marginBottom:4 }}>Build your score on-chain. Monthly. Verifiable.</div>
-          <div style={{ fontSize:12, color:'rgba(255,255,255,.5)', lineHeight:1.6 }}>Each monthly subscription payment is written to XRPL mainnet and factors directly into your XRPLScore™.</div>
-        </div>
-        <button onClick={onSubscribe} style={{ padding:'13px 22px', borderRadius:99, background:'#10b981', color:'#000', border:'none', fontWeight:800, fontSize:14, cursor:'pointer', fontFamily:'inherit', whiteSpace:'nowrap' }}>Start Building →</button>
-      </div>
     </div>
   );
 }
@@ -2038,8 +2023,7 @@ export default function XRPLHubHome() {
         <section className="section-pad" style={{ textAlign:'center',padding:'72px 24px 56px',position:'relative',overflow:'hidden' }}>
           <div style={{ position:'absolute',top:'35%',left:'50%',transform:'translate(-50%,-50%)',width:'min(700px,95vw)',height:'min(700px,95vw)',borderRadius:'50%',background:'radial-gradient(circle,rgba(16,185,129,.08) 0%,transparent 68%)',pointerEvents:'none',animation:'float 9s ease-in-out infinite' }} />
           <h1 style={{ fontSize:'clamp(48px,11vw,128px)',fontWeight:900,letterSpacing:'-4px',lineHeight:.95,marginBottom:20 }}>
-            <span style={{ background:'linear-gradient(135deg,#10b981,#34d399,#6ee7b7)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',backgroundClip:'text' }}>XRPL</span>
-            <span style={{ color:'#38bdf8',textShadow:'0 0 40px rgba(56,189,248,.5)' }}>Hub</span>
+            <span style={brandGradientText}>XRPLHub</span>
           </h1>
           <div style={{ display:'inline-block',marginBottom:28,fontSize:11,fontWeight:700,color:'#34d399',letterSpacing:'.14em',fontFamily:"'IBM Plex Mono',monospace",textTransform:'uppercase' }}>
             Community Grants · XRPL Amendment Services · XRPLScore™ · 2026
@@ -2067,19 +2051,6 @@ export default function XRPLHubHome() {
           <a href={XAMAN_DL} target="_blank" rel="noopener noreferrer" style={{ display:'inline-flex',alignItems:'center',gap:8,fontSize:13,color:'#10b981',fontWeight:600,textDecoration:'none' }}>
             📲 Xaman Wallet required — download free (iOS / Android) →
           </a>
-        </section>
-
-        {/* HOW IT WORKS */}
-        <section className="section-pad" style={{ padding:'0 24px 56px',maxWidth:980,margin:'0 auto' }}>
-          <div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))',gap:14 }}>
-            {[['🗣️','You tell us what you want','Pick a service and your parameters.'],['🛠️','We build the exact transaction','AI assembles the precise XRPL transaction — nothing hidden.'],['✍️','You sign once in Xaman','Your keys never leave your wallet. Permanent on mainnet ~4s.']].map(([e,t,d])=>(
-              <div key={t} style={{ ...GLASS,borderRadius:18,padding:'22px 20px' }}>
-                <div style={{ fontSize:30,marginBottom:10 }}>{e}</div>
-                <h3 style={{ fontSize:15,fontWeight:800,marginBottom:6 }}>{t}</h3>
-                <p style={{ fontSize:12,color:'rgba(255,255,255,.5)',lineHeight:1.6 }}>{d}</p>
-              </div>
-            ))}
-          </div>
         </section>
 
         {/* PRODUCTS */}
@@ -2143,14 +2114,10 @@ export default function XRPLHubHome() {
               wallet={connectedWallet}
               data={personalScore}
               history={scoreHistory}
-              onSubscribe={()=>setAP(PRODUCTS.find(p=>p.id==='credit')||null)}
               loading={personalLoading}
             />
           ) : (
-            <div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(300px,1fr))',gap:36,alignItems:'start' }}>
-
-              {/* LEFT — what is XRPLScore + checker */}
-              <div>
+            <div style={{ maxWidth:560,margin:'0 auto' }}>
                 <div style={{ display:'inline-flex',alignItems:'center',gap:6,marginBottom:14 }}>
                   <span style={{ width:5,height:5,borderRadius:'50%',background:'#10b981',boxShadow:'0 0 8px #10b981',animation:'pulse 2s infinite' }} />
                   <span style={{ fontSize:11,fontWeight:700,color:'#10b981',letterSpacing:'.14em',textTransform:'uppercase' }}>XRPLScore™ · First of its kind on XRPL</span>
@@ -2167,47 +2134,6 @@ export default function XRPLHubHome() {
                   <button onClick={()=>fetchScore(walletInput)} style={{ padding:'12px 22px',borderRadius:99,background:'#10b981',color:'#000',border:'none',fontWeight:800,fontSize:13,cursor:'pointer',fontFamily:'inherit',whiteSpace:'nowrap' }}>Quick Check →</button>
                 </div>
                 <p style={{ fontSize:11,color:'rgba(255,255,255,.28)',marginTop:10 }}>or <button onClick={()=>setShowConnect(true)} style={{ background:'none',border:'none',color:'#10b981',cursor:'pointer',fontWeight:700,fontSize:11,fontFamily:'inherit',padding:0 }}>connect your Xaman wallet</button> for your full personalized credit report</p>
-              </div>
-
-              {/* RIGHT — XRPLScore Builder tiers */}
-              <div>
-                <div style={{ display:'inline-flex',alignItems:'center',gap:7,background:'rgba(16,185,129,.1)',border:'1px solid rgba(16,185,129,.28)',borderRadius:99,padding:'5px 14px',marginBottom:14 }}>
-                  <span style={{ width:6,height:6,borderRadius:'50%',background:'#10b981',boxShadow:'0 0 8px #10b981',animation:'pulse 2.5s infinite' }} />
-                  <span style={{ fontSize:10,fontWeight:700,color:'#10b981',letterSpacing:'.12em',textTransform:'uppercase' }}>XRPLScore Builder</span>
-                </div>
-                <h3 style={{ fontSize:'clamp(18px,2.5vw,26px)',fontWeight:900,letterSpacing:'-1px',marginBottom:10 }}>Build real on-chain reputation.<br />Watch your score climb.</h3>
-                <p style={{ fontSize:12,color:'rgba(255,255,255,.48)',lineHeight:1.7,marginBottom:18 }}>
-                  Subscribe monthly and build verifiable on-chain history that raises your XRPLScore over time. The first reputation builder native to the XRP Ledger.
-                </p>
-
-                {/* tier cards */}
-                <div style={{ display:'flex',flexDirection:'column',gap:10,marginBottom:14 }}>
-                  {[
-                    { name:'Starter', price:'15 RLUSD/mo', color:'#34d399', perks:'XRPLScore tracking · monthly on-chain record · email alerts' },
-                    { name:'Builder', price:'25 RLUSD/mo', color:'#10b981', perks:'All Starter · score-history graph · trend simulator', popular:true },
-                    { name:'Pro',     price:'35 RLUSD/mo', color:'#f59e0b', perks:'All Builder · priority signals · full score-history export' },
-                  ].map(t=>(
-                    <div key={t.name} onClick={()=>setAP(PRODUCTS.find(p=>p.id==='credit')||null)}
-                      style={{ background:'rgba(255,255,255,.04)',border:`1px solid ${t.color}28`,borderRadius:14,padding:'14px 18px',cursor:'pointer',transition:'all .18s',position:'relative' }}
-                      onMouseEnter={e=>(e.currentTarget as HTMLDivElement).style.borderColor=`${t.color}55`}
-                      onMouseLeave={e=>(e.currentTarget as HTMLDivElement).style.borderColor=`${t.color}28`}>
-                      {t.popular && <div style={{ position:'absolute',top:-9,right:14,background:'#10b981',color:'#000',fontSize:8,fontWeight:800,padding:'2px 10px',borderRadius:99,letterSpacing:'.08em' }}>POPULAR</div>}
-                      <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:5,flexWrap:'wrap',gap:6 }}>
-                        <span style={{ fontWeight:800,fontSize:14,color:'#fff' }}>{t.name}</span>
-                        <span style={{ fontSize:16,fontWeight:900,color:t.color }}>{t.price}</span>
-                      </div>
-                      <div style={{ fontSize:11,color:'rgba(255,255,255,.4)',lineHeight:1.5 }}>{t.perks}</div>
-                    </div>
-                  ))}
-                </div>
-
-                <button onClick={()=>setAP(PRODUCTS.find(p=>p.id==='credit')||null)} style={{ ...Btn('green',undefined,{width:'100%',padding:'14px',fontSize:15}) }}>Start Building Your XRPLScore →</button>
-                <p style={{ fontSize:11,color:'rgba(255,255,255,.28)',textAlign:'center',marginTop:10,lineHeight:1.6 }}>
-                  First on-chain reputation builder on the XRP Ledger<br />
-                  <span style={{ color:'rgba(255,255,255,.18)' }}>No FICO · No bureaus · No SSN · 100% on-chain</span>
-                </p>
-              </div>
-
             </div>
           )}
           </div>
