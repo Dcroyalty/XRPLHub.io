@@ -202,7 +202,8 @@ async function doBithomp(prisma) {
     let ok = false;
     for (let attempt = 0; attempt < 4 && !ok; attempt++) {
       try {
-        const res = await fetch(`${BITHOMP_BASE}/mptokens?issuer=${issuer}&limit=250`, {
+        // Bithomp free tier caps limit at 100; marker pagination is paid.
+        const res = await fetch(`${BITHOMP_BASE}/mptokens?issuer=${issuer}&limit=100`, {
           headers: { 'x-bithomp-token': BITHOMP_KEY }, signal: AbortSignal.timeout(25000),
         });
         const j = await res.json();

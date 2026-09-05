@@ -30,24 +30,26 @@ export function bithompConfigured(): boolean {
   return !!process.env.BITHOMP_API_KEY;
 }
 
+// Bithomp free tier: limit is capped at 100 and marker pagination past the
+// first page is paid ("available only within standard and higher api plans").
+// So one page of 100 is the most we get for free per issuer — if `marker`
+// comes back the count is a floor and our own ledger walk fills the rest.
+const BITHOMP_FREE_MAX_LIMIT = 100;
+
 /**
- * Every MPT issuance Bithomp has for one issuer. The `?issuer=` filter is
- * free and (per Bithomp docs + our reconciliation) uncapped — `marker`
- * pagination past the first page is paid-tier only, so if `marker` comes back
- * the count is a floor. Returns null only on hard failure (the caller keeps
- * whatever it already had).
+ * Every MPT issuance Bithomp has for one issuer, first (free) page only.
+ * Returns null on hard failure; the caller keeps whatever it already had.
  */
 export async function bithompMptsByIssuer(
-  issuer: string,
-  limit = 250
+  issuer: string
 ): Promise<{ issuances: BithompMpt[]; capped: boolean } | null> {
   const key = process.env.BITHOMP_API_KEY;
   if (!key) return null;
   try {
-    const res = await fetch(`${BASE}/mptokens?issuer=${encodeURIComponent(issuer)}&limit=${limit}`, {
-      headers: { "x-bithomp-token": key },
-      signal: AbortSignal.timeout(25_000),
-    });
+    const res = await fetch(
+      `${BASE}/mptokens?issuer=${encodeURIComponent(issuer)}&limit=${BITHOMP_FREE_MAX_LIMIT}`,
+      { headers: { "x-bithomp-token": key }, signal: AbortSignal.timeout(25_000) }
+    );
     if (!res.ok) return null;
     const j = (await res.json()) as { error?: string; issuances?: BithompMpt[]; marker?: string };
     if (j.error) return null;
@@ -65,7 +67,8 @@ export async function bithompRecentMpts(limit = 100): Promise<BithompMpt[] | nul
   const key = process.env.BITHOMP_API_KEY;
   if (!key) return null;
   try {
-    const res = await fetch(`${BASE}/mptokens?order=createdNew&limit=${limit}`, {
+    const capped = Math.min(limit, BITHOMP_FREE_MAX_LIMIT);
+    const res = await fetch(`${BASE}/mptokens?order=createdNew&limit=${capped}`, {
       headers: { "x-bithomp-token": key },
       signal: AbortSignal.timeout(25_000),
     });

@@ -172,7 +172,7 @@ export async function runMptIndexerPass(
   for (const issuer of refreshOrder) {
     if (issuersRefreshed.length >= bithompSlice) break;
     if (Date.now() - startedAt > budgetMs * 0.55) break; // leave >=45% of budget for the walk
-    const got = await bithompMptsByIssuer(issuer, 250);
+    const got = await bithompMptsByIssuer(issuer);
     if (!got) {
       // still touch the aggregate so lastRefreshedAt advances and we don't get stuck on a failing issuer
       await refreshIssuerAggregate(prisma, issuer).catch(() => {});
