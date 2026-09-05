@@ -81,20 +81,33 @@ export interface MptRowInput {
   flagsRaw: number;
   metadata: string | null; // decoded JSON string or raw text
   name: string | null;
+  ticker: string | null;
   holderCount: number | null;
   ledgerIndex: number | null;
   source: "walk" | "bithomp";
 }
 
-function nameFromMetadata(meta: string | null): string | null {
-  if (!meta) return null;
+function str(v: unknown): string | null {
+  return typeof v === "string" && v.trim() ? v.trim() : null;
+}
+
+function namesFromMetadata(meta: string | null): { name: string | null; ticker: string | null } {
+  if (!meta) return { name: null, ticker: null };
   try {
     const o = JSON.parse(meta) as Record<string, unknown>;
-    const n = o.name ?? o.ticker ?? o.currency ?? o.n ?? o.t;
-    return typeof n === "string" && n.trim() ? n.trim() : null;
+    return {
+      name: str(o.name) ?? str(o.n) ?? null,
+      ticker: str(o.ticker) ?? str(o.currency) ?? str(o.t) ?? null,
+    };
   } catch {
-    return null;
+    return { name: null, ticker: null };
   }
+}
+
+/** Lowercased "name ticker" blob used for case-insensitive search. */
+export function mptSearchText(name: string | null, ticker: string | null): string | null {
+  const s = [name, ticker].filter(Boolean).join(" ").trim().toLowerCase();
+  return s || null;
 }
 
 /** Shape a row from a raw ledger_data / ledger_entry MPTokenIssuance node. */
@@ -103,6 +116,7 @@ export function mptRowFromLedgerNode(node: Record<string, unknown>): MptRowInput
   const sequence = typeof node.Sequence === "number" ? node.Sequence : null;
   const metaHex = typeof node.MPTokenMetadata === "string" ? node.MPTokenMetadata : null;
   const metadata = metaHex ? safeDecode(metaHex) : null;
+  const { name, ticker } = namesFromMetadata(metadata);
   const issuanceId =
     typeof node.mpt_issuance_id === "string"
       ? String(node.mpt_issuance_id).toUpperCase()
@@ -119,7 +133,8 @@ export function mptRowFromLedgerNode(node: Record<string, unknown>): MptRowInput
     transferFee: Number(node.TransferFee ?? 0),
     flagsRaw: Number(node.Flags ?? 0),
     metadata,
-    name: nameFromMetadata(metadata),
+    name,
+    ticker,
     holderCount: null,
     ledgerIndex: null,
     source: "walk",
@@ -139,11 +154,9 @@ export function mptRowFromBithomp(b: BithompMpt): MptRowInput {
     if (b.flags.canTransfer) flagsRaw |= FLAG.canTransfer;
     if (b.flags.canClawback) flagsRaw |= FLAG.canClawback;
   }
-  const name =
-    (b.metadata && typeof b.metadata.name === "string" && b.metadata.name) ||
-    (b.metadata && typeof b.metadata.ticker === "string" && b.metadata.ticker) ||
-    b.currency ||
-    null;
+  const md = b.metadata ?? {};
+  const name = str(md.name) ?? str(md.n);
+  const ticker = str(md.ticker) ?? str(md.currency) ?? str(b.currency);
   return {
     issuanceId: String(b.mptokenIssuanceID).toUpperCase(),
     issuer: String(b.issuer ?? ""),
@@ -154,7 +167,8 @@ export function mptRowFromBithomp(b: BithompMpt): MptRowInput {
     transferFee: typeof b.transferFee === "number" ? b.transferFee : 0,
     flagsRaw,
     metadata,
-    name: name ? String(name).trim() || null : null,
+    name,
+    ticker,
     holderCount: typeof b.holders === "number" ? b.holders : typeof b.mptokens === "number" ? b.mptokens : null,
     ledgerIndex: null,
     source: "bithomp",

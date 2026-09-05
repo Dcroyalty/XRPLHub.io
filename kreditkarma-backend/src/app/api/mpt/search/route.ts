@@ -22,6 +22,7 @@ function shape(r: Awaited<ReturnType<typeof prisma.indexedMPT.findMany>>[number]
     issuanceId: r.issuanceId,
     issuer: r.issuer,
     name: r.name,
+    ticker: r.ticker,
     assetScale: r.assetScale,
     maximumAmount: r.maxAmount,
     outstandingAmount: r.outstanding,
@@ -57,7 +58,7 @@ export async function GET(req: Request) {
   } else {
     matchType = "name";
     rows = await prisma.indexedMPT.findMany({
-      where: { nameLower: { contains: q.toLowerCase() } },
+      where: { searchText: { contains: q.toLowerCase() } },
       take: LIMIT,
       orderBy: { outstanding: "desc" },
     });

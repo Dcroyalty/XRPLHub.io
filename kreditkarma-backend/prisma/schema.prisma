@@ -270,8 +270,9 @@ model IndexedMPT {
   transferFee Int      @default(0)       // raw TransferFee (tenths of a basis point)
   flagsRaw    Int      @default(0)
   metadata    String?                    // decoded MPTokenMetadata (JSON string, or raw text if not JSON)
-  name        String?                    // best-effort token name / ticker from the metadata
-  nameLower   String?                    // lowercased copy of `name` for case-insensitive search
+  name        String?                    // best-effort display name from the metadata
+  ticker      String?                    // metadata ticker / currency code, if any
+  searchText  String?                    // lowercased "name ticker currency" blob for case-insensitive search
   holderCount Int?                       // null = unknown
   ledgerIndex Int?                       // validated ledger the walk last confirmed this row against
   sources     String   @default("")      // comma-separated: "walk", "bithomp"
@@ -280,7 +281,7 @@ model IndexedMPT {
   lastSeenAt  DateTime @updatedAt
 
   @@index([issuer])
-  @@index([nameLower])
+  @@index([searchText])
 }
 
 // Per-issuer aggregate for GET /api/mpt/issuer — how many MPTs the issuer has

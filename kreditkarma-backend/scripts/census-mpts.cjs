@@ -69,13 +69,17 @@ function deriveIssuanceId(sequence, issuer) {
   const acctHex = Buffer.from(decodeAccountID(issuer)).toString('hex').toUpperCase();
   return seqHex + acctHex;
 }
-function nameFromMeta(metaStr) {
-  if (!metaStr) return null;
+function s(v) { return typeof v === 'string' && v.trim() ? v.trim() : null; }
+function namesFromMeta(metaStr) {
+  if (!metaStr) return { name: null, ticker: null };
   try {
     const o = JSON.parse(metaStr);
-    const n = o.name ?? o.ticker ?? o.currency ?? o.n ?? o.t;
-    return typeof n === 'string' && n.trim() ? n.trim() : null;
-  } catch { return null; }
+    return { name: s(o.name) ?? s(o.n), ticker: s(o.ticker) ?? s(o.currency) ?? s(o.t) };
+  } catch { return { name: null, ticker: null }; }
+}
+function searchText(name, ticker) {
+  const t = [name, ticker].filter(Boolean).join(' ').trim().toLowerCase();
+  return t || null;
 }
 function idsHash(ids) {
   return crypto.createHash('sha256').update([...ids].sort().join(',')).digest('hex');
@@ -130,8 +134,8 @@ async function upsertRow(prisma, row, passNumber) {
   const common = {
     issuer: row.issuer, sequence: row.sequence, assetScale: row.assetScale,
     maxAmount: row.maxAmount, outstanding: row.outstanding, transferFee: row.transferFee,
-    flagsRaw: row.flagsRaw, metadata: row.metadata, name: row.name,
-    nameLower: row.name ? row.name.toLowerCase() : null,
+    flagsRaw: row.flagsRaw, metadata: row.metadata, name: row.name, ticker: row.ticker,
+    searchText: searchText(row.name, row.ticker),
     sources: [...sources].sort().join(','),
   };
   if (row.holderCount != null) common.holderCount = row.holderCount;
@@ -213,7 +217,9 @@ async function doBithomp(prisma) {
           let flagsRaw = 0;
           if (b.flags) for (const k of Object.keys(FLAG)) if (b.flags[k]) flagsRaw |= FLAG[k];
           const meta = b.metadata ? JSON.stringify(b.metadata) : null;
-          const nm = (b.metadata && (b.metadata.name || b.metadata.ticker)) || b.currency || null;
+          const md = b.metadata || {};
+          const name = s(md.name) ?? s(md.n);
+          const ticker = s(md.ticker) ?? s(md.currency) ?? s(b.currency);
           if (await upsertRow(prisma, {
             issuanceId: String(b.mptokenIssuanceID || '').toUpperCase(),
             issuer: String(b.issuer || ''),
@@ -222,13 +228,13 @@ async function doBithomp(prisma) {
             maxAmount: b.maximumAmount != null ? String(b.maximumAmount) : null,
             outstanding: b.outstandingAmount != null ? String(b.outstandingAmount) : '0',
             transferFee: typeof b.transferFee === 'number' ? b.transferFee : 0,
-            flagsRaw, metadata: meta, name: nm ? String(nm).trim() : null,
+            flagsRaw, metadata: meta, name, ticker,
             holderCount: typeof b.holders === 'number' ? b.holders : (typeof b.mptokens === 'number' ? b.mptokens : null),
             source: 'bithomp',
           }, 0)) totalRows++;
         }
         const n = await refreshAggregate(prisma, issuer);
-        console.log(`  ${issuer}: ${list.length} from bithomp ${j.marker ? '(CAPPED >250)' : ''} — issuer now has ${n} indexed`);
+        console.log(`  ${issuer}: ${list.length} from bithomp ${j.marker ? '(CAPPED >100)' : ''} — issuer now has ${n} indexed`);
         ok = true;
       } catch (e) {
         console.error(`  ${issuer} attempt ${attempt + 1}: ${e.message}`);
@@ -293,6 +299,7 @@ async function doWalk(prisma, once) {
         const seq = typeof node.Sequence === 'number' ? node.Sequence : null;
         const metaHex = typeof node.MPTokenMetadata === 'string' ? node.MPTokenMetadata : null;
         const meta = metaHex ? safeDecode(metaHex) : null;
+        const { name, ticker } = namesFromMeta(meta);
         const id = typeof node.mpt_issuance_id === 'string'
           ? String(node.mpt_issuance_id).toUpperCase()
           : (seq != null && node.Issuer ? deriveIssuanceId(seq, String(node.Issuer)) : '');
@@ -302,7 +309,7 @@ async function doWalk(prisma, once) {
           maxAmount: node.MaximumAmount != null ? String(node.MaximumAmount) : null,
           outstanding: String(node.OutstandingAmount || '0'),
           transferFee: Number(node.TransferFee || 0),
-          flagsRaw: Number(node.Flags || 0), metadata: meta, name: nameFromMeta(meta),
+          flagsRaw: Number(node.Flags || 0), metadata: meta, name, ticker,
           holderCount: null, ledgerIndex, source: 'walk',
         }, passNumber)) seen++;
       }

@@ -72,6 +72,7 @@ export async function GET(req: Request) {
     mpts: rows.map((r) => ({
       issuanceId: r.issuanceId,
       name: r.name,
+      ticker: r.ticker,
       assetScale: r.assetScale,
       maximumAmount: r.maxAmount,
       outstandingAmount: r.outstanding,

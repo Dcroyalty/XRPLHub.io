@@ -27,6 +27,7 @@ import {
   MPT_BOOTSTRAP_ISSUERS,
   mptRowFromLedgerNode,
   mptRowFromBithomp,
+  mptSearchText,
   issuanceIdsHash,
   type MptRowInput,
 } from "./mptIndex";
@@ -73,7 +74,8 @@ async function upsertRow(prisma: PrismaClient, row: MptRowInput, passNumber: num
     flagsRaw: row.flagsRaw,
     metadata: row.metadata,
     name: row.name,
-    nameLower: row.name ? row.name.toLowerCase() : null,
+    ticker: row.ticker,
+    searchText: mptSearchText(row.name, row.ticker),
     sources: [...sources].sort().join(","),
     ...(row.holderCount != null ? { holderCount: row.holderCount } : {}),
     ...(row.source === "walk" ? { passNumber, ledgerIndex: row.ledgerIndex } : {}),
