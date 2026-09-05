@@ -29,8 +29,16 @@ import {
   mptRowFromBithomp,
   mptSearchText,
   issuanceIdsHash,
+  mptCoverage,
   type MptRowInput,
 } from "./mptIndex";
+import {
+  CANON_VERSION,
+  computeRegistrySnapshot,
+  buildAnchorMemo,
+  submitAnchorTx,
+  type AnchorMemoPayload,
+} from "./mptAnchor";
 
 const PAGE_LIMIT = 200;
 
@@ -88,8 +96,10 @@ async function upsertRow(prisma: PrismaClient, row: MptRowInput, passNumber: num
   return true;
 }
 
-/** Recompute the per-issuer aggregate; rescore only if the id set changed. */
-async function refreshIssuerAggregate(prisma: PrismaClient, issuer: string, forceScore = false) {
+/** Recompute the per-issuer aggregate; rescore only if the id set changed.
+ *  `capped` = Bithomp returned a marker (issuer has >100 issuances) — recorded
+ *  so mptCoverage() can drop "complete-per-known-issuer" while it's true. */
+async function refreshIssuerAggregate(prisma: PrismaClient, issuer: string, forceScore = false, capped?: boolean) {
   const rows = await prisma.indexedMPT.findMany({ where: { issuer }, select: { issuanceId: true } });
   const hash = issuanceIdsHash(rows.map((r) => r.issuanceId));
   const prev = await prisma.indexedMptIssuer.findUnique({ where: { issuer } });
@@ -115,10 +125,11 @@ async function refreshIssuerAggregate(prisma: PrismaClient, issuer: string, forc
     }
   }
 
+  const cappedField = capped === undefined ? {} : { bithompCapped: capped };
   await prisma.indexedMptIssuer.upsert({
     where: { issuer },
-    create: { issuer, mptCount: rows.length, issuanceIdsHash: hash, xrplScore: score, grade, scoredAt },
-    update: { mptCount: rows.length, issuanceIdsHash: hash, xrplScore: score, grade, scoredAt },
+    create: { issuer, mptCount: rows.length, issuanceIdsHash: hash, xrplScore: score, grade, scoredAt, ...cappedField },
+    update: { mptCount: rows.length, issuanceIdsHash: hash, xrplScore: score, grade, scoredAt, ...cappedField },
   });
   return { changed, mptCount: rows.length };
 }
@@ -185,7 +196,7 @@ export async function runMptIndexerPass(
     for (const b of got.issuances) {
       if (await upsertRow(prisma, mptRowFromBithomp(b), checkpoint.passNumber)) rowsUpserted++;
     }
-    const agg = await refreshIssuerAggregate(prisma, issuer);
+    const agg = await refreshIssuerAggregate(prisma, issuer, false, got.capped);
     if (agg.changed) issuersRescored.push(issuer);
     issuersRefreshed.push(issuer);
     await sleep(6500); // 10 req/min free-tier ceiling
@@ -285,5 +296,106 @@ export async function runMptIndexerPass(
     };
   } finally {
     await client.disconnect().catch(() => {});
+  }
+}
+
+// ── On-ledger anchoring ──────────────────────────────────────────────────────
+
+const ANCHOR_MIN_INTERVAL_MS = 20 * 60 * 60 * 1000;     // don't anchor more than ~once a day
+const ANCHOR_MAX_INTERVAL_MS = 8 * 24 * 60 * 60 * 1000; // re-anchor even if unchanged, as a liveness proof
+
+export interface AnchorAttempt {
+  attempted: boolean;
+  submitted: boolean;
+  reason: string;
+  merkleRoot: string;
+  issuanceCount: number;
+  issuerCount: number;
+  coverage: string;
+  anchorId?: string;
+  txHash?: string;
+}
+
+/**
+ * Called at the end of a cron pass. Computes the registry Merkle root; if
+ * MPT_ANCHOR_ENABLED === "true" and an anchor is due, submits the anchor tx
+ * from the issuer wallet and records it. Otherwise records a `pending`
+ * snapshot row (deduped by root) so GET /api/mpt/anchor can show what WOULD
+ * be anchored. Never submits for a "partial" coverage snapshot unless the
+ * memo carries the coverage figure (it always does).
+ */
+export async function maybeAnchor(prisma: PrismaClient): Promise<AnchorAttempt> {
+  const [snap, cov] = await Promise.all([computeRegistrySnapshot(prisma), mptCoverage(prisma)]);
+  const base = {
+    merkleRoot: snap.merkleRoot,
+    issuanceCount: snap.issuanceCount,
+    issuerCount: snap.issuerCount,
+    coverage: cov.coverage,
+  };
+
+  const existing = await prisma.mptAnchor.findFirst({ where: { merkleRoot: snap.merkleRoot }, orderBy: { createdAt: "desc" } });
+  const lastAnchored = await prisma.mptAnchor.findFirst({ where: { status: "anchored" }, orderBy: { createdAt: "desc" } });
+  const now = Date.now();
+  const payload: AnchorMemoPayload = {
+    root: snap.merkleRoot,
+    issuances: snap.issuanceCount,
+    issuers: snap.issuerCount,
+    coverage: cov.coverage,
+    freshnessFloor: cov.freshnessFloorAt,
+    ts: new Date().toISOString(),
+  };
+  const memo = buildAnchorMemo(payload).memoData;
+
+  const gateOn = process.env.MPT_ANCHOR_ENABLED === "true";
+
+  if (!gateOn) {
+    if (!existing) {
+      await prisma.mptAnchor.create({
+        data: {
+          canonVersion: CANON_VERSION, merkleRoot: snap.merkleRoot,
+          issuanceCount: snap.issuanceCount, issuerCount: snap.issuerCount,
+          coverage: cov.coverage, freshnessFloorAt: cov.freshnessFloorAt ? new Date(cov.freshnessFloorAt) : null,
+          memo, status: "pending",
+        },
+      });
+    }
+    return { ...base, attempted: false, submitted: false, reason: "MPT_ANCHOR_ENABLED != 'true' — recorded a pending snapshot only, no tx submitted." };
+  }
+
+  if (existing?.status === "anchored") {
+    return { ...base, attempted: false, submitted: false, reason: "this exact root is already anchored on-ledger.", anchorId: existing.id, txHash: existing.txHash ?? undefined };
+  }
+  if (lastAnchored && now - lastAnchored.createdAt.getTime() < ANCHOR_MIN_INTERVAL_MS) {
+    return { ...base, attempted: false, submitted: false, reason: "last anchor was less than ~20h ago." };
+  }
+  const rootUnchanged = lastAnchored?.merkleRoot === snap.merkleRoot;
+  const staleEnough = !lastAnchored || now - lastAnchored.createdAt.getTime() >= ANCHOR_MAX_INTERVAL_MS;
+  if (rootUnchanged && !staleEnough) {
+    return { ...base, attempted: false, submitted: false, reason: "root unchanged since the last anchor and it is less than 8 days old." };
+  }
+
+  const row = existing ?? (await prisma.mptAnchor.create({
+    data: {
+      canonVersion: CANON_VERSION, merkleRoot: snap.merkleRoot,
+      issuanceCount: snap.issuanceCount, issuerCount: snap.issuerCount,
+      coverage: cov.coverage, freshnessFloorAt: cov.freshnessFloorAt ? new Date(cov.freshnessFloorAt) : null,
+      memo, status: "pending",
+    },
+  }));
+
+  try {
+    const r = await submitAnchorTx(payload);
+    if (!r.validated || r.engineResult !== "tesSUCCESS") {
+      throw new Error(`tx not successful: engineResult=${r.engineResult}, validated=${r.validated}`);
+    }
+    await prisma.mptAnchor.update({
+      where: { id: row.id },
+      data: { status: "anchored", txHash: r.txHash, ledgerIndex: r.ledgerIndex, account: r.account, feeDrops: r.feeDrops, anchoredAt: new Date(), error: null },
+    });
+    return { ...base, attempted: true, submitted: true, reason: "anchored", anchorId: row.id, txHash: r.txHash };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    await prisma.mptAnchor.update({ where: { id: row.id }, data: { status: "failed", error: msg } });
+    return { ...base, attempted: true, submitted: false, reason: `anchor submit failed: ${msg}`, anchorId: row.id };
   }
 }

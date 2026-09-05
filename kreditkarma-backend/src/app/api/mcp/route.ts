@@ -12,7 +12,7 @@
 // Stateless — zero new infrastructure, runs on Vercel as a standard serverless fn.
 // No new npm packages required.
 //
-// TWELVE TOOLS:
+// THIRTEEN TOOLS:
 //   1. check_xrpl_score        — free 300–850 wallet creditworthiness score
 //   2. list_xrpl_services      — the 35 build_xrpl_transaction actions + their params
 //   3. build_xrpl_transaction  — ready-to-sign txjson for any of 35 XRPL actions
@@ -25,6 +25,7 @@
 //  10. check_mpt_risk          — free, live: issuer powers + issuer trust for one MPT issuance
 //  11. search_mpts             — free, indexed: find MPT issuances by issuer / id / name
 //  12. get_issuer_mpts         — free, indexed: everything one issuer has issued + its score
+//  13. verify_mpt_registry     — free: the latest on-ledger Merkle-root anchor of the registry
 //
 // © 2026 XRPLHub.io · XRPLScore™ · All Rights Reserved
 // ═══════════════════════════════════════════════════════════════════════════
@@ -48,7 +49,7 @@ const CORS = {
 // JSON-RPC surface (one source of truth for scanners like Smithery).
 export const MCP_SERVER_INFO = {
   name: 'xrplhub',
-  version: '1.6.0',
+  version: '1.7.0',
   description:
     'Free XRPL wallet creditworthiness scores · ready-to-sign txjson for 35 XRPL actions · ' +
     'verifiable score credential · credential + permissioned domain explorer · MPT issuer risk · community micro-grants · donations',
@@ -179,7 +180,7 @@ export const TOOLS = [
     description:
       'Everything one issuer has put out as Multi-Purpose Tokens (XLS-33), from the registry index, plus ' +
       "the issuer's own XRPLScore. Each issuance lists the issuer's powers over a holder. Response carries " +
-      "coverage ('complete'/'partial') and lastCompletedPassAt. Params: issuer_address (r..., required). Free, no signup.",
+      "coverage ('complete-per-known-issuer'/'partial'). Params: issuer_address (r..., required). Free, no signup.",
     inputSchema: {
       type: 'object',
       properties: {
@@ -187,6 +188,16 @@ export const TOOLS = [
       },
       required: ['issuer_address'],
     },
+  },
+  {
+    name: 'verify_mpt_registry',
+    description:
+      'Get the latest on-ledger anchor of the MPT registry (BIS Working Paper 1374 pattern): a Merkle root ' +
+      'over the canonicalised index, committed in a Memo on a transaction from the issuer wallet. Returns ' +
+      'the root, its tx hash, ledger index, issuance/issuer counts, coverage, and the exact canonicalisation ' +
+      '+ Merkle scheme so you can reproduce the root from the published /api/mpt/search + /api/mpt/issuer ' +
+      'data and confirm the registry has not been altered. No params. Free, no signup.',
+    inputSchema: { type: 'object', properties: {} },
   },
   {
     name: 'check_domain_eligibility',
@@ -453,6 +464,17 @@ async function toolGetIssuerMpts(args: Record<string, unknown>): Promise<string>
     return JSON.stringify(d, null, 2);
   } catch (e) {
     return JSON.stringify({ error: `Issuer MPT lookup failed: ${e instanceof Error ? e.message : 'unknown'}` });
+  }
+}
+
+async function toolVerifyMptRegistry(): Promise<string> {
+  try {
+    const res = await fetch(`${API_URL}/api/mpt/anchor`, { signal: AbortSignal.timeout(15000) });
+    const d = await res.json();
+    if (!res.ok) return JSON.stringify({ error: d.message || `Lookup failed (HTTP ${res.status})` });
+    return JSON.stringify(d, null, 2);
+  } catch (e) {
+    return JSON.stringify({ error: `Anchor lookup failed: ${e instanceof Error ? e.message : 'unknown'}` });
   }
 }
 
@@ -905,6 +927,8 @@ export async function POST(req: NextRequest) {
         output = await toolSearchMpts(toolArgs);
       } else if (toolName === 'get_issuer_mpts') {
         output = await toolGetIssuerMpts(toolArgs);
+      } else if (toolName === 'verify_mpt_registry') {
+        output = await toolVerifyMptRegistry();
       } else {
         return rpcError(id, -32601, `Tool not found: ${toolName}`);
       }

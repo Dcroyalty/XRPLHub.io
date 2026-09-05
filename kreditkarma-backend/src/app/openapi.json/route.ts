@@ -589,8 +589,9 @@ export async function GET(req: Request) {
             "Find Multi-Purpose Token (XLS-33) issuances by issuer address, MPTokenIssuanceID (or a hex " +
             "prefix), or token name / ticker. Served from the registry index — the union of Bithomp's " +
             "per-issuer data and our own ledger_data walk. The response carries `coverage` " +
-            "(\"complete\" | \"partial\") and `lastCompletedPassAt`; while \"partial\", treat the result set " +
-            "as a floor, not the whole population. Free, no signup.",
+            "(\"complete-per-known-issuer\" | \"partial\") with `guarantees` / `doesNotGuarantee` strings: " +
+            "\"complete-per-known-issuer\" means every issuance of every issuer we know about is indexed and " +
+            "ledger-verified, NOT that no unknown issuer exists. Free, no signup.",
           security: [],
           tags: ["Tokens"],
           parameters: [{
@@ -608,11 +609,14 @@ export async function GET(req: Request) {
                   query: { type: "string" },
                   matchedBy: { type: "string", enum: ["issuer", "issuanceId", "name"] },
                   source: { type: "string", enum: ["indexed"] },
-                  coverage: { type: "string", enum: ["complete", "partial"] },
-                  lastCompletedPassAt: { type: "string", format: "date-time", nullable: true },
+                  coverage: { type: "string", enum: ["complete-per-known-issuer", "partial"] },
+                  knownIssuers: { type: "integer" },
                   indexedIssuances: { type: "integer" },
-                  indexedIssuers: { type: "integer" },
-                  note: { type: "string" },
+                  cappedIssuers: { type: "integer", description: "known issuers with >100 issuances Bithomp free can't fully page" },
+                  freshnessFloorAt: { type: "string", format: "date-time", nullable: true },
+                  lastCompletedStateWalkPassAt: { type: "string", format: "date-time", nullable: true },
+                  guarantees: { type: "string" },
+                  doesNotGuarantee: { type: "string" },
                   count: { type: "integer" },
                   truncated: { type: "boolean" },
                   results: {
@@ -641,11 +645,14 @@ export async function GET(req: Request) {
                 query: "rM7ffj9GZV41K8fWUhtpfZSZvYoZB2yA4t",
                 matchedBy: "issuer",
                 source: "indexed",
-                coverage: "partial",
-                lastCompletedPassAt: null,
+                coverage: "complete-per-known-issuer",
+                knownIssuers: 34,
                 indexedIssuances: 251,
-                indexedIssuers: 34,
-                note: "Our network-wide ledger_data walk has not finished a full pass yet…",
+                cappedIssuers: 0,
+                freshnessFloorAt: "2026-09-05T18:00:00.000Z",
+                lastCompletedStateWalkPassAt: null,
+                guarantees: "Every MPTokenIssuance of all 34 issuers we know about is in this index…",
+                doesNotGuarantee: "That no MPT issuer exists outside this set…",
                 count: 10,
                 truncated: false,
                 results: [{
@@ -671,8 +678,8 @@ export async function GET(req: Request) {
           description:
             "Everything one issuer has issued as Multi-Purpose Tokens (XLS-33), from the registry index, " +
             "with each issuance's issuer-power flags, alongside the issuer's own XRPLScore (cached, kept " +
-            "fresh by the daily refresh; computed live if not yet cached). Carries `coverage` and " +
-            "`lastCompletedPassAt`. Free, no signup.",
+            "fresh by the daily refresh; computed live if not yet cached). Carries `coverage` " +
+            "(\"complete-per-known-issuer\" | \"partial\") with `guarantees` / `doesNotGuarantee`. Free, no signup.",
           security: [],
           tags: ["Tokens"],
           parameters: [{
@@ -689,11 +696,14 @@ export async function GET(req: Request) {
                 properties: {
                   issuer: { type: "string" },
                   source: { type: "string", enum: ["indexed"] },
-                  coverage: { type: "string", enum: ["complete", "partial"] },
-                  lastCompletedPassAt: { type: "string", format: "date-time", nullable: true },
+                  coverage: { type: "string", enum: ["complete-per-known-issuer", "partial"] },
+                  knownIssuers: { type: "integer" },
                   indexedIssuances: { type: "integer" },
-                  indexedIssuers: { type: "integer" },
-                  note: { type: "string" },
+                  cappedIssuers: { type: "integer" },
+                  freshnessFloorAt: { type: "string", format: "date-time", nullable: true },
+                  lastCompletedStateWalkPassAt: { type: "string", format: "date-time", nullable: true },
+                  guarantees: { type: "string" },
+                  doesNotGuarantee: { type: "string" },
                   issuer_known_to_index: { type: "boolean" },
                   aggregateStale: { type: "boolean" },
                   xrplScore: { type: "integer", nullable: true },
@@ -707,14 +717,83 @@ export async function GET(req: Request) {
               },
               {
                 issuer: "rM7ffj9GZV41K8fWUhtpfZSZvYoZB2yA4t",
-                source: "indexed", coverage: "partial", lastCompletedPassAt: null,
-                indexedIssuances: 251, indexedIssuers: 34, note: "…",
+                source: "indexed", coverage: "complete-per-known-issuer",
+                knownIssuers: 34, indexedIssuances: 251, cappedIssuers: 0,
+                freshnessFloorAt: "2026-09-05T18:00:00.000Z", lastCompletedStateWalkPassAt: null,
+                guarantees: "…", doesNotGuarantee: "…",
                 issuer_known_to_index: true, aggregateStale: false,
                 xrplScore: 597, grade: "Fair", scoreSource: "cached", scoredAt: "2026-09-05T07:00:00.000Z",
                 mptCount: 10, mpts: [], related: [],
               }
             ),
             "400": { description: "Missing or invalid address." },
+          },
+        },
+      },
+
+      "/api/mpt/anchor": {
+        get: {
+          operationId: "mptAnchor",
+          summary: "Latest on-ledger anchor of the MPT registry (free)",
+          description:
+            "The BIS Working Paper 1374 pattern: after each cron pass the registry index is canonicalised, a " +
+            "Merkle root is computed over the issuance records, and that root is committed in a Memo on an " +
+            "AccountSet transaction from the issuer wallet " +
+            "(rmWjCGeLtuLGerEuvHDkrsr46ej2Ni13f). Returns the latest root, its tx hash, ledger index, " +
+            "issuance/issuer counts, coverage label, and the exact canonicalisation + Merkle scheme so a " +
+            "third party can reproduce the root from /api/mpt/search + /api/mpt/issuer and confirm the " +
+            "registry has not been altered. Free, no signup.",
+          security: [],
+          tags: ["Tokens"],
+          responses: {
+            "200": ok(
+              "The latest anchor plus the verification recipe.",
+              {
+                type: "object",
+                properties: {
+                  anchoringEnabled: { type: "boolean" },
+                  latest: {
+                    type: "object", nullable: true,
+                    properties: {
+                      canonVersion: { type: "string" },
+                      merkleRoot: { type: "string", description: "64-hex lowercase SHA-256 Merkle root" },
+                      issuanceCount: { type: "integer" },
+                      issuerCount: { type: "integer" },
+                      coverage: { type: "string", enum: ["complete-per-known-issuer", "partial"] },
+                      freshnessFloorAt: { type: "string", format: "date-time", nullable: true },
+                      status: { type: "string", enum: ["pending", "anchored", "failed"] },
+                      txHash: { type: "string", nullable: true },
+                      ledgerIndex: { type: "integer", nullable: true },
+                      account: { type: "string", nullable: true },
+                      feeDrops: { type: "string", nullable: true },
+                      memo: { type: "string", description: "exact UTF-8 payload; on-ledger MemoData is this hex-encoded" },
+                      anchoredAt: { type: "string", format: "date-time", nullable: true },
+                      explorer: { type: "string", nullable: true },
+                    },
+                  },
+                  pendingNext: { type: "object", nullable: true, description: "the next snapshot awaiting an anchor, if its root differs from `latest`" },
+                  history: {
+                    type: "object",
+                    properties: { totalSnapshots: { type: "integer" }, anchoredOnLedger: { type: "integer" } },
+                  },
+                  verify: {
+                    type: "object",
+                    description: "Everything needed to reproduce merkleRoot: the registry source endpoints, the frozen canonicalisation spec, and where the root sits on-ledger.",
+                  },
+                },
+              },
+              {
+                anchoringEnabled: false,
+                latest: null,
+                pendingNext: {
+                  canonVersion: "mpt-anchor-v1", merkleRoot: "10cbd62f0b95f16c46ddc9534cae3d549cf91b763254fb75cfbfac7f162c0fab",
+                  issuanceCount: 251, issuerCount: 34, coverage: "complete-per-known-issuer",
+                  status: "pending", txHash: null, memo: "{\"root\":\"10cbd6…\",\"issuances\":251,\"issuers\":34,\"coverage\":\"complete-per-known-issuer\",\"freshnessFloor\":\"2026-09-05T…\",\"ts\":\"2026-09-05T…\"}",
+                },
+                history: { totalSnapshots: 1, anchoredOnLedger: 0 },
+                verify: { summary: "Recompute the Merkle root from the published rows and check it equals latest.merkleRoot…" },
+              }
+            ),
           },
         },
       },

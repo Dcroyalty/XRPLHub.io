@@ -68,6 +68,7 @@ and "partial" must be read as a floor, not the whole population.
 
 - GET ${origin}/api/mpt/search?q=<issuer r... | MPTokenIssuanceID or hex prefix | token name> — free, indexed
 - GET ${origin}/api/mpt/issuer?address=r... — free, indexed: every MPT this issuer has out + the issuer's XRPLScore
+- GET ${origin}/api/mpt/anchor — free: the latest on-ledger Merkle-root anchor of the registry (BIS WP 1374 pattern) + the canonicalisation scheme, so anyone can prove the registry hasn't been altered
 - GET ${origin}/api/mpt/<48-hex MPTokenIssuanceID> — free, live: issuance facts + issuer powers + issuer score/grade
 - GET ${origin}/api/x402/usdc/mpt/<48-hex id> — $0.01 USDC on Base (x402): full issuer risk — account age, xrp-ledger.toml-verified domain, credentials held, Bithomp cross-check
 
@@ -89,6 +90,7 @@ MCP server (Streamable HTTP, JSON-RPC 2.0, no auth):
   - check_mpt_risk — issuer powers (clawback/freeze/auth/transferable) + issuer XRPLScore for one MPT issuance, live. Param: issuance_id. Free basic; $0.01 USDC (x402) for full issuer risk.
   - search_mpts — find MPT issuances in the registry index by issuer / MPTokenIssuanceID or prefix / token name. Param: q. Free.
   - get_issuer_mpts — every MPT one issuer has out + the issuer's XRPLScore, from the index. Param: issuer_address. Free.
+  - verify_mpt_registry — the latest on-ledger Merkle-root anchor of the registry + tx hash + ledger index + the canonicalisation scheme to reproduce the root. No params. Free.
 
 x402 pay-per-call (RLUSD, t54 facilitator, no signup):
 - Discovery: ${origin}/.well-known/x402

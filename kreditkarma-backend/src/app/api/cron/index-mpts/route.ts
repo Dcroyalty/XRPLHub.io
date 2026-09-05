@@ -9,7 +9,7 @@
 // does nothing (fails closed). The admin token also works for a manual kick.
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/xrplscore-db";
-import { runMptIndexerPass } from "@/lib/mptIndexer";
+import { runMptIndexerPass, maybeAnchor } from "@/lib/mptIndexer";
 import { isAdmin } from "@/lib/adminAuth";
 
 export const runtime = "nodejs";
@@ -27,8 +27,11 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   try {
-    const progress = await runMptIndexerPass(prisma, { budgetMs: 50_000 });
-    return NextResponse.json(progress);
+    // Leave headroom under the 60s ceiling for the anchor step (connect +
+    // autofill + submitAndWait ~= 8-12s when an anchor is actually due).
+    const progress = await runMptIndexerPass(prisma, { budgetMs: 38_000 });
+    const anchor = await maybeAnchor(prisma);
+    return NextResponse.json({ ...progress, anchor });
   } catch (err) {
     console.error("[cron/index-mpts]", err);
     return NextResponse.json(

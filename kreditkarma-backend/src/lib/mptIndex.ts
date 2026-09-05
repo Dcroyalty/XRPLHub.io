@@ -192,36 +192,68 @@ export function issuanceIdsHash(ids: string[]): string {
   return createHash("sha256").update([...ids].sort().join(",")).digest("hex");
 }
 
-export type Coverage = "complete" | "partial";
+export type Coverage = "complete-per-known-issuer" | "partial";
+
+// A known issuer must have been refreshed within this window for the index to
+// still claim "complete-per-known-issuer" (~2x the round-robin cycle time).
+export const COVERAGE_MAX_STALENESS_MS = 10 * 24 * 60 * 60 * 1000;
 
 export interface CoverageInfo {
   coverage: Coverage;
-  lastCompletedPassAt: string | null;
+  knownIssuers: number;
   indexedIssuances: number;
-  indexedIssuers: number;
-  note: string;
+  cappedIssuers: number;               // issuers with >100 issuances Bithomp free can't fully page
+  freshnessFloorAt: string | null;     // oldest per-issuer refresh in the index
+  lastCompletedStateWalkPassAt: string | null; // the slow total-ledger walk, informational only
+  guarantees: string;
+  doesNotGuarantee: string;
 }
 
 /**
- * The honesty block. `coverage` is "complete" only once our own ledger_data
- * walk has finished a full pass — until then the index is the Bithomp union
- * plus however far the walk has got, and callers must not read it as the
- * whole population.
+ * The honesty block. Coverage is deliberately NOT "complete" in a
+ * total-ledger sense — we cannot prove no MPT issuer exists outside the set
+ * we know about (Bithomp's free global enumeration stops at 100 issuances and
+ * our own ledger_data walk has not finished a full pass). What we CAN stand
+ * behind is "complete-per-known-issuer": every issuance of every issuer we
+ * know about is indexed, from Bithomp's per-issuer feed which returns an
+ * issuer's full set in one free call (unless they have >100 — flagged as
+ * `cappedIssuers`), sample-verified against the validated ledger.
  */
 export async function mptCoverage(prisma: PrismaClient): Promise<CoverageInfo> {
   const [cp, issuanceCount, issuerRows] = await Promise.all([
     prisma.indexerCheckpoint.findUnique({ where: { id: MPT_CHECKPOINT_ID } }),
     prisma.indexedMPT.count(),
-    prisma.indexedMPT.findMany({ select: { issuer: true }, distinct: ["issuer"] }),
+    prisma.indexedMptIssuer.findMany({ select: { bithompCapped: true, lastRefreshedAt: true } }),
   ]);
-  const complete = !!cp?.lastCompletedPassAt;
+  const knownIssuers = issuerRows.length;
+  const cappedIssuers = issuerRows.filter((r) => r.bithompCapped).length;
+  const floor = issuerRows.length
+    ? issuerRows.reduce((m, r) => (r.lastRefreshedAt < m ? r.lastRefreshedAt : m), issuerRows[0].lastRefreshedAt)
+    : null;
+  const fresh = floor ? Date.now() - floor.getTime() <= COVERAGE_MAX_STALENESS_MS : false;
+  const coverage: Coverage =
+    knownIssuers > 0 && cappedIssuers === 0 && fresh ? "complete-per-known-issuer" : "partial";
   return {
-    coverage: complete ? "complete" : "partial",
-    lastCompletedPassAt: cp?.lastCompletedPassAt ? cp.lastCompletedPassAt.toISOString() : null,
+    coverage,
+    knownIssuers,
     indexedIssuances: issuanceCount,
-    indexedIssuers: issuerRows.length,
-    note: complete
-      ? "Our network-wide ledger_data walk has completed at least one full pass; this index reflects every MPTokenIssuance on the ledger as of that pass, refreshed daily."
-      : "Our network-wide ledger_data walk has not finished a full pass yet. This index is the reconciled Bithomp union plus however far the walk has got — treat it as a floor, not the whole population.",
+    cappedIssuers,
+    freshnessFloorAt: floor ? floor.toISOString() : null,
+    lastCompletedStateWalkPassAt: cp?.lastCompletedPassAt ? cp.lastCompletedPassAt.toISOString() : null,
+    guarantees:
+      coverage === "complete-per-known-issuer"
+        ? `Every MPTokenIssuance of all ${knownIssuers} issuers we know about is in this index, pulled from ` +
+          `Bithomp's per-issuer feed (complete per issuer in one call) and sample-verified against the ` +
+          `validated ledger. Oldest per-issuer refresh: ${floor ? floor.toISOString() : "n/a"}.`
+        : cappedIssuers > 0
+        ? `${cappedIssuers} known issuer(s) have more than 100 issuances, which Bithomp's free tier can't ` +
+          `page past — their counts here are a floor until the ledger_data walk reaches them.`
+        : `The per-issuer refresh cycle hasn't covered every known issuer recently enough (freshness floor ` +
+          `${floor ? floor.toISOString() : "n/a"}).`,
+    doesNotGuarantee:
+      "That no MPT issuer exists outside this set. Bithomp's free global enumeration returns only the first " +
+      "100 issuances and our network-wide ledger_data walk has not completed a full pass, so a brand-new " +
+      "issuer is only picked up once it appears in Bithomp's newest-100 window or the slow walk reaches it. " +
+      "This is NOT total-ledger completeness and must not be presented as such.",
   };
 }

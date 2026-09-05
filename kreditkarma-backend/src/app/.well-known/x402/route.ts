@@ -337,6 +337,7 @@ export async function GET(req: Request) {
         freeMptRisk: `${origin}/api/mpt/{mptokenIssuanceID}`,
         freeMptSearch: `${origin}/api/mpt/search?q={query}`,
         freeMptIssuer: `${origin}/api/mpt/issuer?address={issuer}`,
+        freeMptAnchor: `${origin}/api/mpt/anchor`,
       },
     },
     { headers: { "Cache-Control": "public, max-age=300" } }

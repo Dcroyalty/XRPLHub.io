@@ -295,8 +295,37 @@ model IndexedMptIssuer {
   grade           String?
   domain          String?
   blackholed      Boolean   @default(false)
+  bithompCapped   Boolean   @default(false) // issuer has >100 issuances — Bithomp free tier can't page past 100,
+                                            // so our count is a floor and coverage can't be "complete-per-known-issuer"
   scoredAt        DateTime?
   lastRefreshedAt DateTime  @updatedAt
+}
+
+// One row per on-ledger anchor of the MPT registry (BIS WP 1374 pattern): a
+// Merkle root over the canonicalised index, committed in a Memo on a
+// transaction from the issuer wallet, so a third party can prove the registry
+// wasn't altered after the fact. See src/lib/mptAnchor.ts for the exact
+// canonicalisation + Merkle scheme (also echoed in GET /api/mpt/anchor).
+model MptAnchor {
+  id            String    @id @default(cuid())
+  canonVersion  String                     // e.g. "mpt-anchor-v1" — the canonicalisation algo id
+  merkleRoot    String                     // 64-hex SHA-256 Merkle root
+  issuanceCount Int
+  issuerCount   Int
+  coverage      String                     // "complete-per-known-issuer" | "partial"
+  freshnessFloorAt DateTime?               // oldest per-issuer refresh folded into this snapshot
+  memo          String                     // the exact UTF-8 memo payload written on-ledger
+  txHash        String?   @unique          // set once the anchor tx validates
+  ledgerIndex   Int?
+  account       String?                    // signing account (the issuer wallet)
+  feeDrops      String?
+  status        String    @default("pending") // pending | anchored | failed
+  error         String?
+  createdAt     DateTime  @default(now())
+  anchoredAt    DateTime?
+
+  @@index([createdAt])
+  @@index([status])
 }
 
 // Singleton-per-id row tracking an indexer's walk position and whether a full
