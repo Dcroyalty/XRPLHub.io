@@ -2,21 +2,42 @@
 import { useEffect, useState } from "react";
 
 /**
- * True on a device that can't scan its own screen — a phone (or a narrow
- * tablet). Capability-based: a coarse pointer with no hover, plus a small
- * viewport. Never user-agent sniffing (spoofable, and wrong for
- * touch-laptops / desktop-mode tablets). SSR-safe: false until mounted.
+ * Which Xaman affordance to lead with, by device capability — never by
+ * user-agent string (spoofable, wrong for touch-laptops and desktop-mode
+ * tablets).
+ *
+ *   "desktop" — a real pointer / hover: show the QR to scan with a phone.
+ *   "mobile"  — coarse pointer, no hover, narrow viewport: you can't scan
+ *               your own screen, so show the deeplink button.
+ *   "unknown" — pre-mount (SSR), or matchMedia unavailable/throwing: lead
+ *               with the button (a deeplink degrades harmlessly on desktop)
+ *               and let the user reveal the QR. Never render nothing.
  */
-export function useIsMobile(): boolean {
-  const [mobile, setMobile] = useState(false);
+export type DeviceLead = "desktop" | "mobile" | "unknown";
+
+export function useDeviceLead(): DeviceLead {
+  const [lead, setLead] = useState<DeviceLead>("unknown");
   useEffect(() => {
     const check = () => {
-      const touch = window.matchMedia("(hover: none) and (pointer: coarse)").matches;
-      setMobile(touch && window.innerWidth < 1024);
+      try {
+        if (typeof window.matchMedia !== "function") {
+          setLead("unknown");
+          return;
+        }
+        const coarse = window.matchMedia("(hover: none) and (pointer: coarse)").matches;
+        setLead(coarse && window.innerWidth < 1024 ? "mobile" : "desktop");
+      } catch {
+        setLead("unknown");
+      }
     };
     check();
     window.addEventListener("resize", check);
     return () => window.removeEventListener("resize", check);
   }, []);
-  return mobile;
+  return lead;
+}
+
+/** Back-compat: true only when we're confident it's a phone-class device. */
+export function useIsMobile(): boolean {
+  return useDeviceLead() === "mobile";
 }
