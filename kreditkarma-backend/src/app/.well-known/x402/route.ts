@@ -22,55 +22,13 @@ import {
   TREASURY_ADDRESS,
 } from "@/lib/paycall";
 import { BUILDABLE_SERVICE_IDS } from "@/app/api/execute/serviceCatalog";
-import { BASE_PAY_TO, BASE_NETWORK, USDC_BASE_ASSET, CDP_FACILITATOR_URL } from "@/lib/x402Base";
+import { BASE_PAY_TO, BASE_NETWORK, USDC_BASE_ASSET, CDP_FACILITATOR_URL, PRICE_PER_SCORE_USDC } from "@/lib/x402Base";
 import { PLANS, type PlanId } from "@/lib/plans";
 import { USDC_PLAN_OUTPUT_SCHEMA, usdcPlanOutputExample } from "@/lib/checkoutUsdc";
+import { walletProp, SCORE_OUTPUT_SCHEMA as scoreOutputSchema, SCORE_OUTPUT_EXAMPLE as scoreOutputExample } from "@/lib/scoreSchema";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-const walletProp = {
-  type: "string",
-  pattern: "^r[1-9A-HJ-NP-Za-km-z]{24,34}$",
-  description: "XRPL classic address (r...) to score or report on.",
-  example: "rMxCKbEDwqr76QuheSUMdEGf4B9xJ8m5De",
-};
-
-const scoreOutputSchema = {
-  type: "object",
-  properties: {
-    wallet: { type: "string", description: "The address that was scored." },
-    score: { type: "integer", minimum: 300, maximum: 850, description: "XRPLScore, 300–850 (absolute scale)." },
-    grade: { type: "string", enum: ["Building", "Fair", "Good", "Excellent", "Exceptional"] },
-    percentile: { type: "number", description: "Peer percentile band, 0–100." },
-    signals: {
-      type: "object",
-      description: "The 8 component scores, 0–100 each.",
-      properties: {
-        accountAge: { type: "number" }, txActivity: { type: "number" },
-        financialHealth: { type: "number" }, tokenEngagement: { type: "number" },
-        dexActivity: { type: "number" }, ammActivity: { type: "number" },
-        securityConfig: { type: "number" }, nftActivity: { type: "number" },
-      },
-    },
-    methodology: { type: "string" },
-    computedAt: { type: "string", format: "date-time" },
-  },
-  required: ["wallet", "score", "grade", "signals"],
-};
-
-const scoreOutputExample = {
-  wallet: "rMxCKbEDwqr76QuheSUMdEGf4B9xJ8m5De",
-  score: 721,
-  grade: "Good",
-  percentile: 74,
-  signals: {
-    accountAge: 88, txActivity: 71, financialHealth: 64, tokenEngagement: 61,
-    dexActivity: 40, ammActivity: 12, securityConfig: 30, nftActivity: 0,
-  },
-  methodology: "XRPLHub XRPLScore v1.1 — 8-signal native on-chain behavioral scoring, absolute scale",
-  computedAt: "2026-09-04T00:00:00.000Z",
-};
 
 // Plan-purchase resources on USDC/Base run x402 PROTOCOL VERSION 1
 // (x402-next/@coinbase/x402@1.0.1 — the line the live CDP REST facilitator
@@ -111,6 +69,39 @@ function usdcPlanResource(origin: string, planId: PlanId) {
     },
     outputSchema: USDC_PLAN_OUTPUT_SCHEMA,
     outputExample: usdcPlanOutputExample(planId),
+  };
+}
+
+// The agent-priced entry point — distinct from the 3 human subscription
+// plans above. Market rate for agent-purchased calls is $0.002-$0.025;
+// nothing at subscription pricing ever sells to an agent.
+function usdcScoreResource(origin: string) {
+  return {
+    resource: `${origin}/api/x402/usdc/score`,
+    method: "POST",
+    name: "XRPLScore — pay per call in USDC on Base",
+    description:
+      "Get a 300–850 on-chain creditworthiness score for one XRPL wallet from 8 signals (account age, " +
+      "tx history, financial health, tokens, DEX, AMM, security, NFTs). $0.01 in USDC on Base per call " +
+      '— the cheap entry point agents evaluate before a subscription plan. POST JSON body {"wallet":"r..."}.',
+    x402Version: 1,
+    scheme: "exact",
+    network: BASE_NETWORK,
+    asset: USDC_BASE_ASSET,
+    assetSymbol: "USDC",
+    payTo: BASE_PAY_TO,
+    maxTimeoutSeconds: 300,
+    facilitator: CDP_FACILITATOR_URL,
+    noSignup: true,
+    amount: PRICE_PER_SCORE_USDC.toFixed(6),
+    inputSchema: {
+      type: "object",
+      properties: { wallet: walletProp },
+      required: ["wallet"],
+      description: "JSON request body.",
+    },
+    outputSchema: scoreOutputSchema,
+    outputExample: scoreOutputExample,
   };
 }
 
@@ -280,6 +271,7 @@ export async function GET(req: Request) {
             x402: { success: true, network: "xrpl" },
           },
         },
+        usdcScoreResource(origin),
         usdcPlanResource(origin, "starter"),
         usdcPlanResource(origin, "growth"),
         usdcPlanResource(origin, "scale"),

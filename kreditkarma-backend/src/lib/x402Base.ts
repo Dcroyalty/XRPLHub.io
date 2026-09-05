@@ -35,6 +35,11 @@ export const BASE_PAY_TO: Address = getAddress(
 export const BASE_NETWORK = "base" as const;
 export const USDC_BASE_ASSET = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" as const;
 
+// Per-call agent pricing (distinct from the $29/$149/$499 human subscription
+// plans in src/lib/plans.ts) — market rate for agent-purchased API calls is
+// $0.002-$0.025; nothing at subscription pricing sells to an agent.
+export const PRICE_PER_SCORE_USDC = 0.01;
+
 // Display-only mirror of what @coinbase/x402's `facilitator` actually calls —
 // for the .well-known/x402 discovery document, which needs a URL string, not
 // the {url, createAuthHeaders} config object itself.
