@@ -5,7 +5,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { withX402 } from "x402-next";
 import { BASE_PAY_TO, BASE_NETWORK, cdpFacilitator } from "@/lib/x402Base";
 import { PLANS } from "@/lib/plans";
-import { mintPlanKey, USDC_PLAN_OUTPUT_SCHEMA, usdcPlanOutputExample } from "@/lib/checkoutUsdc";
+import { mintPlanKey, USDC_PLAN_OUTPUT_SCHEMA } from "@/lib/checkoutUsdc";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -28,7 +28,7 @@ export const GET = withX402(
         `same response. No signup, no invoice, no polling.`,
       mimeType: "application/json",
       discoverable: true,
-      outputSchema: { output: USDC_PLAN_OUTPUT_SCHEMA, outputExample: usdcPlanOutputExample("growth") },
+      outputSchema: USDC_PLAN_OUTPUT_SCHEMA,
     },
   },
   cdpFacilitator
