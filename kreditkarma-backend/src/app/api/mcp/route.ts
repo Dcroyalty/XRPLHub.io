@@ -46,7 +46,7 @@ const CORS = {
 // JSON-RPC surface (one source of truth for scanners like Smithery).
 export const MCP_SERVER_INFO = {
   name: 'xrplhub',
-  version: '1.5.0',
+  version: '1.5.1',
   description:
     'Free XRPL wallet creditworthiness scores · ready-to-sign txjson for 35 XRPL actions · ' +
     'verifiable score credential · credential + permissioned domain explorer · MPT issuer risk · community micro-grants · donations',
@@ -110,11 +110,16 @@ export const TOOLS = [
       'Get every XLS-70 credential an XRPL account holds — issuer, type, whether it has been accepted, ' +
       "whether it's expired, and its expiry date. Live against a validated mainnet ledger (never stale). " +
       'Use this before trusting a counterparty who claims to hold a credential. ' +
-      'Params: wallet_address (r..., required). Free, no signup.',
+      'Default walks the owner directory (bounded ~20s; response has coverage "complete"/"partial" — for an ' +
+      'exchange-scale account it can be partial). Pass issuer (and credential_type unless it is XRPLHub\'s ' +
+      'issuer) to do a direct ledger lookup instead — always fast and always complete. ' +
+      'Params: wallet_address (r..., required), issuer (r..., optional), credential_type (name or hex, optional). Free, no signup.',
     inputSchema: {
       type: 'object',
       properties: {
         wallet_address: { type: 'string', description: 'XRPL classic address to look up (starts with r)' },
+        issuer: { type: 'string', description: 'Optional — restrict to one issuer via a direct ledger lookup (no owner-directory walk)' },
+        credential_type: { type: 'string', description: 'Optional — credential type (plain name or hex); required with issuer unless the issuer is XRPLHub\'s' },
       },
       required: ['wallet_address'],
     },
@@ -337,13 +342,18 @@ async function toolCheckXrplScore(
 
 async function toolGetAccountCredentials(args: Record<string, unknown>): Promise<string> {
   const wallet = String(args.wallet_address || '').trim();
+  const issuer = String(args.issuer || '').trim();
+  const credType = String(args.credential_type || '').trim();
   if (!wallet.startsWith('r') || wallet.length < 25 || wallet.length > 35) {
     return JSON.stringify({ error: 'Invalid XRPL wallet address. Must start with r and be 25–35 characters.' });
   }
   try {
+    const qs = new URLSearchParams({ address: wallet });
+    if (issuer) qs.set('issuer', issuer);
+    if (credType) qs.set('type', credType);
     const res = await fetch(
-      `${API_URL}/api/credentials/account?address=${encodeURIComponent(wallet)}`,
-      { signal: AbortSignal.timeout(15_000) }
+      `${API_URL}/api/credentials/account?${qs.toString()}`,
+      { signal: AbortSignal.timeout(30_000) }
     );
     const d = await res.json();
     if (!res.ok) return JSON.stringify({ error: d.message || `Lookup failed (HTTP ${res.status})` });

@@ -51,7 +51,7 @@ from a network-wide census that is rebuilt on a schedule (response says
 coverage: "complete" or "partial" so a mid-walk answer is never mistaken for
 a finished count).
 
-- GET ${origin}/api/credentials/account?address=r... — every credential this account holds (issuer, type, accepted, expired, expiry), live
+- GET ${origin}/api/credentials/account?address=r... — every credential this account holds (issuer, type, accepted, expired, expiry), live. Default walks the owner directory (bounded ~20s; may return coverage:"partial" for an exchange-scale account). Add &issuer=r... (and &type=<name|hex> unless it is XRPLHub's issuer) for a direct ledger lookup that is always fast and complete.
 - GET ${origin}/api/credentials/issuer?address=r... — everything an issuer has issued: types, subject count, acceptance rate, from the census
 - GET ${origin}/api/domains/eligible?address=r...&domain=<64-hex DomainID> — does this account hold a credential satisfying this permissioned domain, live
 

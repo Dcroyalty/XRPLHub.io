@@ -303,15 +303,35 @@ export async function GET(req: Request) {
             "Get every credential naming this address as Subject — issuer, type, whether it's been " +
             "accepted, whether it's expired, and its expiry date. Live against a validated mainnet " +
             "ledger on every call, deliberately not cached: this is the endpoint to check before " +
-            "trusting a counterparty's claimed credential. Free, no signup.",
+            "trusting a counterparty's claimed credential. Free, no signup. " +
+            "Default is an owner-directory walk, bounded at ~20s; for an exchange-scale account it " +
+            "may return coverage:\"partial\" / complete:false. Pass &issuer= (and &type= unless it's " +
+            "XRPLHub's issuer) for a direct ledger lookup that is always fast and always complete.",
           security: [],
           tags: ["Credentials"],
-          parameters: [{
-            name: "address", in: "query", required: true,
-            description: "XRPL classic address to look up (r...).",
-            schema: { type: "string", pattern: "^r[1-9A-HJ-NP-Za-km-z]{24,34}$" },
-            example: "rvYAfWj5gh67oV6fW32ZzP3Aw4Eubs59B",
-          }],
+          parameters: [
+            {
+              name: "address", in: "query", required: true,
+              description: "XRPL classic address to look up (r...).",
+              schema: { type: "string", pattern: "^r[1-9A-HJ-NP-Za-km-z]{24,34}$" },
+              example: "rvYAfWj5gh67oV6fW32ZzP3Aw4Eubs59B",
+            },
+            {
+              name: "issuer", in: "query", required: false,
+              description:
+                "Restrict to one issuer via direct ledger_entry lookups (no owner-directory walk). " +
+                "For XRPLHub's own issuer all four score tiers are probed automatically; for any " +
+                "other issuer also pass &type=.",
+              schema: { type: "string", pattern: "^r[1-9A-HJ-NP-Za-km-z]{24,34}$" },
+              example: "rmWjCGeLtuLGerEuvHDkrsr46ej2Ni13f",
+            },
+            {
+              name: "type", in: "query", required: false,
+              description: "Credential type (plain name or hex) — required with &issuer= unless the issuer is XRPLHub's.",
+              schema: { type: "string" },
+              example: "io.xrplhub.score.v1.min750",
+            },
+          ],
           responses: {
             "200": ok(
               "Every credential held by this address.",
@@ -320,6 +340,10 @@ export async function GET(req: Request) {
                 properties: {
                   address: { type: "string" },
                   source: { type: "string", enum: ["live"] },
+                  lookup: { type: "string", enum: ["owner-walk", "targeted"] },
+                  coverage: { type: "string", enum: ["complete", "partial"] },
+                  complete: { type: "boolean" },
+                  warning: { type: "string", nullable: true },
                   count: { type: "integer" },
                   credentials: {
                     type: "array",
@@ -341,6 +365,9 @@ export async function GET(req: Request) {
               {
                 address: "rvYAfWj5gh67oV6fW32ZzP3Aw4Eubs59B",
                 source: "live",
+                lookup: "targeted",
+                coverage: "complete",
+                complete: true,
                 count: 1,
                 credentials: [{
                   issuer: "rmWjCGeLtuLGerEuvHDkrsr46ej2Ni13f",
