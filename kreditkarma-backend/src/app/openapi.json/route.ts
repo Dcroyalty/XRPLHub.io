@@ -746,6 +746,40 @@ export async function GET(req: Request) {
           },
         },
       },
+
+      "/api/x402/usdc/score": {
+        post: {
+          operationId: "x402UsdcScore",
+          summary: "XRPLScore — per-call, agent-priced (x402, $0.01 USDC on Base)",
+          description:
+            "The same 300–850 score and 8-signal breakdown as /api/x402/score, priced for agents at " +
+            "$0.01 per call and settled in USDC on Base via the CDP x402 facilitator (not the RLUSD/t54 " +
+            "rail). POST a JSON body {\"wallet\":\"r...\"}. No signup.",
+          tags: ["Scoring"],
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["wallet"],
+                  properties: { wallet: { type: "string", pattern: "^r[1-9A-HJ-NP-Za-km-z]{24,34}$" } },
+                },
+                example: { wallet: "rMxCKbEDwqr76QuheSUMdEGf4B9xJ8m5De" },
+              },
+            },
+          },
+          "x-payment-info": {
+            price: { mode: "fixed", currency: "USD", amount: "0.010000" },
+            protocols: [{ x402: {} }],
+            description: "Per-call wallet score, USDC on Base via the CDP x402 facilitator.",
+          },
+          responses: {
+            "200": ok("Wallet score with the 8 signals, grade and percentile.", scoreSchema, scoreExample),
+            "402": { description: "Payment Required — x402 challenge. Pay in USDC on Base and retry with the X-PAYMENT header." },
+          },
+        },
+      },
     },
   };
 
