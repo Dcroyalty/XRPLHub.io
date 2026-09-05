@@ -12,7 +12,7 @@
 // Stateless — zero new infrastructure, runs on Vercel as a standard serverless fn.
 // No new npm packages required.
 //
-// NINE TOOLS:
+// TEN TOOLS:
 //   1. check_xrpl_score        — free 300–850 wallet creditworthiness score
 //   2. list_xrpl_services      — the 35 build_xrpl_transaction actions + their params
 //   3. build_xrpl_transaction  — ready-to-sign txjson for any of 35 XRPL actions
@@ -22,6 +22,7 @@
 //   7. get_account_credentials — free, live: every XLS-70 credential an account holds
 //   8. get_issuer_credentials  — free, census-backed: everything an issuer has issued
 //   9. check_domain_eligibility — free, live: does an account satisfy a PermissionedDomain
+//  10. check_mpt_risk          — free, live: issuer powers + issuer trust for one MPT issuance
 //
 // © 2026 XRPLHub.io · XRPLScore™ · All Rights Reserved
 // ═══════════════════════════════════════════════════════════════════════════
@@ -45,10 +46,10 @@ const CORS = {
 // JSON-RPC surface (one source of truth for scanners like Smithery).
 export const MCP_SERVER_INFO = {
   name: 'xrplhub',
-  version: '1.4.0',
+  version: '1.5.0',
   description:
     'Free XRPL wallet creditworthiness scores · ready-to-sign txjson for 35 XRPL actions · ' +
-    'verifiable score credential · credential + permissioned domain explorer · community micro-grants · donations',
+    'verifiable score credential · credential + permissioned domain explorer · MPT issuer risk · community micro-grants · donations',
 };
 
 // ─── TOOL DEFINITIONS (descriptions are the marketing copy to the AI) ────────
@@ -131,6 +132,22 @@ export const TOOLS = [
         issuer_address: { type: 'string', description: 'XRPL classic address of the credential issuer (starts with r)' },
       },
       required: ['issuer_address'],
+    },
+  },
+  {
+    name: 'check_mpt_risk',
+    description:
+      "Get the risk view of one XLS-33 Multi-Purpose Token issuance before touching it: what the issuer " +
+      "CAN DO to a holder (clawback, freeze, require-auth, whether it's transferable at all) plus whether " +
+      "the ISSUER is trustworthy (its XRPLScore, account age, verified domain, credentials held). Live " +
+      "reads from the validated ledger. Every response states its source and returns 'unknown' — never " +
+      "'does not exist' — when an issuance isn't found. Params: issuance_id (48-hex MPTokenIssuanceID, required). Free, no signup.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        issuance_id: { type: 'string', description: 'The MPTokenIssuanceID — 48 hexadecimal characters (XLS-33, 192-bit)' },
+      },
+      required: ['issuance_id'],
     },
   },
   {
@@ -350,6 +367,21 @@ async function toolGetIssuerCredentials(args: Record<string, unknown>): Promise<
     return JSON.stringify(d, null, 2);
   } catch (e) {
     return JSON.stringify({ error: `Issuer lookup failed: ${e instanceof Error ? e.message : 'unknown'}` });
+  }
+}
+
+async function toolCheckMptRisk(args: Record<string, unknown>): Promise<string> {
+  const id = String(args.issuance_id || '').trim();
+  if (!/^[0-9A-Fa-f]{48}$/.test(id)) {
+    return JSON.stringify({ error: 'Invalid issuance_id — must be the 48-hex-character MPTokenIssuanceID (XLS-33).' });
+  }
+  try {
+    const res = await fetch(`${API_URL}/api/mpt/${encodeURIComponent(id)}`, { signal: AbortSignal.timeout(20000) });
+    const d = await res.json();
+    if (!res.ok) return JSON.stringify({ error: d.message || `Lookup failed (HTTP ${res.status})` });
+    return JSON.stringify(d, null, 2);
+  } catch (e) {
+    return JSON.stringify({ error: `MPT risk lookup failed: ${e instanceof Error ? e.message : 'unknown'}` });
   }
 }
 
@@ -796,6 +828,8 @@ export async function POST(req: NextRequest) {
         output = await toolGetIssuerCredentials(toolArgs);
       } else if (toolName === 'check_domain_eligibility') {
         output = await toolCheckDomainEligibility(toolArgs);
+      } else if (toolName === 'check_mpt_risk') {
+        output = await toolCheckMptRisk(toolArgs);
       } else {
         return rpcError(id, -32601, `Tool not found: ${toolName}`);
       }

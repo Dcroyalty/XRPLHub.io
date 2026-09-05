@@ -461,6 +461,98 @@ export async function GET(req: Request) {
           },
         },
       },
+
+      "/api/mpt/{issuanceId}": {
+        get: {
+          operationId: "mptRisk",
+          summary: "MPT issuance risk view — issuer powers + issuer trust (free, live)",
+          description:
+            "The risk view of one Multi-Purpose Token (XLS-33) issuance, not a listing. Returns what the " +
+            "issuer can do to a holder (clawback, freeze, require-auth, whether it's transferable at all) " +
+            "alongside the issuer's own XRPLScore, account age, verified domain and credentials held. Live " +
+            "reads from the validated ledger, cross-checked against Bithomp's index. An issuance not found " +
+            "returns \"unknown\", never \"does not exist\". Free, no signup.",
+          security: [],
+          tags: ["Tokens"],
+          parameters: [{
+            name: "issuanceId", in: "path", required: true,
+            description: "The MPTokenIssuanceID — 48 hexadecimal characters (XLS-33, 192-bit: creating-tx Sequence + issuer AccountID).",
+            schema: { type: "string", pattern: "^[0-9A-Fa-f]{48}$" },
+            example: "0641C7D1F9C6BB3B75EA31B353A54E2EFAC423498EF25045",
+          }],
+          responses: {
+            "200": ok(
+              "The issuance risk view.",
+              {
+                type: "object",
+                properties: {
+                  issuanceId: { type: "string" },
+                  found: { type: "boolean" },
+                  source: {
+                    type: "object",
+                    properties: {
+                      ledger: { type: "string" },
+                      bithompIndex: { type: "string" },
+                      interpretation: { type: "string", description: "'exists', 'may have been destroyed', or 'unknown'." },
+                    },
+                  },
+                  issuer: { type: "string", nullable: true },
+                  issuance: {
+                    type: "object", nullable: true,
+                    properties: {
+                      assetScale: { type: "integer" },
+                      maximumAmount: { type: "string", nullable: true },
+                      outstandingAmount: { type: "string" },
+                      transferFeeBps: { type: "number" },
+                      metadata: {},
+                    },
+                  },
+                  issuerPowers: {
+                    type: "object", nullable: true,
+                    properties: {
+                      clawback: { type: "boolean" },
+                      canFreeze: { type: "boolean" },
+                      currentlyFrozen: { type: "boolean" },
+                      requiresAuth: { type: "boolean" },
+                      transferable: { type: "boolean" },
+                    },
+                  },
+                  issuerRisk: {
+                    type: "object", nullable: true,
+                    properties: {
+                      xrplScore: { type: "integer", nullable: true },
+                      grade: { type: "string", nullable: true },
+                      accountAgeDays: { type: "integer", nullable: true },
+                      blackholed: { type: "boolean" },
+                      domain: { type: "string", nullable: true },
+                      domainVerified: { type: "boolean", description: "Issuer address is listed in the domain's xrp-ledger.toml." },
+                      credentialsHeld: { type: "integer" },
+                      credentials: { type: "array", items: { type: "object" } },
+                    },
+                  },
+                },
+              },
+              {
+                issuanceId: "0641C7D1F9C6BB3B75EA31B353A54E2EFAC423498EF25045",
+                found: true,
+                source: {
+                  ledger: "MPTokenIssuance present on the validated ledger (live read)",
+                  bithompIndex: "listed in Bithomp's index",
+                  interpretation: "exists",
+                },
+                issuer: "rPm6K1fr4MNcv5W8pD4RCawVHjsK1ziCKp",
+                issuance: { assetScale: 0, maximumAmount: "1", outstandingAmount: "0", transferFeeBps: 0, metadata: { t: "SCPO", ac: "rwa" } },
+                issuerPowers: { clawback: true, canFreeze: false, currentlyFrozen: false, requiresAuth: false, transferable: false },
+                issuerRisk: {
+                  xrplScore: 475, grade: "Building", accountAgeDays: 80, blackholed: false,
+                  domain: "ipfs://Qm…", domainVerified: false, credentialsHeld: 2, credentials: [],
+                },
+              }
+            ),
+            "400": { description: "issuanceId is not 48 hex characters." },
+          },
+        },
+      },
     },
   };
 

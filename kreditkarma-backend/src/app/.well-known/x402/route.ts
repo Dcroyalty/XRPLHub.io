@@ -285,6 +285,7 @@ export async function GET(req: Request) {
         freeCredentialsAccount: `${origin}/api/credentials/account?address={wallet}`,
         freeCredentialsIssuer: `${origin}/api/credentials/issuer?address={issuer}`,
         freeDomainsEligible: `${origin}/api/domains/eligible?address={wallet}&domain={domainId}`,
+        freeMptRisk: `${origin}/api/mpt/{mptokenIssuanceID}`,
       },
     },
     { headers: { "Cache-Control": "public, max-age=300" } }

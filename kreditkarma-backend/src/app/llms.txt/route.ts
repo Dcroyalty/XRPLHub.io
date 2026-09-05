@@ -55,6 +55,16 @@ a finished count).
 - GET ${origin}/api/credentials/issuer?address=r... — everything an issuer has issued: types, subject count, acceptance rate, from the census
 - GET ${origin}/api/domains/eligible?address=r...&domain=<64-hex DomainID> — does this account hold a credential satisfying this permissioned domain, live
 
+## Multi-Purpose Token (MPT, XLS-33) issuer risk (free)
+
+The risk view of one MPT issuance, not a listing — what the issuer can do to a
+holder (clawback, freeze, require-auth, non-transferable) alongside the
+issuer's own XRPLScore, account age, verified domain and credentials. Live
+reads from the validated ledger, cross-checked against Bithomp's index; an
+issuance not found returns "unknown", never "does not exist".
+
+- GET ${origin}/api/mpt/<48-hex MPTokenIssuanceID> — issuer powers + issuer trust for one MPT issuance, live
+
 ## For AI agents
 
 MCP server (Streamable HTTP, JSON-RPC 2.0, no auth):
@@ -70,6 +80,7 @@ MCP server (Streamable HTTP, JSON-RPC 2.0, no auth):
   - get_account_credentials — every XLS-70 credential an account holds, live. Param: wallet_address. Free.
   - get_issuer_credentials — everything an issuer has issued (types, subject count, acceptance rate), from the census. Param: issuer_address. Free.
   - check_domain_eligibility — does an account hold a credential satisfying a PermissionedDomain, live. Params: wallet_address, domain_id. Free.
+  - check_mpt_risk — issuer powers (clawback/freeze/auth/transferable) + issuer trust (XRPLScore, age, domain, credentials) for one MPT issuance, live. Param: issuance_id. Free.
 
 x402 pay-per-call (RLUSD, t54 facilitator, no signup):
 - Discovery: ${origin}/.well-known/x402
