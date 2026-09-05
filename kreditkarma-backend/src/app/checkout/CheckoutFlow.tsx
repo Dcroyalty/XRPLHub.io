@@ -12,6 +12,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import FreeKeyFlow from "./FreeKeyFlow";
+import UsdcBasePay from "./UsdcBasePay";
 import WalletPicker from "@/lib/wallet/WalletPicker";
 import {
   getProvider,
@@ -19,6 +20,7 @@ import {
   WalletCancelled,
   type ProviderOption,
 } from "@/lib/wallet";
+import type { PlanId } from "@/lib/plans";
 
 type PayFields = {
   address: string;
@@ -49,7 +51,10 @@ type Status = "loading" | "pending" | "paid" | "expired" | "error";
 type XamanState = "idle" | "opening" | "waiting" | "signed" | "rejected" | "expired" | "error";
 type ExtState = "idle" | "submitting" | "submitted" | "rejected" | "error";
 
+type PayMethod = "ledger" | "usdc";
+
 export default function CheckoutFlow({ plan }: { plan: string }) {
+  const [payMethod, setPayMethod] = useState<PayMethod>("ledger"); // "usdc" = pay on Base instead, see UsdcBasePay
   const [currency, setCurrency] = useState<Currency>("XRP"); // what the audience already holds
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [status, setStatus] = useState<Status>("loading");
@@ -71,9 +76,10 @@ export default function CheckoutFlow({ plan }: { plan: string }) {
 
   const isFree = plan === "free";
 
-  // (re)create the invoice whenever plan or currency changes
+  // (re)create the invoice whenever plan or currency changes. USDC/Base has
+  // no invoice/poll cycle at all (see UsdcBasePay) — skip this entirely.
   useEffect(() => {
-    if (!plan || isFree) return;
+    if (!plan || isFree || payMethod !== "ledger") return;
     let cancelled = false;
     setStatus("loading");
     setInvoice(null);
@@ -116,7 +122,7 @@ export default function CheckoutFlow({ plan }: { plan: string }) {
     return () => {
       cancelled = true;
     };
-  }, [plan, currency, isFree]);
+  }, [plan, currency, isFree, payMethod]);
 
   // AUTHORITATIVE poll — on-ledger match, mints the key
   const poll = useCallback(async () => {
@@ -272,18 +278,29 @@ export default function CheckoutFlow({ plan }: { plan: string }) {
         {(["XRP", "RLUSD"] as Currency[]).map((c) => (
           <button
             key={c}
-            onClick={() => setCurrency(c)}
-            style={{ ...s.toggleBtn, ...(currency === c ? s.toggleOn : {}) }}
+            onClick={() => {
+              setPayMethod("ledger");
+              setCurrency(c);
+            }}
+            style={{ ...s.toggleBtn, ...(payMethod === "ledger" && currency === c ? s.toggleOn : {}) }}
           >
             Pay in {c}
           </button>
         ))}
+        <button
+          onClick={() => setPayMethod("usdc")}
+          style={{ ...s.toggleBtn, ...(payMethod === "usdc" ? s.toggleOn : {}) }}
+        >
+          USDC (Base)
+        </button>
       </div>
 
-      {status === "loading" && <p style={s.polling}>Getting a quote…</p>}
-      {status === "error" && <p style={s.err}>{error}</p>}
+      {payMethod === "usdc" && <UsdcBasePay plan={plan as PlanId} />}
 
-      {status === "pending" && invoice && (
+      {payMethod === "ledger" && status === "loading" && <p style={s.polling}>Getting a quote…</p>}
+      {payMethod === "ledger" && status === "error" && <p style={s.err}>{error}</p>}
+
+      {payMethod === "ledger" && status === "pending" && invoice && (
         <>
           <div style={s.amountBox}>
             <div style={s.amountBig}>
