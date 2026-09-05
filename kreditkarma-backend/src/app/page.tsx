@@ -643,7 +643,6 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
   const [currency, setCurrency] = useState<Currency>('RLUSD');
   const [email, setEmail]       = useState('');
   const [step, setStep]         = useState<'info'|'checkout'|'success'|'execute'>('info');
-  const [tierIdx, setTierIdx]   = useState(0);
   const [payStatus, setPayStatus] = useState<'idle'|'creating'|'waiting'|'done'>('idle');
   const [uuid, setUuid]         = useState('');
   const [qrUrl, setQrUrl]       = useState('');
@@ -670,10 +669,7 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
   const pollRef   = useRef<ReturnType<typeof setTimeout>|null>(null);
   const cancelRef = useRef(false);
 
-  const isCB    = product?.id === 'credit';
-  const tiers   = (isCB && product && 'tiers' in product) ? (product as { tiers: ReadonlyArray<{ name:string; priceRLUSD:number; priceXRP:number; color:string; perks:string }> }).tiers : null;
-  const at      = tiers ? tiers[tierIdx] : null;
-  const displayPrice = isCB && at ? (currency==='RLUSD' ? at.priceRLUSD : at.priceXRP) : (product ? (currency==='RLUSD' ? product.priceRLUSD : product.priceXRP) : 0);
+  const displayPrice = product ? (currency==='RLUSD' ? product.priceRLUSD : product.priceXRP) : 0;
   const price = TEST_MODE ? (currency==='RLUSD' ? TEST_PRICE_RLUSD : TEST_PRICE_XRP) : displayPrice;
 
   // Payment polling — verified only when on-chain TX confirms
@@ -806,7 +802,7 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
   const handleClose = () => {
     cancelRef.current = true; if (pollRef.current) clearTimeout(pollRef.current); if (exPollRef.current) clearTimeout(exPollRef.current);
     onClose();
-    setTimeout(() => { setStep('info'); setEmail(''); setTierIdx(0); setPayStatus('idle'); setUuid(''); setQrUrl(''); setDeepLnk(''); setCountdown(900); setVerifiedTx(''); setPayError(''); cancelRef.current = false;
+    setTimeout(() => { setStep('info'); setEmail(''); setPayStatus('idle'); setUuid(''); setQrUrl(''); setDeepLnk(''); setCountdown(900); setVerifiedTx(''); setPayError(''); cancelRef.current = false;
       setExForm({}); setExStatus('form'); setExUuid(''); setExQr(''); setExLink(''); setExTx(''); setExError(''); setExLabel(''); setCautionOk(false);
       setPayHash(''); setExHash(''); setWalletSel('xaman'); }, 300);
   };
@@ -967,18 +963,16 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
           <span style={{ width:6,height:6,borderRadius:'50%',background:'#10b981',boxShadow:'0 0 8px #10b981',animation:'pulse 2s infinite' }} />
           <span style={{ fontSize:10,fontWeight:700,color:'#10b981',letterSpacing:'.1em' }}>✅ PAYMENT VERIFIED ON XRPL</span>
         </div>
-        <h3 style={{ fontSize:24,fontWeight:900,marginBottom:8 }}>{isCB ? `${product.name} Activated` : 'Payment Confirmed'}</h3>
+        <h3 style={{ fontSize:24,fontWeight:900,marginBottom:8 }}>Payment Confirmed</h3>
         <div style={{ background:'rgba(255,255,255,.04)',border:'1px solid rgba(255,255,255,.08)',borderRadius:14,padding:18,margin:'14px 0 18px',textAlign:'left' }}>
           <p style={{ fontSize:11,color:product.color,fontFamily:"'IBM Plex Mono',monospace",fontWeight:700,marginBottom:6,textTransform:'uppercase',letterSpacing:'.08em' }}>Verified on-chain</p>
-          <p style={{ fontSize:13,color:'rgba(255,255,255,.65)',lineHeight:1.75 }}>{isCB ? product.aiDetail : 'Your payment is confirmed on XRPL mainnet. Next, finish your service — AI builds the exact transaction and you sign it once in Xaman.'}</p>
+          <p style={{ fontSize:13,color:'rgba(255,255,255,.65)',lineHeight:1.75 }}>Your payment is confirmed on XRPL mainnet. Next, finish your service — AI builds the exact transaction and you sign it once in Xaman.</p>
         </div>
         {verifiedTx && <p style={{ fontSize:11,color:'rgba(255,255,255,.28)',fontFamily:"'IBM Plex Mono',monospace",marginBottom:10,wordBreak:'break-all' }}>TX: {verifiedTx.slice(0,22)}…{verifiedTx.slice(-8)}</p>}
         {email && <p style={{ fontSize:12,color:'rgba(255,255,255,.38)',marginBottom:18 }}>✅ Receipt sent to <strong style={{ color:'#fff' }}>{email}</strong></p>}
         <div style={{ display:'flex',gap:10,justifyContent:'center',flexWrap:'wrap' }}>
           {verifiedTx && <a href={`https://xrpscan.com/tx/${verifiedTx}`} target="_blank" rel="noopener noreferrer" style={{ ...Btn('ghost',undefined,{fontSize:13,textDecoration:'none'}) }}>View on XRPScan ↗</a>}
-          {isCB
-            ? <button onClick={handleClose} style={Btn('green')}>Done</button>
-            : <button onClick={()=>{ setExStatus('form'); setStep('execute'); }} style={Btn('color',product.color)}>Finish My Service →</button>}
+          <button onClick={()=>{ setExStatus('form'); setStep('execute'); }} style={Btn('color',product.color)}>Finish My Service →</button>
         </div>
       </div>
     </Overlay>
@@ -988,7 +982,7 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
     <Overlay show={show} onClose={handleClose}>
       <div style={{ fontSize:10,fontWeight:700,color:product.color,letterSpacing:'.12em',textTransform:'uppercase',marginBottom:5,fontFamily:"'IBM Plex Mono',monospace" }}>{product.amendment}</div>
       <h3 style={{ fontSize:20,fontWeight:900,marginBottom:4 }}>{product.name}</h3>
-      <p style={{ fontSize:12,color:'rgba(255,255,255,.4)',marginBottom:14 }}>{displayPrice} {currency}{isCB?'/mo':''} — one swipe in Xaman {TEST_MODE && <span style={{ color:'#f59e0b',fontWeight:700 }}>· TEST MODE (charging {price} {currency})</span>}</p>
+      <p style={{ fontSize:12,color:'rgba(255,255,255,.4)',marginBottom:14 }}>{displayPrice} {currency} — one swipe in Xaman {TEST_MODE && <span style={{ color:'#f59e0b',fontWeight:700 }}>· TEST MODE (charging {price} {currency})</span>}</p>
 
       {payStatus === 'creating' && (
         <div style={{ textAlign:'center', padding:'32px 0' }}>
@@ -1038,27 +1032,11 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
 
       {payStatus === 'idle' && !payError && (
         <>
-          {isCB && tiers && (
-            <div style={{ marginBottom:14 }}>
-              <label style={LBL}>Select Plan</label>
-              <div style={{ display:'flex',flexDirection:'column',gap:8 }}>
-                {tiers.map((t, i) => (
-                  <button key={t.name} onClick={()=>setTierIdx(i)} style={{ padding:'12px 16px',borderRadius:12,cursor:'pointer',fontFamily:'inherit',textAlign:'left' as const,border:`1px solid ${tierIdx===i?t.color:'rgba(255,255,255,.1)'}`,background:tierIdx===i?`${t.color}14`:'rgba(255,255,255,.04)' }}>
-                    <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center' }}>
-                      <span style={{ fontWeight:700,fontSize:14,color:tierIdx===i?t.color:'#fff' }}>{t.name}</span>
-                      <span style={{ fontWeight:900,fontSize:15,color:t.color }}>{t.priceRLUSD} RLUSD<span style={{ fontSize:11,fontWeight:400,color:'rgba(255,255,255,.35)' }}>/mo</span></span>
-                    </div>
-                    <div style={{ fontSize:11,color:'rgba(255,255,255,.38)',marginTop:3 }}>{t.perks}</div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
           <label style={LBL}>Currency</label>
           <div style={{ display:'flex',gap:8,marginBottom:14 }}>
             {(['RLUSD','XRP'] as Currency[]).map(c => (
               <button key={c} onClick={()=>setCurrency(c)} style={{ flex:1,padding:'10px',borderRadius:12,cursor:'pointer',fontFamily:'inherit',fontWeight:700,fontSize:14,border:`1px solid ${currency===c?product.color:'rgba(255,255,255,.1)'}`,background:currency===c?`${product.color}15`:'rgba(255,255,255,.04)',color:currency===c?product.color:'rgba(255,255,255,.5)' }}>
-                {c==='RLUSD'?'💵 RLUSD':'◈ XRP'} — {c==='RLUSD'?(isCB&&at?at.priceRLUSD:product.priceRLUSD):(isCB&&at?at.priceXRP:product.priceXRP)}
+                {c==='RLUSD'?'💵 RLUSD':'◈ XRP'} — {c==='RLUSD'?product.priceRLUSD:product.priceXRP}
               </button>
             ))}
           </div>
@@ -1114,10 +1092,10 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
       </div>
       <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',background:`${product.color}08`,border:`1px solid ${product.color}22`,borderRadius:14,padding:'16px 20px',marginBottom:20,flexWrap:'wrap',gap:12 }}>
         <div>
-          <div style={{ fontSize:11,color:'rgba(255,255,255,.38)',marginBottom:4 }}>{isCB?'Starting from':'One-time'}</div>
+          <div style={{ fontSize:11,color:'rgba(255,255,255,.38)',marginBottom:4 }}>One-time</div>
           <div style={{ display:'flex',gap:12,alignItems:'baseline',flexWrap:'wrap' }}>
             <span style={{ fontSize:28,fontWeight:900,color:product.color }}>{product.priceRLUSD} RLUSD</span>
-            <span style={{ fontSize:13,color:'rgba(255,255,255,.3)' }}>or {product.priceXRP} XRP{isCB?'/mo':''}</span>
+            <span style={{ fontSize:13,color:'rgba(255,255,255,.3)' }}>or {product.priceXRP} XRP</span>
           </div>
         </div>
         <div style={{ textAlign:'right' }}>
