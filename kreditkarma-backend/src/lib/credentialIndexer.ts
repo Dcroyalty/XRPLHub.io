@@ -20,6 +20,29 @@ import { connectMainnetOrThrow, validatedLedgerCloseTimeRipple } from "./credent
 const CHECKPOINT_ID = "credential";
 const PAGE_LIMIT = 200;
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Retry one request a couple of times with backoff before giving up on it —
+ * a single transient timeout shouldn't waste this invocation's whole budget. */
+async function requestWithRetry(
+  client: Client,
+  req: Parameters<Client["request"]>[0],
+  attempts = 3
+) {
+  let lastErr: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await client.request(req);
+    } catch (err) {
+      lastErr = err;
+      if (i < attempts - 1) await sleep(1000 * 2 ** i);
+    }
+  }
+  throw lastErr;
+}
+
 export interface PassProgress {
   status: "idle" | "running";
   passNumber: number;
@@ -69,7 +92,7 @@ export async function runIndexerPass(
     }
 
     while (Date.now() - startedAt < budgetMs) {
-      const res = await client.request({
+      const res = await requestWithRetry(client, {
         command: "ledger_data",
         ledger_index: "validated",
         type: "credential",

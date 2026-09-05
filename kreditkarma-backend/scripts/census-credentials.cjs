@@ -9,6 +9,14 @@
  * Vercel's once-daily Hobby-plan cron to grind through it a bounded chunk
  * at a time.
  *
+ * A full pass over the whole ledger keyspace is thousands of pages even
+ * though Credential objects are a sparse handful of them — a single
+ * transient RPC timeout is near-certain somewhere in that many round trips.
+ * Each request retries with backoff before giving up on it, and losing the
+ * connection entirely triggers a reconnect + resume (from the persisted
+ * marker, not a restart) rather than crashing the whole walk. Only gives up
+ * for good after several consecutive full-page failures in a row.
+ *
  * Deliberately standalone (same convention as issue-credential.cjs): mirrors
  * the deployed indexer's logic rather than importing it, so there's no
  * runtime dependency from a hand-run script into the Next.js build.
@@ -25,10 +33,16 @@ const MAINNET_ENDPOINTS = ['wss://xrplcluster.com', 'wss://s1.ripple.com', 'wss:
 const MAINNET_NETWORK_ID = 0;
 const CHECKPOINT_ID = 'credential';
 const PAGE_LIMIT = 200;
+const MAX_CONSECUTIVE_PAGE_FAILURES = 8;
 
-async function connectMainnetOrThrow() {
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function connectMainnetOrThrow(endpointOffset = 0) {
   let lastErr;
-  for (const wss of MAINNET_ENDPOINTS) {
+  const endpoints = [...MAINNET_ENDPOINTS.slice(endpointOffset), ...MAINNET_ENDPOINTS.slice(0, endpointOffset)];
+  for (const wss of endpoints) {
     const client = new Client(wss);
     try {
       await client.connect();
@@ -40,6 +54,7 @@ async function connectMainnetOrThrow() {
       if (netId !== MAINNET_NETWORK_ID) {
         throw new Error(`REFUSING: ${wss} server_info network_id=${netId}, expected mainnet (0).`);
       }
+      console.log(`Connected to ${wss} (mainnet confirmed).`);
       return client;
     } catch (err) {
       await client.disconnect().catch(() => {});
@@ -47,6 +62,24 @@ async function connectMainnetOrThrow() {
     }
   }
   throw lastErr || new Error('Could not reach an XRPL mainnet node.');
+}
+
+/** Retry one request a few times with backoff before giving up on it. */
+async function requestWithRetry(client, req, attempts = 4) {
+  let lastErr;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await client.request(req);
+    } catch (err) {
+      lastErr = err;
+      if (i < attempts - 1) {
+        const delay = 1000 * Math.pow(2, i); // 1s, 2s, 4s
+        console.warn(`  request ${req.command} failed (attempt ${i + 1}/${attempts}): ${err.message || err} — retrying in ${delay}ms`);
+        await sleep(delay);
+      }
+    }
+  }
+  throw lastErr;
 }
 
 async function main() {
@@ -62,18 +95,19 @@ async function main() {
   }
 
   const once = args.includes('--once');
-  const client = await connectMainnetOrThrow();
-  console.log('Connected to mainnet.');
+  let client = await connectMainnetOrThrow();
+  let endpointOffset = 0;
+  let consecutiveFailures = 0;
 
   try {
-    let pass = 0;
+    let pageCount = 0;
     for (;;) {
       let checkpoint = await prisma.indexerCheckpoint.findUnique({ where: { id: CHECKPOINT_ID } });
       if (!checkpoint) checkpoint = await prisma.indexerCheckpoint.create({ data: { id: CHECKPOINT_ID } });
 
       const isNewPass = checkpoint.status === 'idle';
       const passNumber = isNewPass ? checkpoint.passNumber + 1 : checkpoint.passNumber;
-      let marker = isNewPass ? null : checkpoint.marker;
+      const marker = isNewPass ? null : checkpoint.marker;
 
       if (isNewPass) {
         console.log(`Starting pass ${passNumber}...`);
@@ -83,17 +117,34 @@ async function main() {
         });
       }
 
-      const ledgerRes = await client.request({ command: 'ledger', ledger_index: 'validated' });
-      const nowRipple = ledgerRes.result?.ledger?.close_time;
-      if (typeof nowRipple !== 'number') throw new Error('No close_time on validated ledger.');
+      let nowRipple, res;
+      try {
+        const ledgerRes = await requestWithRetry(client, { command: 'ledger', ledger_index: 'validated' });
+        nowRipple = ledgerRes.result?.ledger?.close_time;
+        if (typeof nowRipple !== 'number') throw new Error('No close_time on validated ledger.');
 
-      const res = await client.request({
-        command: 'ledger_data',
-        ledger_index: 'validated',
-        type: 'credential',
-        limit: PAGE_LIMIT,
-        ...(marker ? { marker } : {}),
-      });
+        res = await requestWithRetry(client, {
+          command: 'ledger_data',
+          ledger_index: 'validated',
+          type: 'credential',
+          limit: PAGE_LIMIT,
+          ...(marker ? { marker } : {}),
+        });
+        consecutiveFailures = 0;
+      } catch (err) {
+        consecutiveFailures++;
+        console.error(`Page failed after retries (${consecutiveFailures}/${MAX_CONSECUTIVE_PAGE_FAILURES} consecutive): ${err.message || err}`);
+        if (consecutiveFailures >= MAX_CONSECUTIVE_PAGE_FAILURES) {
+          throw new Error(`Giving up after ${MAX_CONSECUTIVE_PAGE_FAILURES} consecutive page failures. Checkpoint is saved — re-run to resume from marker.`);
+        }
+        // Reconnect (try the next endpoint in rotation) and retry this same page.
+        await client.disconnect().catch(() => {});
+        endpointOffset = (endpointOffset + 1) % MAINNET_ENDPOINTS.length;
+        await sleep(2000);
+        client = await connectMainnetOrThrow(endpointOffset);
+        continue;
+      }
+
       const state = res.result.state || [];
       let seen = 0;
       for (const node of state) {
@@ -115,11 +166,13 @@ async function main() {
         });
         seen++;
       }
-      pass++;
-      process.stdout.write(`  page ${pass}: +${seen} credentials seen, marker=${res.result.marker ? 'more' : 'END'}\n`);
+      pageCount++;
+      if (pageCount % 25 === 0 || seen > 0) {
+        process.stdout.write(`  page ${pageCount}: +${seen} credentials seen, marker=${res.result.marker ? 'more' : 'END'}\n`);
+      }
 
-      marker = res.result.marker || null;
-      if (!marker) {
+      const nextMarker = res.result.marker || null;
+      if (!nextMarker) {
         await prisma.indexedCredential.deleteMany({ where: { passNumber: { lt: passNumber } } });
         const completedAt = new Date();
         await prisma.indexerCheckpoint.update({
@@ -136,7 +189,7 @@ async function main() {
       }
       await prisma.indexerCheckpoint.update({
         where: { id: CHECKPOINT_ID },
-        data: { marker, lastLedgerCloseTime: nowRipple },
+        data: { marker: nextMarker, lastLedgerCloseTime: nowRipple },
       });
       if (once) {
         console.log('--once: stopping after one page. Re-run to continue this pass.');
