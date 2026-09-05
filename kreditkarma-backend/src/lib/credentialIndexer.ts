@@ -24,6 +24,18 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// ledger_data markers are tied to the specific backend node that issued
+// them - the mainnet endpoints here front load-balanced clusters, so a
+// reconnect (or even the next scheduled invocation, hours later) can land on
+// a different node that rejects a previously-good marker outright. Not
+// transient - retrying it can never succeed. Detected so the pass restarts
+// from the beginning instead of getting permanently stuck retrying a dead
+// marker on every future cron tick forever.
+function isMarkerError(err: unknown): boolean {
+  const msg = String(err instanceof Error ? err.message : err);
+  return /markerMalformed|invalid.*marker/i.test(msg);
+}
+
 /** Retry one request a couple of times with backoff before giving up on it —
  * a single transient timeout shouldn't waste this invocation's whole budget. */
 async function requestWithRetry(
@@ -37,6 +49,7 @@ async function requestWithRetry(
       return await client.request(req);
     } catch (err) {
       lastErr = err;
+      if (isMarkerError(err)) break; // not transient — fail fast, don't burn retries on a dead marker
       if (i < attempts - 1) await sleep(1000 * 2 ** i);
     }
   }
@@ -92,13 +105,24 @@ export async function runIndexerPass(
     }
 
     while (Date.now() - startedAt < budgetMs) {
-      const res = await requestWithRetry(client, {
-        command: "ledger_data",
-        ledger_index: "validated",
-        type: "credential",
-        limit: PAGE_LIMIT,
-        ...(marker ? { marker } : {}),
-      } as unknown as Parameters<typeof client.request>[0]);
+      let res;
+      try {
+        res = await requestWithRetry(client, {
+          command: "ledger_data",
+          ledger_index: "validated",
+          type: "credential",
+          limit: PAGE_LIMIT,
+          ...(marker ? { marker } : {}),
+        } as unknown as Parameters<typeof client.request>[0]);
+      } catch (err) {
+        if (isMarkerError(err) && marker !== null) {
+          // Restart this pass from the beginning — rows already collected
+          // under this passNumber stay valid and get re-confirmed.
+          marker = null;
+          continue;
+        }
+        throw err;
+      }
       const result = res.result as { state?: Record<string, unknown>[]; marker?: string };
       pagesWalked++;
 

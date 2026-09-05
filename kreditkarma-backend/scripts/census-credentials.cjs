@@ -72,6 +72,7 @@ async function requestWithRetry(client, req, attempts = 4) {
       return await client.request(req);
     } catch (err) {
       lastErr = err;
+      if (isMarkerError(err)) break; // not transient — retrying can never succeed, fail fast
       if (i < attempts - 1) {
         const delay = 1000 * Math.pow(2, i); // 1s, 2s, 4s
         console.warn(`  request ${req.command} failed (attempt ${i + 1}/${attempts}): ${err.message || err} — retrying in ${delay}ms`);
@@ -80,6 +81,11 @@ async function requestWithRetry(client, req, attempts = 4) {
     }
   }
   throw lastErr;
+}
+
+function isMarkerError(err) {
+  const msg = String(err && (err.message || err.data?.error || err));
+  return /markerMalformed|invalid.*marker/i.test(msg);
 }
 
 async function main() {
@@ -98,6 +104,7 @@ async function main() {
   let client = await connectMainnetOrThrow();
   let endpointOffset = 0;
   let consecutiveFailures = 0;
+  let forceRestartMarker = false;
 
   try {
     let pageCount = 0;
@@ -107,7 +114,8 @@ async function main() {
 
       const isNewPass = checkpoint.status === 'idle';
       const passNumber = isNewPass ? checkpoint.passNumber + 1 : checkpoint.passNumber;
-      const marker = isNewPass ? null : checkpoint.marker;
+      const marker = isNewPass || forceRestartMarker ? null : checkpoint.marker;
+      forceRestartMarker = false;
 
       if (isNewPass) {
         console.log(`Starting pass ${passNumber}...`);
@@ -132,6 +140,19 @@ async function main() {
         });
         consecutiveFailures = 0;
       } catch (err) {
+        // ledger_data markers are tied to the specific backend node that
+        // issued them - xrplcluster.com is a load-balanced cluster, so a
+        // reconnect can land on a different node that rejects the old
+        // marker outright. That's not transient; retrying it can never
+        // succeed. The only fix is to restart THIS pass from the beginning
+        // (marker=null) - rows already collected this pass stay valid and
+        // get re-confirmed, nothing is lost, but the walk starts over.
+        if (isMarkerError(err)) {
+          console.warn(`Marker rejected by the server (node handoff) — restarting pass ${passNumber} from the beginning. Already-collected rows are kept.`);
+          forceRestartMarker = true;
+          consecutiveFailures = 0;
+          continue;
+        }
         consecutiveFailures++;
         console.error(`Page failed after retries (${consecutiveFailures}/${MAX_CONSECUTIVE_PAGE_FAILURES} consecutive): ${err.message || err}`);
         if (consecutiveFailures >= MAX_CONSECUTIVE_PAGE_FAILURES) {
