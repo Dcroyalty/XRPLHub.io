@@ -252,10 +252,56 @@ model IndexedCredential {
   @@index([subject])
 }
 
-// Singleton row (id: "credential") tracking the indexer's walk position and
-// whether a full pass has ever completed — the coverage signal
-// GET /api/credentials/issuer must surface rather than presenting a partial
-// walk as a complete census.
+// One row per indexed MPTokenIssuance (XLS-33). The union of two sources:
+// our own ledger_data walk (authoritative for existence, slow to complete a
+// full pass) and Bithomp's per-issuer index (fast, complete per issuer, only
+// covers issuers we already know to ask about). `sources` records which of
+// the two last confirmed the row. Backs GET /api/mpt/search and
+// GET /api/mpt/issuer — both of which must surface `coverage` from the "mpt"
+// IndexerCheckpoint row, never presenting a partial walk as a full census.
+model IndexedMPT {
+  id          String   @id @default(cuid())
+  issuanceId  String   @unique          // 48-hex MPTokenIssuanceID — canonical
+  issuer      String
+  sequence    Int?                       // creating-tx Sequence
+  assetScale  Int      @default(0)
+  maxAmount   String?                    // MaximumAmount (uint64 as string); null = unlimited
+  outstanding String   @default("0")
+  transferFee Int      @default(0)       // raw TransferFee (tenths of a basis point)
+  flagsRaw    Int      @default(0)
+  metadata    String?                    // decoded MPTokenMetadata (JSON string, or raw text if not JSON)
+  name        String?                    // best-effort token name / ticker from the metadata
+  nameLower   String?                    // lowercased copy of `name` for case-insensitive search
+  holderCount Int?                       // null = unknown
+  ledgerIndex Int?                       // validated ledger the walk last confirmed this row against
+  sources     String   @default("")      // comma-separated: "walk", "bithomp"
+  passNumber  Int      @default(0)       // last walk pass that re-confirmed this row (0 = never seen by the walk)
+  firstSeenAt DateTime @default(now())
+  lastSeenAt  DateTime @updatedAt
+
+  @@index([issuer])
+  @@index([nameLower])
+}
+
+// Per-issuer aggregate for GET /api/mpt/issuer — how many MPTs the issuer has
+// out and the issuer's own XRPLScore. Rescored by the cron whenever the
+// issuer's set of issuance ids changes (issuanceIdsHash).
+model IndexedMptIssuer {
+  issuer          String    @id
+  mptCount        Int       @default(0)
+  issuanceIdsHash String?                // sha256 of the sorted issuanceId list — cheap change detector
+  xrplScore       Int?
+  grade           String?
+  domain          String?
+  blackholed      Boolean   @default(false)
+  scoredAt        DateTime?
+  lastRefreshedAt DateTime  @updatedAt
+}
+
+// Singleton-per-id row tracking an indexer's walk position and whether a full
+// pass has ever completed — the coverage signal the read endpoints must
+// surface rather than presenting a partial walk as a complete census.
+// id "credential" → the Credential census; id "mpt" → the MPTokenIssuance census.
 model IndexerCheckpoint {
   id                      String    @id @default("credential")
   status                  String    @default("idle") // idle | running — explicit, not inferred from marker

@@ -12,7 +12,7 @@
 // Stateless — zero new infrastructure, runs on Vercel as a standard serverless fn.
 // No new npm packages required.
 //
-// TEN TOOLS:
+// TWELVE TOOLS:
 //   1. check_xrpl_score        — free 300–850 wallet creditworthiness score
 //   2. list_xrpl_services      — the 35 build_xrpl_transaction actions + their params
 //   3. build_xrpl_transaction  — ready-to-sign txjson for any of 35 XRPL actions
@@ -23,6 +23,8 @@
 //   8. get_issuer_credentials  — free, census-backed: everything an issuer has issued
 //   9. check_domain_eligibility — free, live: does an account satisfy a PermissionedDomain
 //  10. check_mpt_risk          — free, live: issuer powers + issuer trust for one MPT issuance
+//  11. search_mpts             — free, indexed: find MPT issuances by issuer / id / name
+//  12. get_issuer_mpts         — free, indexed: everything one issuer has issued + its score
 //
 // © 2026 XRPLHub.io · XRPLScore™ · All Rights Reserved
 // ═══════════════════════════════════════════════════════════════════════════
@@ -46,7 +48,7 @@ const CORS = {
 // JSON-RPC surface (one source of truth for scanners like Smithery).
 export const MCP_SERVER_INFO = {
   name: 'xrplhub',
-  version: '1.5.1',
+  version: '1.6.0',
   description:
     'Free XRPL wallet creditworthiness scores · ready-to-sign txjson for 35 XRPL actions · ' +
     'verifiable score credential · credential + permissioned domain explorer · MPT issuer risk · community micro-grants · donations',
@@ -154,6 +156,36 @@ export const TOOLS = [
         issuance_id: { type: 'string', description: 'The MPTokenIssuanceID — 48 hexadecimal characters (XLS-33, 192-bit)' },
       },
       required: ['issuance_id'],
+    },
+  },
+  {
+    name: 'search_mpts',
+    description:
+      'Search the XRPL Multi-Purpose Token (XLS-33) registry index by issuer address, MPTokenIssuanceID ' +
+      '(or a hex prefix of one), or token name / ticker. Returns each match with issuer powers ' +
+      '(clawback, freeze, require-auth, transferable), supply, holder count and source. Served from the ' +
+      "index — the response carries coverage ('complete' or 'partial') and lastCompletedPassAt; treat " +
+      "'partial' as a floor, not the whole population. Params: q (required). Free, no signup.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        q: { type: 'string', description: 'Issuer address (r...), MPTokenIssuanceID or hex prefix, or token name/ticker' },
+      },
+      required: ['q'],
+    },
+  },
+  {
+    name: 'get_issuer_mpts',
+    description:
+      'Everything one issuer has put out as Multi-Purpose Tokens (XLS-33), from the registry index, plus ' +
+      "the issuer's own XRPLScore. Each issuance lists the issuer's powers over a holder. Response carries " +
+      "coverage ('complete'/'partial') and lastCompletedPassAt. Params: issuer_address (r..., required). Free, no signup.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        issuer_address: { type: 'string', description: 'XRPL issuer address (starts with r)' },
+      },
+      required: ['issuer_address'],
     },
   },
   {
@@ -393,6 +425,34 @@ async function toolCheckMptRisk(args: Record<string, unknown>): Promise<string> 
     return JSON.stringify(d, null, 2);
   } catch (e) {
     return JSON.stringify({ error: `MPT risk lookup failed: ${e instanceof Error ? e.message : 'unknown'}` });
+  }
+}
+
+async function toolSearchMpts(args: Record<string, unknown>): Promise<string> {
+  const q = String(args.q || '').trim();
+  if (q.length < 2) return JSON.stringify({ error: 'Provide q — an issuer address, an MPTokenIssuanceID or hex prefix, or a token name.' });
+  try {
+    const res = await fetch(`${API_URL}/api/mpt/search?q=${encodeURIComponent(q)}`, { signal: AbortSignal.timeout(20000) });
+    const d = await res.json();
+    if (!res.ok) return JSON.stringify({ error: d.message || `Search failed (HTTP ${res.status})` });
+    return JSON.stringify(d, null, 2);
+  } catch (e) {
+    return JSON.stringify({ error: `MPT search failed: ${e instanceof Error ? e.message : 'unknown'}` });
+  }
+}
+
+async function toolGetIssuerMpts(args: Record<string, unknown>): Promise<string> {
+  const issuer = String(args.issuer_address || '').trim();
+  if (!issuer.startsWith('r') || issuer.length < 25 || issuer.length > 35) {
+    return JSON.stringify({ error: 'Invalid XRPL issuer address. Must start with r and be 25–35 characters.' });
+  }
+  try {
+    const res = await fetch(`${API_URL}/api/mpt/issuer?address=${encodeURIComponent(issuer)}`, { signal: AbortSignal.timeout(20000) });
+    const d = await res.json();
+    if (!res.ok) return JSON.stringify({ error: d.message || `Lookup failed (HTTP ${res.status})` });
+    return JSON.stringify(d, null, 2);
+  } catch (e) {
+    return JSON.stringify({ error: `Issuer MPT lookup failed: ${e instanceof Error ? e.message : 'unknown'}` });
   }
 }
 
@@ -841,6 +901,10 @@ export async function POST(req: NextRequest) {
         output = await toolCheckDomainEligibility(toolArgs);
       } else if (toolName === 'check_mpt_risk') {
         output = await toolCheckMptRisk(toolArgs);
+      } else if (toolName === 'search_mpts') {
+        output = await toolSearchMpts(toolArgs);
+      } else if (toolName === 'get_issuer_mpts') {
+        output = await toolGetIssuerMpts(toolArgs);
       } else {
         return rpcError(id, -32601, `Tool not found: ${toolName}`);
       }

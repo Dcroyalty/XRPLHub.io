@@ -1,6 +1,7 @@
 {
   "framework": "nextjs",
   "crons": [
-    { "path": "/api/cron/index-credentials", "schedule": "0 6 * * *" }
+    { "path": "/api/cron/index-credentials", "schedule": "0 6 * * *" },
+    { "path": "/api/cron/index-mpts", "schedule": "0 7 * * *" }
   ]
 }

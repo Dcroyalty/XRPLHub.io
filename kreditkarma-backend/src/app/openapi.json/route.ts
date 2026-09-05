@@ -581,6 +581,144 @@ export async function GET(req: Request) {
         },
       },
 
+      "/api/mpt/search": {
+        get: {
+          operationId: "mptSearch",
+          summary: "Search the MPT registry index (free)",
+          description:
+            "Find Multi-Purpose Token (XLS-33) issuances by issuer address, MPTokenIssuanceID (or a hex " +
+            "prefix), or token name / ticker. Served from the registry index — the union of Bithomp's " +
+            "per-issuer data and our own ledger_data walk. The response carries `coverage` " +
+            "(\"complete\" | \"partial\") and `lastCompletedPassAt`; while \"partial\", treat the result set " +
+            "as a floor, not the whole population. Free, no signup.",
+          security: [],
+          tags: ["Tokens"],
+          parameters: [{
+            name: "q", in: "query", required: true,
+            description: "Issuer address (r...), MPTokenIssuanceID or hex prefix, or a token name / ticker.",
+            schema: { type: "string", minLength: 2 },
+            example: "rM7ffj9GZV41K8fWUhtpfZSZvYoZB2yA4t",
+          }],
+          responses: {
+            "200": ok(
+              "Matching issuances from the index.",
+              {
+                type: "object",
+                properties: {
+                  query: { type: "string" },
+                  matchedBy: { type: "string", enum: ["issuer", "issuanceId", "name"] },
+                  source: { type: "string", enum: ["indexed"] },
+                  coverage: { type: "string", enum: ["complete", "partial"] },
+                  lastCompletedPassAt: { type: "string", format: "date-time", nullable: true },
+                  indexedIssuances: { type: "integer" },
+                  indexedIssuers: { type: "integer" },
+                  note: { type: "string" },
+                  count: { type: "integer" },
+                  truncated: { type: "boolean" },
+                  results: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        issuanceId: { type: "string" },
+                        issuer: { type: "string" },
+                        name: { type: "string", nullable: true },
+                        assetScale: { type: "integer" },
+                        maximumAmount: { type: "string", nullable: true },
+                        outstandingAmount: { type: "string" },
+                        transferFeeBps: { type: "number" },
+                        holderCount: { type: "integer", nullable: true },
+                        issuerPowers: { type: "object" },
+                        sources: { type: "array", items: { type: "string", enum: ["walk", "bithomp"] } },
+                        lastSeenAt: { type: "string", format: "date-time" },
+                      },
+                    },
+                  },
+                  related: { type: "array", items: { type: "object" } },
+                },
+              },
+              {
+                query: "rM7ffj9GZV41K8fWUhtpfZSZvYoZB2yA4t",
+                matchedBy: "issuer",
+                source: "indexed",
+                coverage: "partial",
+                lastCompletedPassAt: null,
+                indexedIssuances: 251,
+                indexedIssuers: 34,
+                note: "Our network-wide ledger_data walk has not finished a full pass yet…",
+                count: 10,
+                truncated: false,
+                results: [{
+                  issuanceId: "0601A5ECE082DA1CE432D2435B0D719CD87FF7EB9B77FDE7",
+                  issuer: "rM7ffj9GZV41K8fWUhtpfZSZvYoZB2yA4t",
+                  name: "SIV134", assetScale: 0, maximumAmount: "10000000", outstandingAmount: "0",
+                  transferFeeBps: 0, holderCount: 0,
+                  issuerPowers: { clawback: false, canFreeze: false, currentlyFrozen: false, requiresAuth: false, canEscrow: false, canTrade: true, transferable: true },
+                  sources: ["bithomp"], lastSeenAt: "2026-09-05T11:00:00.000Z",
+                }],
+                related: [],
+              }
+            ),
+            "400": { description: "q missing or shorter than 2 characters." },
+          },
+        },
+      },
+
+      "/api/mpt/issuer": {
+        get: {
+          operationId: "mptIssuer",
+          summary: "Every MPT an issuer has out, plus their XRPLScore (free)",
+          description:
+            "Everything one issuer has issued as Multi-Purpose Tokens (XLS-33), from the registry index, " +
+            "with each issuance's issuer-power flags, alongside the issuer's own XRPLScore (cached, kept " +
+            "fresh by the daily refresh; computed live if not yet cached). Carries `coverage` and " +
+            "`lastCompletedPassAt`. Free, no signup.",
+          security: [],
+          tags: ["Tokens"],
+          parameters: [{
+            name: "address", in: "query", required: true,
+            description: "XRPL issuer address (r...).",
+            schema: { type: "string", pattern: "^r[1-9A-HJ-NP-Za-km-z]{24,34}$" },
+            example: "rM7ffj9GZV41K8fWUhtpfZSZvYoZB2yA4t",
+          }],
+          responses: {
+            "200": ok(
+              "The issuer's MPTs and score.",
+              {
+                type: "object",
+                properties: {
+                  issuer: { type: "string" },
+                  source: { type: "string", enum: ["indexed"] },
+                  coverage: { type: "string", enum: ["complete", "partial"] },
+                  lastCompletedPassAt: { type: "string", format: "date-time", nullable: true },
+                  indexedIssuances: { type: "integer" },
+                  indexedIssuers: { type: "integer" },
+                  note: { type: "string" },
+                  issuer_known_to_index: { type: "boolean" },
+                  aggregateStale: { type: "boolean" },
+                  xrplScore: { type: "integer", nullable: true },
+                  grade: { type: "string", nullable: true },
+                  scoreSource: { type: "string", enum: ["cached", "live", "unavailable"] },
+                  scoredAt: { type: "string", format: "date-time", nullable: true },
+                  mptCount: { type: "integer" },
+                  mpts: { type: "array", items: { type: "object" } },
+                  related: { type: "array", items: { type: "object" } },
+                },
+              },
+              {
+                issuer: "rM7ffj9GZV41K8fWUhtpfZSZvYoZB2yA4t",
+                source: "indexed", coverage: "partial", lastCompletedPassAt: null,
+                indexedIssuances: 251, indexedIssuers: 34, note: "…",
+                issuer_known_to_index: true, aggregateStale: false,
+                xrplScore: 597, grade: "Fair", scoreSource: "cached", scoredAt: "2026-09-05T07:00:00.000Z",
+                mptCount: 10, mpts: [], related: [],
+              }
+            ),
+            "400": { description: "Missing or invalid address." },
+          },
+        },
+      },
+
       "/api/x402/usdc/mpt/{issuanceId}": {
         get: {
           operationId: "mptRiskFull",

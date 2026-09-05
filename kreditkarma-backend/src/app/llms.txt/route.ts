@@ -55,15 +55,20 @@ a finished count).
 - GET ${origin}/api/credentials/issuer?address=r... — everything an issuer has issued: types, subject count, acceptance rate, from the census
 - GET ${origin}/api/domains/eligible?address=r...&domain=<64-hex DomainID> — does this account hold a credential satisfying this permissioned domain, live
 
-## Multi-Purpose Token (MPT, XLS-33) issuer risk (free)
+## Multi-Purpose Token (MPT, XLS-33) registry + issuer risk (free)
 
-The risk view of one MPT issuance, not a listing — what the issuer can do to a
-holder (clawback, freeze, require-auth, non-transferable) alongside the
-issuer's own XRPLScore. Live reads from the validated ledger; an issuance not
-found returns "unknown", never "does not exist". All ~34 MPT issuers on XRPL
-are scored.
+Both the listing XRPScan/Bithomp have and the risk view they don't: what the
+issuer can do to a holder (clawback, freeze, require-auth, non-transferable)
+alongside the issuer's own XRPLScore. Per-issuance reads are live from the
+validated ledger; an issuance not found returns "unknown", never "does not
+exist". Search / issuer listings are served from a registry index that is the
+reconciled Bithomp union plus our own ledger_data walk — every indexed
+response carries coverage ("complete" | "partial") and lastCompletedPassAt,
+and "partial" must be read as a floor, not the whole population.
 
-- GET ${origin}/api/mpt/<48-hex MPTokenIssuanceID> — free: issuance facts + issuer powers + issuer score/grade
+- GET ${origin}/api/mpt/search?q=<issuer r... | MPTokenIssuanceID or hex prefix | token name> — free, indexed
+- GET ${origin}/api/mpt/issuer?address=r... — free, indexed: every MPT this issuer has out + the issuer's XRPLScore
+- GET ${origin}/api/mpt/<48-hex MPTokenIssuanceID> — free, live: issuance facts + issuer powers + issuer score/grade
 - GET ${origin}/api/x402/usdc/mpt/<48-hex id> — $0.01 USDC on Base (x402): full issuer risk — account age, xrp-ledger.toml-verified domain, credentials held, Bithomp cross-check
 
 ## For AI agents
@@ -82,6 +87,8 @@ MCP server (Streamable HTTP, JSON-RPC 2.0, no auth):
   - get_issuer_credentials — everything an issuer has issued (types, subject count, acceptance rate), from the census. Param: issuer_address. Free.
   - check_domain_eligibility — does an account hold a credential satisfying a PermissionedDomain, live. Params: wallet_address, domain_id. Free.
   - check_mpt_risk — issuer powers (clawback/freeze/auth/transferable) + issuer XRPLScore for one MPT issuance, live. Param: issuance_id. Free basic; $0.01 USDC (x402) for full issuer risk.
+  - search_mpts — find MPT issuances in the registry index by issuer / MPTokenIssuanceID or prefix / token name. Param: q. Free.
+  - get_issuer_mpts — every MPT one issuer has out + the issuer's XRPLScore, from the index. Param: issuer_address. Free.
 
 x402 pay-per-call (RLUSD, t54 facilitator, no signup):
 - Discovery: ${origin}/.well-known/x402

@@ -58,3 +58,21 @@ export function mptFullLink(issuanceId: string): RelatedLink {
     price: "0.01 USDC (x402, Base)",
   };
 }
+
+/** The free per-issuance risk view. */
+export function mptIssuanceLink(issuanceId: string): RelatedLink {
+  return {
+    question: "Issuer powers and issuance facts for this MPT (clawback, freeze, require-auth, transferable)",
+    url: `${origin()}/api/mpt/${issuanceId}`,
+    price: "free",
+  };
+}
+
+/** Everything one issuer has issued, plus their XRPLScore (free, from the index). */
+export function mptIssuerLink(address: string): RelatedLink {
+  return {
+    question: "Every MPT this issuer has out, plus the issuer's XRPLScore",
+    url: `${origin()}/api/mpt/issuer?address=${address}`,
+    price: "free",
+  };
+}
