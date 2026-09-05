@@ -294,6 +294,173 @@ export async function GET(req: Request) {
           },
         },
       },
+
+      "/api/credentials/account": {
+        get: {
+          operationId: "credentialsAccount",
+          summary: "Every XLS-70 credential an account holds (free, live)",
+          description:
+            "Get every credential naming this address as Subject — issuer, type, whether it's been " +
+            "accepted, whether it's expired, and its expiry date. Live against a validated mainnet " +
+            "ledger on every call, deliberately not cached: this is the endpoint to check before " +
+            "trusting a counterparty's claimed credential. Free, no signup.",
+          security: [],
+          tags: ["Credentials"],
+          parameters: [{
+            name: "address", in: "query", required: true,
+            description: "XRPL classic address to look up (r...).",
+            schema: { type: "string", pattern: "^r[1-9A-HJ-NP-Za-km-z]{24,34}$" },
+            example: "rvYAfWj5gh67oV6fW32ZzP3Aw4Eubs59B",
+          }],
+          responses: {
+            "200": ok(
+              "Every credential held by this address.",
+              {
+                type: "object",
+                properties: {
+                  address: { type: "string" },
+                  source: { type: "string", enum: ["live"] },
+                  count: { type: "integer" },
+                  credentials: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        issuer: { type: "string" },
+                        credentialType: { type: "string" },
+                        credentialTypeHex: { type: "string" },
+                        accepted: { type: "boolean" },
+                        expired: { type: "boolean" },
+                        expirationISO: { type: "string", format: "date-time", nullable: true },
+                        uri: { type: "string", nullable: true },
+                      },
+                    },
+                  },
+                },
+              },
+              {
+                address: "rvYAfWj5gh67oV6fW32ZzP3Aw4Eubs59B",
+                source: "live",
+                count: 1,
+                credentials: [{
+                  issuer: "rmWjCGeLtuLGerEuvHDkrsr46ej2Ni13f",
+                  credentialType: "io.xrplhub.score.v1.min750",
+                  credentialTypeHex: "696F2E7872706C6875622E73636F72652E76312E6D696E373530",
+                  accepted: false, expired: false,
+                  expirationISO: "2026-12-03T10:59:55.000Z", uri: "https://www.xrplhub.io/verify/wallet/rvYAfWj5gh67oV6fW32ZzP3Aw4Eubs59B",
+                }],
+              }
+            ),
+            "400": { description: "Missing or invalid address." },
+          },
+        },
+      },
+
+      "/api/credentials/issuer": {
+        get: {
+          operationId: "credentialsIssuer",
+          summary: "Everything an issuer has issued (free, census-backed)",
+          description:
+            "Every credential type an issuer has issued, distinct subject count, and acceptance rate. " +
+            "Served from a network-wide census rebuilt on a schedule, not live — the response's " +
+            "`coverage` field is \"complete\" or \"partial\" so a mid-walk answer is never presented " +
+            "as a finished count. Free, no signup.",
+          security: [],
+          tags: ["Credentials"],
+          parameters: [{
+            name: "address", in: "query", required: true,
+            description: "XRPL classic address of the issuer (r...).",
+            schema: { type: "string", pattern: "^r[1-9A-HJ-NP-Za-km-z]{24,34}$" },
+            example: "rmWjCGeLtuLGerEuvHDkrsr46ej2Ni13f",
+          }],
+          responses: {
+            "200": ok(
+              "Issuer stats from the census.",
+              {
+                type: "object",
+                properties: {
+                  address: { type: "string" },
+                  source: { type: "string", enum: ["indexed"] },
+                  coverage: { type: "string", enum: ["complete", "partial"] },
+                  lastCompletedPassAt: { type: "string", format: "date-time", nullable: true },
+                  totalIssued: { type: "integer" },
+                  subjectCount: { type: "integer" },
+                  acceptanceRate: { type: "number", nullable: true },
+                  types: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        credentialType: { type: "string" }, credentialTypeHex: { type: "string" }, count: { type: "integer" },
+                      },
+                    },
+                  },
+                },
+              },
+              {
+                address: "rmWjCGeLtuLGerEuvHDkrsr46ej2Ni13f",
+                source: "indexed", coverage: "complete", lastCompletedPassAt: "2026-09-05T12:00:00.000Z",
+                totalIssued: 1, subjectCount: 1, acceptanceRate: 0,
+                types: [{ credentialType: "io.xrplhub.score.v1.min750", credentialTypeHex: "696F2E7872706C6875622E73636F72652E76312E6D696E373530", count: 1 }],
+              }
+            ),
+            "400": { description: "Missing or invalid address." },
+          },
+        },
+      },
+
+      "/api/domains/eligible": {
+        get: {
+          operationId: "domainsEligible",
+          summary: "Does this account satisfy this PermissionedDomain? (free, live)",
+          description:
+            "Checks whether an account holds an accepted, unexpired credential matching any entry in a " +
+            "PermissionedDomain's AcceptedCredentials (XLS-80d: OR semantics — one matching credential " +
+            "is enough). Live against a validated mainnet ledger on every call. Free, no signup.",
+          security: [],
+          tags: ["Credentials"],
+          parameters: [
+            {
+              name: "address", in: "query", required: true,
+              description: "XRPL classic address to check (r...).",
+              schema: { type: "string", pattern: "^r[1-9A-HJ-NP-Za-km-z]{24,34}$" },
+              example: "rvYAfWj5gh67oV6fW32ZzP3Aw4Eubs59B",
+            },
+            {
+              name: "domain", in: "query", required: true,
+              description: "The PermissionedDomain's own ledger index (DomainID) — 64 hex characters.",
+              schema: { type: "string", pattern: "^[0-9A-Fa-f]{64}$" },
+            },
+          ],
+          responses: {
+            "200": ok(
+              "Eligibility result.",
+              {
+                type: "object",
+                properties: {
+                  address: { type: "string" },
+                  domain: { type: "string" },
+                  domainFound: { type: "boolean" },
+                  domainOwner: { type: "string", nullable: true },
+                  eligible: { type: "boolean" },
+                  reason: { type: "string" },
+                  satisfiedBy: { type: "object", nullable: true },
+                  acceptedCredentials: { type: "array", items: { type: "object" } },
+                  heldCredentials: { type: "array", items: { type: "object" } },
+                },
+              },
+              {
+                address: "rvYAfWj5gh67oV6fW32ZzP3Aw4Eubs59B",
+                domain: "0000000000000000000000000000000000000000000000000000000000000000",
+                domainFound: false, domainOwner: null, eligible: false,
+                reason: "No PermissionedDomain exists at that DomainID on the validated ledger.",
+                satisfiedBy: null, acceptedCredentials: [], heldCredentials: [],
+              }
+            ),
+            "400": { description: "Missing or invalid address/domain." },
+          },
+        },
+      },
     },
   };
 

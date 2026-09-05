@@ -110,7 +110,7 @@ export function verificationUri(subject: string): string {
 
 // ── MAINNET CONNECTION GUARD ─────────────────────────────────────────────────
 
-async function connectMainnetOrThrow(): Promise<Client> {
+export async function connectMainnetOrThrow(): Promise<Client> {
   let lastErr: unknown;
   for (const wss of MAINNET_ENDPOINTS) {
     const client = new Client(wss);
@@ -145,6 +145,21 @@ async function connectMainnetOrThrow(): Promise<Client> {
     }
   }
   throw lastErr instanceof Error ? lastErr : new Error("Could not reach an XRPL mainnet node.");
+}
+
+/**
+ * Ripple-epoch close time of the current validated ledger — the correct clock
+ * for "is this expired" checks (never the server's wall clock: the ledger is
+ * the source of truth an on-chain Expiration field is actually compared
+ * against, and it's one cheap call we already have a connection open for).
+ */
+export async function validatedLedgerCloseTimeRipple(client: Client): Promise<number> {
+  const res = await client.request({ command: "ledger", ledger_index: "validated" });
+  const ledger = (res.result as { ledger?: { close_time?: number } }).ledger;
+  if (typeof ledger?.close_time !== "number") {
+    throw new Error("Validated ledger response had no close_time — cannot trust it for expiry checks.");
+  }
+  return ledger.close_time;
 }
 
 // ── LIVE MAINNET RESERVE / FEE INTROSPECTION ─────────────────────────────────

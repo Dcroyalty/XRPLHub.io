@@ -226,3 +226,45 @@ model Invoice {
   @@index([destinationTag])
   @@index([status])
 }
+
+// ── XRPL credential explorer — network-wide census of Credential objects ──────
+// Populated by the scheduled indexer (src/lib/credentialIndexer.ts, triggered by
+// /api/cron/index-credentials) and scripts/census-credentials.cjs (hand-run).
+// Read by GET /api/credentials/issuer (aggregate/issuer lookups — staleness is
+// fine there). NOT read by GET /api/credentials/account or
+// GET /api/domains/eligible — those hit the ledger live on every request,
+// deliberately, because a stale answer there means a revoked credential could
+// read as valid.
+model IndexedCredential {
+  id               String    @id @default(cuid())
+  objectIndex      String    @unique // the Credential ledger object's own 256-bit index — canonical id
+  issuer           String
+  subject          String
+  credentialType   String                              // hex
+  accepted         Boolean
+  expirationRipple Int?                                 // ripple-epoch seconds; null = never expires
+  uri              String?
+  passNumber       Int                                  // last indexer pass that re-confirmed this row present
+  firstSeenAt      DateTime  @default(now())
+  lastSeenAt       DateTime  @updatedAt
+
+  @@index([issuer])
+  @@index([subject])
+}
+
+// Singleton row (id: "credential") tracking the indexer's walk position and
+// whether a full pass has ever completed — the coverage signal
+// GET /api/credentials/issuer must surface rather than presenting a partial
+// walk as a complete census.
+model IndexerCheckpoint {
+  id                      String    @id @default("credential")
+  status                  String    @default("idle") // idle | running — explicit, not inferred from marker
+  marker                  String?   // current ledger_data pagination marker; null before the first page of a pass
+  passNumber              Int       @default(0) // increments each time a NEW pass starts
+  passStartedAt           DateTime?
+  lastCompletedPassAt     DateTime?
+  lastCompletedPassNumber Int?
+  lastLedgerCloseTime     Int?      // ripple-epoch seconds observed during the most recent run —
+                                    // the "now" used for expiry math on the INDEXED (not live) endpoint
+  updatedAt               DateTime  @updatedAt
+}

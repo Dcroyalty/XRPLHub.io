@@ -12,13 +12,16 @@
 // Stateless — zero new infrastructure, runs on Vercel as a standard serverless fn.
 // No new npm packages required.
 //
-// SIX TOOLS:
+// NINE TOOLS:
 //   1. check_xrpl_score        — free 300–850 wallet creditworthiness score
 //   2. list_xrpl_services      — the 35 build_xrpl_transaction actions + their params
 //   3. build_xrpl_transaction  — ready-to-sign txjson for any of 35 XRPL actions
 //   4. issue_score_credential  — paid signed, verifiable score certificate (1 XRP/RLUSD)
 //   5. submit_grant_application — apply for a 1–100 RLUSD community micro-grant
 //   6. donate_to_community_fund — donate XRP or RLUSD to the XRPLHub treasury
+//   7. get_account_credentials — free, live: every XLS-70 credential an account holds
+//   8. get_issuer_credentials  — free, census-backed: everything an issuer has issued
+//   9. check_domain_eligibility — free, live: does an account satisfy a PermissionedDomain
 //
 // © 2026 XRPLHub.io · XRPLScore™ · All Rights Reserved
 // ═══════════════════════════════════════════════════════════════════════════
@@ -42,10 +45,10 @@ const CORS = {
 // JSON-RPC surface (one source of truth for scanners like Smithery).
 export const MCP_SERVER_INFO = {
   name: 'xrplhub',
-  version: '1.3.0',
+  version: '1.4.0',
   description:
     'Free XRPL wallet creditworthiness scores · ready-to-sign txjson for 35 XRPL actions · ' +
-    'verifiable score credential · community micro-grants · donations',
+    'verifiable score credential · credential + permissioned domain explorer · community micro-grants · donations',
 };
 
 // ─── TOOL DEFINITIONS (descriptions are the marketing copy to the AI) ────────
@@ -98,6 +101,53 @@ export const TOOLS = [
         },
       },
       required: ['wallet_address'],
+    },
+  },
+  {
+    name: 'get_account_credentials',
+    description:
+      'Get every XLS-70 credential an XRPL account holds — issuer, type, whether it has been accepted, ' +
+      "whether it's expired, and its expiry date. Live against a validated mainnet ledger (never stale). " +
+      'Use this before trusting a counterparty who claims to hold a credential. ' +
+      'Params: wallet_address (r..., required). Free, no signup.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        wallet_address: { type: 'string', description: 'XRPL classic address to look up (starts with r)' },
+      },
+      required: ['wallet_address'],
+    },
+  },
+  {
+    name: 'get_issuer_credentials',
+    description:
+      'Get everything an issuer account has issued: every credential type, distinct subject count, and ' +
+      'acceptance rate. Served from a network-wide census rebuilt on a schedule — the response includes ' +
+      'coverage ("complete" or "partial") so a mid-walk answer is never mistaken for a finished count. ' +
+      'Params: issuer_address (r..., required). Free, no signup.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        issuer_address: { type: 'string', description: 'XRPL classic address of the credential issuer (starts with r)' },
+      },
+      required: ['issuer_address'],
+    },
+  },
+  {
+    name: 'check_domain_eligibility',
+    description:
+      'Check whether an XRPL account holds a credential that satisfies a PermissionedDomain (XLS-80d) — ' +
+      'the question every domain operator and every would-be participant actually asks before a real ' +
+      'transaction. Live against a validated mainnet ledger. Eligibility is OR: any ONE accepted, unexpired ' +
+      "credential matching the domain's AcceptedCredentials is enough. " +
+      'Params: wallet_address (r..., required), domain_id (64-hex DomainID, the PermissionedDomain ledger index, required). Free, no signup.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        wallet_address: { type: 'string', description: 'XRPL classic address to check (starts with r)' },
+        domain_id: { type: 'string', description: "The PermissionedDomain's ledger index — 64 hex characters" },
+      },
+      required: ['wallet_address', 'domain_id'],
     },
   },
   {
@@ -264,6 +314,64 @@ async function toolCheckXrplScore(
     }, null, 2);
   } catch (e) {
     return JSON.stringify({ error: `Score fetch failed: ${e instanceof Error ? e.message : 'unknown'}` });
+  }
+}
+
+async function toolGetAccountCredentials(args: Record<string, unknown>): Promise<string> {
+  const wallet = String(args.wallet_address || '').trim();
+  if (!wallet.startsWith('r') || wallet.length < 25 || wallet.length > 35) {
+    return JSON.stringify({ error: 'Invalid XRPL wallet address. Must start with r and be 25–35 characters.' });
+  }
+  try {
+    const res = await fetch(
+      `${API_URL}/api/credentials/account?address=${encodeURIComponent(wallet)}`,
+      { signal: AbortSignal.timeout(15_000) }
+    );
+    const d = await res.json();
+    if (!res.ok) return JSON.stringify({ error: d.message || `Lookup failed (HTTP ${res.status})` });
+    return JSON.stringify(d, null, 2);
+  } catch (e) {
+    return JSON.stringify({ error: `Credential lookup failed: ${e instanceof Error ? e.message : 'unknown'}` });
+  }
+}
+
+async function toolGetIssuerCredentials(args: Record<string, unknown>): Promise<string> {
+  const issuer = String(args.issuer_address || '').trim();
+  if (!issuer.startsWith('r') || issuer.length < 25 || issuer.length > 35) {
+    return JSON.stringify({ error: 'Invalid XRPL issuer address. Must start with r and be 25–35 characters.' });
+  }
+  try {
+    const res = await fetch(
+      `${API_URL}/api/credentials/issuer?address=${encodeURIComponent(issuer)}`,
+      { signal: AbortSignal.timeout(15_000) }
+    );
+    const d = await res.json();
+    if (!res.ok) return JSON.stringify({ error: d.message || `Lookup failed (HTTP ${res.status})` });
+    return JSON.stringify(d, null, 2);
+  } catch (e) {
+    return JSON.stringify({ error: `Issuer lookup failed: ${e instanceof Error ? e.message : 'unknown'}` });
+  }
+}
+
+async function toolCheckDomainEligibility(args: Record<string, unknown>): Promise<string> {
+  const wallet = String(args.wallet_address || '').trim();
+  const domainId = String(args.domain_id || '').trim();
+  if (!wallet.startsWith('r') || wallet.length < 25 || wallet.length > 35) {
+    return JSON.stringify({ error: 'Invalid XRPL wallet address. Must start with r and be 25–35 characters.' });
+  }
+  if (!/^[0-9A-Fa-f]{64}$/.test(domainId)) {
+    return JSON.stringify({ error: 'Invalid domain_id — must be the 64-hex-character PermissionedDomain ledger index.' });
+  }
+  try {
+    const res = await fetch(
+      `${API_URL}/api/domains/eligible?address=${encodeURIComponent(wallet)}&domain=${encodeURIComponent(domainId)}`,
+      { signal: AbortSignal.timeout(15_000) }
+    );
+    const d = await res.json();
+    if (!res.ok) return JSON.stringify({ error: d.message || `Eligibility check failed (HTTP ${res.status})` });
+    return JSON.stringify(d, null, 2);
+  } catch (e) {
+    return JSON.stringify({ error: `Eligibility check failed: ${e instanceof Error ? e.message : 'unknown'}` });
   }
 }
 
@@ -682,6 +790,12 @@ export async function POST(req: NextRequest) {
         output = await toolDonateToFund(toolArgs);
       } else if (toolName === 'issue_score_credential') {
         output = await handleIssueScoreCredential(toolArgs);
+      } else if (toolName === 'get_account_credentials') {
+        output = await toolGetAccountCredentials(toolArgs);
+      } else if (toolName === 'get_issuer_credentials') {
+        output = await toolGetIssuerCredentials(toolArgs);
+      } else if (toolName === 'check_domain_eligibility') {
+        output = await toolCheckDomainEligibility(toolArgs);
       } else {
         return rpcError(id, -32601, `Tool not found: ${toolName}`);
       }

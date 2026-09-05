@@ -1,1 +1,6 @@
-{ "framework": "nextjs" }
+{
+  "framework": "nextjs",
+  "crons": [
+    { "path": "/api/cron/index-credentials", "schedule": "0 6 * * *" }
+  ]
+}

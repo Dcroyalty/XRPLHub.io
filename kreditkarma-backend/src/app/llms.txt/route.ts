@@ -42,6 +42,19 @@ the public site, the free endpoint, the paid API, and the MCP server.
 - Free score, any wallet: GET ${origin}/api/score/{r-address}
 - Methodology: XRPLHub XRPLScore v1.1, 8-signal native on-chain behavioral scoring
 
+## Credential + Permissioned Domain explorer (free)
+
+Public reads over XRPL Credential (XLS-70) and PermissionedDomain (XLS-80d)
+objects — pure ledger data, no licensing, no KYC issued by us. Account/domain
+lookups are live against a validated mainnet ledger; issuer stats are served
+from a network-wide census that is rebuilt on a schedule (response says
+coverage: "complete" or "partial" so a mid-walk answer is never mistaken for
+a finished count).
+
+- GET ${origin}/api/credentials/account?address=r... — every credential this account holds (issuer, type, accepted, expired, expiry), live
+- GET ${origin}/api/credentials/issuer?address=r... — everything an issuer has issued: types, subject count, acceptance rate, from the census
+- GET ${origin}/api/domains/eligible?address=r...&domain=<64-hex DomainID> — does this account hold a credential satisfying this permissioned domain, live
+
 ## For AI agents
 
 MCP server (Streamable HTTP, JSON-RPC 2.0, no auth):
@@ -54,6 +67,9 @@ MCP server (Streamable HTTP, JSON-RPC 2.0, no auth):
   - issue_score_credential — paid (1 XRP or 1 RLUSD) signed, verifiable score certificate, 90 days. Params: wallet_address, currency, uuid (2nd call).
   - submit_grant_application — apply for a 1-100 RLUSD community micro-grant. Params: wallet_address, category, amount, description.
   - donate_to_community_fund — donate XRP or RLUSD to the grant treasury. Params: amount, currency, donor_wallet, message.
+  - get_account_credentials — every XLS-70 credential an account holds, live. Param: wallet_address. Free.
+  - get_issuer_credentials — everything an issuer has issued (types, subject count, acceptance rate), from the census. Param: issuer_address. Free.
+  - check_domain_eligibility — does an account hold a credential satisfying a PermissionedDomain, live. Params: wallet_address, domain_id. Free.
 
 x402 pay-per-call (RLUSD, t54 facilitator, no signup):
 - Discovery: ${origin}/.well-known/x402
