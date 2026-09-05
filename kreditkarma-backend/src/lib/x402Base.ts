@@ -33,6 +33,12 @@ export const BASE_PAY_TO: Address = getAddress(
 // (0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913 — confirmed against the actual
 // x402 package source, matches the contract the user gave).
 export const BASE_NETWORK = "base" as const;
+export const USDC_BASE_ASSET = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" as const;
+
+// Display-only mirror of what @coinbase/x402's `facilitator` actually calls —
+// for the .well-known/x402 discovery document, which needs a URL string, not
+// the {url, createAuthHeaders} config object itself.
+export const CDP_FACILITATOR_URL = "https://api.cdp.coinbase.com/platform/v2/x402" as const;
 
 // Re-exported so route files have one import source for this rail.
 export { facilitator as cdpFacilitator };

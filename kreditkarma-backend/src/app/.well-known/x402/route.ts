@@ -22,6 +22,9 @@ import {
   TREASURY_ADDRESS,
 } from "@/lib/paycall";
 import { BUILDABLE_SERVICE_IDS } from "@/app/api/execute/serviceCatalog";
+import { BASE_PAY_TO, BASE_NETWORK, USDC_BASE_ASSET, CDP_FACILITATOR_URL } from "@/lib/x402Base";
+import { PLANS, type PlanId } from "@/lib/plans";
+import { USDC_PLAN_OUTPUT_SCHEMA, usdcPlanOutputExample } from "@/lib/checkoutUsdc";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -69,6 +72,48 @@ const scoreOutputExample = {
   computedAt: "2026-09-04T00:00:00.000Z",
 };
 
+// Plan-purchase resources on USDC/Base run x402 PROTOCOL VERSION 1
+// (x402-next/@coinbase/x402@1.0.1 — the line the live CDP REST facilitator
+// actually accepts; @x402/core's v2 payloads are rejected upstream, see
+// src/lib/x402Base.ts). The 3 XRPL/RLUSD resources below run protocol
+// version 2 against a different facilitator (t54) entirely. One discovery
+// document CAN carry both: the official x402 discovery schema itself
+// (x402/types DiscoveredResourceSchema) versions PER RESOURCE, not just at
+// the document level — every resource below carries its own x402Version,
+// which is authoritative. The top-level x402Version is kept only as a
+// default hint for older crawlers that read just that one field.
+function usdcPlanResource(origin: string, planId: PlanId) {
+  const plan = PLANS[planId];
+  return {
+    resource: `${origin}/api/checkout/usdc/${planId}`,
+    method: "GET",
+    name: `${plan.name} plan — pay in USDC on Base`,
+    description:
+      `Buy the ${plan.name} XRPLHub API plan (${plan.monthlyQuota.toLocaleString()} scored XRPL wallet-risk ` +
+      `calls/month, ${plan.rateLimitPerMin} req/min) with USDC on Base. One signed EIP-3009 authorization ` +
+      `— no gas, no separate on-chain tx from you — settles immediately and returns a live API key in the ` +
+      `same response. No signup, no invoice, no polling.`,
+    x402Version: 1,
+    scheme: "exact",
+    network: BASE_NETWORK,
+    asset: USDC_BASE_ASSET,
+    assetSymbol: "USDC",
+    payTo: BASE_PAY_TO,
+    maxTimeoutSeconds: 300,
+    facilitator: CDP_FACILITATOR_URL,
+    noSignup: true,
+    amount: plan.priceRlusd.toFixed(6),
+    inputSchema: {
+      type: "object",
+      properties: {},
+      required: [],
+      description: "No parameters — the plan is fixed by the URL path.",
+    },
+    outputSchema: USDC_PLAN_OUTPUT_SCHEMA,
+    outputExample: usdcPlanOutputExample(planId),
+  };
+}
+
 export async function GET(req: Request) {
   const origin = new URL(req.url).origin;
   const asset = {
@@ -83,6 +128,7 @@ export async function GET(req: Request) {
     maxTimeoutSeconds: MAX_TIMEOUT_SECONDS,
     extra: { sourceTag: X402_SOURCE_TAG, issuer: RLUSD_ISSUER_ADDR },
     noSignup: true,
+    x402Version: 2,
   };
 
   return NextResponse.json(
@@ -234,6 +280,9 @@ export async function GET(req: Request) {
             x402: { success: true, network: "xrpl" },
           },
         },
+        usdcPlanResource(origin, "starter"),
+        usdcPlanResource(origin, "growth"),
+        usdcPlanResource(origin, "scale"),
       ],
       links: {
         mcp: `${origin}/api/mcp`,
