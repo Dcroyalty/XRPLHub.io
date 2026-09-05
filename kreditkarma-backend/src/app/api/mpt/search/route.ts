@@ -17,19 +17,27 @@ export const maxDuration = 20;
 const HEX_RE = /^[0-9A-Fa-f]{4,48}$/;
 const LIMIT = 50;
 
+// Every field the anchor canonicalisation (mpt-anchor-v1) reads is exposed
+// here so a third party can reproduce the Merkle root from this response —
+// see GET /api/mpt/anchor. `issuerPowers` and `transferFeeBps` are the
+// human-friendly derivations of `flags` and `transferFee`.
 function shape(r: Awaited<ReturnType<typeof prisma.indexedMPT.findMany>>[number]) {
   return {
     issuanceId: r.issuanceId,
     issuer: r.issuer,
+    sequence: r.sequence,
     name: r.name,
     ticker: r.ticker,
     assetScale: r.assetScale,
     maximumAmount: r.maxAmount,
     outstandingAmount: r.outstanding,
+    transferFee: r.transferFee,            // raw (tenths of a basis point)
     transferFeeBps: r.transferFee / 10,
-    holderCount: r.holderCount,
+    flags: r.flagsRaw,                     // raw MPTokenIssuance Flags
     issuerPowers: decodeMptFlags(r.flagsRaw),
-    sources: r.sources ? r.sources.split(",") : [],
+    metadata: r.metadata,                  // raw decoded MPTokenMetadata string (or null)
+    holderCount: r.holderCount,
+    sources: r.sources ? r.sources.split(",").sort() : [],
     lastSeenAt: r.lastSeenAt.toISOString(),
   };
 }

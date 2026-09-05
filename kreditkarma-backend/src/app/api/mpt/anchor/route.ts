@@ -59,13 +59,22 @@ export async function GET() {
     verify: {
       summary:
         "Recompute the Merkle root from the published registry rows and check it equals `latest.merkleRoot`, " +
-        "then confirm that root appears in the Memo of the transaction at `latest.txHash`.",
+        "then confirm that root appears (as the `root` field of the JSON in MemoData) on the transaction at " +
+        "`latest.txHash`.",
+      recipe: [
+        "1. Get the known issuer list: the distinct `issuer` values across GET /api/mpt/search results (paginate by issuer), or request the list.",
+        "2. For each issuer, GET /api/mpt/issuer?address=<issuer> and take every object in `mpts` — that is one registry row.",
+        "3. For each row build the canonical record (see `canonicalisation.record.keys`): metadataSha256 = lowercase hex SHA-256 of the row's `metadata` string (null if `metadata` is null); `flags` = the row's `flags`; `transferFee` = the row's `transferFee`; `sources` sorted ascending.",
+        "4. JSON.stringify each record with the keys in the exact listed order, no whitespace. Sort the strings by issuanceId ascending.",
+        "5. Merkle: leaf = SHA-256(0x00 || utf8(recordJson)); node = SHA-256(0x01 || left || right); odd node promoted; root is 64-hex lowercase.",
+        "6. It must equal latest.merkleRoot, and decoding latest.txHash's MemoData from hex must yield JSON whose `root` is that value.",
+      ],
       registrySource: {
-        note:
-          "The rows are the union of every issuer's issuances. Enumerate the known issuers (each row's `issuer` " +
-          "field across /api/mpt/search results, or ask us for the list), then GET /api/mpt/issuer?address=<issuer> " +
-          "for each to get that issuer's complete set. Every issuance object is a registry row.",
         endpoints: ["/api/mpt/search?q=<issuer|id|name>", "/api/mpt/issuer?address=<issuer>"],
+        rowFields:
+          "Both endpoints expose every field the canonicalisation reads: issuanceId, issuer, sequence, " +
+          "assetScale, maximumAmount, outstandingAmount, transferFee, flags, metadata, name, ticker, " +
+          "holderCount, sources. (issuerPowers and transferFeeBps are human-friendly derivations — don't use them for the root.)",
       },
       canonicalisation: CANON_SPEC,
       onLedger: {

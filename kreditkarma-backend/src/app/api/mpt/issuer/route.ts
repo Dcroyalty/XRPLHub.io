@@ -69,17 +69,24 @@ export async function GET(req: Request) {
     scoreSource,
     scoredAt,
     mptCount: rows.length,
+    // Every field the anchor canonicalisation (mpt-anchor-v1) reads is exposed
+    // so a third party can reproduce the Merkle root — see GET /api/mpt/anchor.
     mpts: rows.map((r) => ({
       issuanceId: r.issuanceId,
+      issuer: r.issuer,
+      sequence: r.sequence,
       name: r.name,
       ticker: r.ticker,
       assetScale: r.assetScale,
       maximumAmount: r.maxAmount,
       outstandingAmount: r.outstanding,
+      transferFee: r.transferFee,           // raw (tenths of a basis point)
       transferFeeBps: r.transferFee / 10,
-      holderCount: r.holderCount,
+      flags: r.flagsRaw,                    // raw MPTokenIssuance Flags
       issuerPowers: decodeMptFlags(r.flagsRaw),
-      sources: r.sources ? r.sources.split(",") : [],
+      metadata: r.metadata,                 // raw decoded MPTokenMetadata string (or null)
+      holderCount: r.holderCount,
+      sources: r.sources ? r.sources.split(",").sort() : [],
     })),
     related: related.slice(0, 3),
   });
