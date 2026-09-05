@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.24.3",
+    "@coinbase/cdp-sdk": "1.53.0",
     "@crossmarkio/sdk": "0.4.0",
     "@gemwallet/api": "3.8.0",
     "@prisma/client": "6.19.3",
