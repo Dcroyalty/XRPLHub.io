@@ -166,12 +166,21 @@ export async function connectMainnetOrThrow(opts?: { fastWalk?: boolean }): Prom
  * against, and it's one cheap call we already have a connection open for).
  */
 export async function validatedLedgerCloseTimeRipple(client: Client): Promise<number> {
-  const res = await client.request({ command: "ledger", ledger_index: "validated" });
-  const ledger = (res.result as { ledger?: { close_time?: number } }).ledger;
-  if (typeof ledger?.close_time !== "number") {
-    throw new Error("Validated ledger response had no close_time — cannot trust it for expiry checks.");
+  let lastErr: unknown;
+  for (let i = 0; i < 3; i++) {
+    try {
+      const res = await client.request({ command: "ledger", ledger_index: "validated" });
+      const ledger = (res.result as { ledger?: { close_time?: number } }).ledger;
+      if (typeof ledger?.close_time !== "number") {
+        throw new Error("Validated ledger response had no close_time — cannot trust it for expiry checks.");
+      }
+      return ledger.close_time;
+    } catch (err) {
+      lastErr = err;
+      if (i < 2) await new Promise((r) => setTimeout(r, 500 * (i + 1)));
+    }
   }
-  return ledger.close_time;
+  throw lastErr instanceof Error ? lastErr : new Error("Could not read the validated ledger close time.");
 }
 
 // ── LIVE MAINNET RESERVE / FEE INTROSPECTION ─────────────────────────────────

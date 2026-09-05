@@ -75,6 +75,31 @@ function rippleToISO(ripple: number): string {
   return new Date((ripple + 946_684_800) * 1000).toISOString();
 }
 
+/**
+ * One XRPL request with a few retries. Public nodes intermittently answer
+ * "tooBusy" (error_code 9) or drop a socket under load — transient, and a
+ * short backoff clears it. Not for logic errors (entryNotFound etc.), which
+ * the callers handle explicitly and which would never succeed on retry.
+ */
+async function requestWithRetry<T = unknown>(
+  client: Awaited<ReturnType<typeof connectMainnetOrThrow>>,
+  req: Record<string, unknown>,
+  attempts = 3
+): Promise<T> {
+  let lastErr: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return (await client.request(req as Parameters<typeof client.request>[0])) as T;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (/entryNotFound|not.*found|actMalformed|invalidParams/i.test(msg)) throw err;
+      lastErr = err;
+      if (i < attempts - 1) await new Promise((r) => setTimeout(r, 600 * (i + 1)));
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
+}
+
 /** Every Credential object naming the account as either party, paginated,
  *  bounded by OWNER_WALK_BUDGET_MS. `complete` is false if the budget ran out
  *  before the owner directory was fully scanned. */
@@ -89,15 +114,15 @@ async function fetchAccountCredentials(
     let complete = true;
     const deadline = Date.now() + OWNER_WALK_BUDGET_MS;
     do {
-      const res = await client.request({
+      const res = await requestWithRetry<{ result: { account_objects?: Record<string, unknown>[]; marker?: unknown } }>(client, {
         command: "account_objects",
         account: address,
         type: "credential",
         ledger_index: "validated",
         limit: 400,
         ...(marker ? { marker } : {}),
-      } as unknown as Parameters<typeof client.request>[0]);
-      const result = res.result as { account_objects?: Record<string, unknown>[]; marker?: unknown };
+      });
+      const result = res.result;
       nodes.push(...(result.account_objects ?? []));
       marker = result.marker;
       if (marker && Date.now() >= deadline) {
@@ -181,12 +206,12 @@ export async function probeCredentials(
       if (seen.has(key)) continue;
       seen.add(key);
       try {
-        const res = await client.request({
+        const res = await requestWithRetry<{ result: { node?: Record<string, unknown> } }>(client, {
           command: "ledger_entry",
           ledger_index: "validated",
           credential: { subject, issuer: p.issuer, credential_type: typeHex },
-        } as unknown as Parameters<typeof client.request>[0]);
-        const node = (res.result as { node?: Record<string, unknown> }).node ?? null;
+        });
+        const node = res.result.node ?? null;
         if (node) out.push(toLiveCredential(node, nowRipple));
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -214,12 +239,12 @@ export async function getDomain(domainId: string): Promise<DomainInfo> {
   try {
     let node: Record<string, unknown> | null = null;
     try {
-      const res = await client.request({
+      const res = await requestWithRetry<{ result: { node?: Record<string, unknown> } }>(client, {
         command: "ledger_entry",
         ledger_index: "validated",
         index: domainId,
-      } as unknown as Parameters<typeof client.request>[0]);
-      node = (res.result as { node?: Record<string, unknown> }).node ?? null;
+      });
+      node = res.result.node ?? null;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       if (/entryNotFound|not.*found/i.test(msg)) return { found: false, domainId };
