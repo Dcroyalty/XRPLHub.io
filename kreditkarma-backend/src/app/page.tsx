@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import WalletPicker from '@/lib/wallet/WalletPicker';
+import XamanPayPrompt from '@/components/XamanPayPrompt';
 import {
   getProvider as getWalletProvider,
   resolveProviderOptions,
@@ -35,8 +36,6 @@ const TEST_PRICE_RLUSD = 0.01; // RLUSD has 2-decimal minimum on issuer; this is
 type Currency = 'RLUSD' | 'XRP';
 const fmt   = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 const trunc = (a: string) => a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '';
-const qrImg = (d: string, sz = 200) =>
-  `https://api.qrserver.com/v1/create-qr-code/?size=${sz}x${sz}&data=${encodeURIComponent(d)}&color=10b981&bgcolor=030407&qzone=2&format=svg`;
 
 // ─── Brand gradient: green -> blue, the same two colors as the hero wordmark
 // (#10b981, #38bdf8). One shared constant so the header logo and the hero
@@ -608,13 +607,9 @@ function ConnectWalletModal({ show, onClose, onConnected }: { show:boolean; onCl
               <span style={{ width:8, height:8, borderRadius:'50%', background:'#10b981', boxShadow:'0 0 12px #10b981', animation:'pulse 1.4s infinite' }} />
               <span style={{ fontSize:13, fontWeight:700, color:'#10b981' }}>Waiting for Xaman…</span>
             </div>
-            <div style={{ background:'#fff', borderRadius:18, padding:14, width:210, height:210, margin:'0 auto 14px', display:'flex', alignItems:'center', justifyContent:'center', boxShadow:'0 0 30px rgba(16,185,129,.15)' }}>
-              <img src={qrUrl || qrImg(`https://xumm.app/sign/${uuid}`)} alt="Scan to connect" style={{ width:'100%', height:'100%', borderRadius:8 }} />
+            <div style={{ marginBottom:18 }}>
+              <XamanPayPrompt theme="light" mode="signin" qrPng={qrUrl} deepLink={deepLnk} uuid={uuid} />
             </div>
-            <a href={deepLnk || `https://xumm.app/sign/${uuid}`} target="_blank" rel="noopener noreferrer"
-              style={{ display:'inline-flex', alignItems:'center', gap:8, background:'#10b981', color:'#000', fontWeight:800, fontSize:15, padding:'14px 30px', borderRadius:99, textDecoration:'none', boxShadow:'0 4px 20px rgba(16,185,129,.35)', marginBottom:18 }}>
-              📱 Open in Xaman — Connect →
-            </a>
             <div style={{ textAlign:'left', background:'rgba(255,255,255,.04)', border:'1px solid rgba(255,255,255,.07)', borderRadius:14, padding:'14px 18px' }}>
               {[['1','Scan the QR or tap "Open in Xaman"'],['2','Approve the connection request'],['3','Done — wallet linked instantly']].map(([n,t]) => (
                 <div key={n} style={{ display:'flex', alignItems:'flex-start', gap:12, marginBottom:n==='3'?0:10 }}>
@@ -926,14 +921,9 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
               <span style={{ fontSize:13,fontWeight:700,color:'#10b981' }}>{exUuid ? 'Sign in Xaman to execute…' : 'Sign in your wallet to execute…'}</span>
             </div>
             {exUuid ? (
-              <>
-                <div style={{ background:'#fff',borderRadius:18,padding:12,width:200,height:200,margin:'0 auto 12px',display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 0 30px rgba(16,185,129,.15)' }}>
-                  <img src={exQr || qrImg(`https://xumm.app/sign/${exUuid}`)} alt="Sign" style={{ width:'100%',height:'100%',borderRadius:8 }} />
-                </div>
-                <div style={{ textAlign:'center',marginBottom:14 }}>
-                  <a href={exLink || `https://xumm.app/sign/${exUuid}`} target="_blank" rel="noopener noreferrer" style={{ display:'inline-flex',alignItems:'center',gap:8,background:'#10b981',color:'#000',fontWeight:800,fontSize:14,padding:'13px 28px',borderRadius:99,textDecoration:'none' }}>📱 Open in Xaman — Sign →</a>
-                </div>
-              </>
+              <div style={{ marginBottom:14 }}>
+                <XamanPayPrompt theme="light" mode="sign" qrPng={exQr} deepLink={exLink} uuid={exUuid} />
+              </div>
             ) : (
               <p style={{ textAlign:'center',color:'rgba(255,255,255,.55)',fontSize:13,margin:'16px 0' }}>Approve the transaction in your wallet…</p>
             )}
@@ -1017,17 +1007,10 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
             <span style={{ fontSize:12,color:'rgba(255,255,255,.4)',fontFamily:"'IBM Plex Mono',monospace" }}>⏱ {fmt(countdown)}</span>
           </div>
           {uuid ? (
-            <>
-              <div style={{ background:'#fff',borderRadius:18,padding:12,width:200,height:200,margin:'0 auto 12px',display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 0 30px rgba(16,185,129,.15)' }}>
-                <img src={qrUrl || qrImg(`https://xumm.app/sign/${uuid}`)} alt="Pay" style={{ width:'100%',height:'100%',borderRadius:8 }} />
-              </div>
-              <div style={{ textAlign:'center',marginBottom:14 }}>
-                <a href={deepLnk || `https://xumm.app/sign/${uuid}`} target="_blank" rel="noopener noreferrer"
-                  style={{ display:'inline-flex',alignItems:'center',gap:8,background:'#10b981',color:'#000',fontWeight:800,fontSize:14,padding:'13px 28px',borderRadius:99,textDecoration:'none',boxShadow:'0 4px 20px rgba(16,185,129,.35)' }}>
-                  📱 Open in Xaman — Sign Now →
-                </a>
-              </div>
-            </>
+            <div style={{ marginBottom:14 }}>
+              <XamanPayPrompt theme="light" mode="pay" qrPng={qrUrl} deepLink={deepLnk} uuid={uuid}
+                amount={price} currency={currency} destination={TREASURY} />
+            </div>
           ) : (
             <p style={{ textAlign:'center',color:'rgba(255,255,255,.55)',fontSize:13,margin:'18px 0' }}>
               Approve the payment in your wallet — this confirms on the ledger automatically.
@@ -1317,11 +1300,9 @@ function DonateModal({ show, onClose }: { show:boolean; onClose:()=>void }) {
     <Overlay show={show} onClose={handleClose}>
       <div style={{ textAlign:'center' }}>
         <div style={{ fontSize:10,fontWeight:700,color:'#10b981',letterSpacing:'.12em',textTransform:'uppercase',marginBottom:5 }}>Awaiting Signature</div>
-        <h3 style={{ fontSize:20,fontWeight:900,marginBottom:14 }}>Scan or tap to confirm in Xaman</h3>
-        <div style={{ background:'#fff',borderRadius:18,padding:14,width:210,height:210,margin:'0 auto 14px',display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 0 30px rgba(16,185,129,.15)' }}>
-          <img src={qrUrl || qrImg(`https://xumm.app/sign/${uuid}`)} alt="Donate" style={{ width:'100%',height:'100%',borderRadius:8 }} />
-        </div>
-        <a href={deepLnk || `https://xumm.app/sign/${uuid}`} target="_blank" rel="noopener noreferrer" style={{ fontSize:13,color:'#10b981',fontWeight:600 }}>Open in Xaman — {amount} {currency}</a>
+        <h3 style={{ fontSize:20,fontWeight:900,marginBottom:14 }}>Confirm in Xaman</h3>
+        <XamanPayPrompt theme="light" mode="pay" qrPng={qrUrl} deepLink={deepLnk} uuid={uuid}
+          amount={amount} currency={currency} destination={TREASURY} />
         <p style={{ fontSize:12,color:'rgba(255,255,255,.35)',marginTop:14 }}>Expires in {Math.floor(countdown/60)}:{String(countdown%60).padStart(2,'0')}</p>
       </div>
     </Overlay>

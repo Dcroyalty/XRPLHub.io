@@ -13,6 +13,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import FreeKeyFlow from "./FreeKeyFlow";
 import UsdcBasePay from "./UsdcBasePay";
+import XamanPayPrompt from "@/components/XamanPayPrompt";
 import WalletPicker from "@/lib/wallet/WalletPicker";
 import {
   getProvider,
@@ -198,10 +199,6 @@ export default function CheckoutFlow({ plan }: { plan: string }) {
       setXamanLink(data.deepLink ?? null);
       setXaman("waiting");
       setXamanMsg("");
-      // On a phone, jump straight into Xaman with the payment pre-filled.
-      if (data.deepLink && /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)) {
-        window.location.href = data.deepLink;
-      }
     } catch {
       setXaman("error");
       setXamanMsg("Could not reach Xaman. Pay manually below.");
@@ -324,13 +321,17 @@ export default function CheckoutFlow({ plan }: { plan: string }) {
               {xaman === "waiting" ? (
                 <div style={s.xamanBox}>
                   <p style={s.xamanH}>Approve the payment in Xaman</p>
-                  {xamanQr && <img alt="Scan with Xaman" style={s.qr} src={xamanQr} />}
-                  {xamanLink && (
-                    <a href={xamanLink} target="_blank" rel="noreferrer" style={s.xaman}>
-                      Open in Xaman
-                    </a>
-                  )}
-                  <p style={s.polling}>Amount, destination and tag are already filled in — just sign.</p>
+                  <XamanPayPrompt
+                    theme="light"
+                    mode="pay"
+                    qrPng={xamanQr}
+                    deepLink={xamanLink}
+                    uuid={xamanUuid.current ?? undefined}
+                    amount={invoice.amount}
+                    currency={invoice.currency}
+                    destination={invoice.pay.address}
+                    destinationTag={invoice.pay.destinationTag}
+                  />
                 </div>
               ) : (
                 <button onClick={openXaman} disabled={xaman === "opening"} style={s.xaman}>

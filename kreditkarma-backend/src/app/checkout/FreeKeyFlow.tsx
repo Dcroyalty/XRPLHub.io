@@ -11,6 +11,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import WalletPicker from "@/lib/wallet/WalletPicker";
+import XamanPayPrompt from "@/components/XamanPayPrompt";
 import {
   getProvider,
   resolveProviderOptions,
@@ -100,10 +101,8 @@ export default function FreeKeyFlow() {
     if (provider.id === "xaman") {
       setQr(handle.qrPng);
       setLink(handle.deepLink);
+      // (no UA-sniff auto-redirect — the mobile button in XamanPayPrompt handles it)
       setPhase("xaman-wait");
-      if (handle.deepLink && /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)) {
-        window.location.href = handle.deepLink;
-      }
       return;
     }
 
@@ -237,8 +236,7 @@ export default function FreeKeyFlow() {
     return (
       <div style={s.box}>
         <p style={s.h}>Approve the sign-in in Xaman</p>
-        {qr && <img alt="Scan with Xaman" style={s.qr} src={qr} />}
-        {link && <a href={link} target="_blank" rel="noreferrer" style={s.btn}>Open in Xaman</a>}
+        <XamanPayPrompt theme="light" mode="signin" qrPng={qr} deepLink={link} />
         <p style={s.polling}>Waiting… this updates itself once you sign.</p>
       </div>
     );
