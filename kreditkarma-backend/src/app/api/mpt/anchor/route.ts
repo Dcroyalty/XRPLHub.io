@@ -41,21 +41,69 @@ function view(a: NonNullable<Awaited<ReturnType<typeof prisma.mptAnchor.findFirs
 }
 
 export async function GET() {
-  const [latestAnchored, pending, total, anchoredCount] = await Promise.all([
+  const [latestAnchored, pending, lastAttempt, lastFailure, total, anchoredCount] = await Promise.all([
     prisma.mptAnchor.findFirst({ where: { status: "anchored" }, orderBy: { createdAt: "desc" } }),
     prisma.mptAnchor.findFirst({ where: { status: "pending" }, orderBy: { createdAt: "desc" } }),
+    prisma.mptAnchor.findFirst({ orderBy: { createdAt: "desc" } }),
+    prisma.mptAnchor.findFirst({ where: { status: { in: ["failed", "misconfigured"] } }, orderBy: { createdAt: "desc" } }),
     prisma.mptAnchor.count(),
     prisma.mptAnchor.count({ where: { status: "anchored" } }),
   ]);
 
   const anchoringEnabled = process.env.MPT_ANCHOR_ENABLED === "true";
+  const signingKeyPresent = !!process.env.CREDENTIAL_ISSUER_SEED;
+  const misconfigured = anchoringEnabled && !signingKeyPresent;
   const pendingDiffers = !!pending && pending.merkleRoot !== latestAnchored?.merkleRoot;
 
+  // Headline: if the last thing that happened was a failure/misconfig, or the
+  // config itself is broken, say so first — a failed row must never read as
+  // "nothing happened".
+  const lastFailureNewerThanAnchor =
+    !!lastFailure && (!latestAnchored || lastFailure.createdAt > latestAnchored.createdAt);
+  let status: "ok" | "misconfigured" | "failing" | "pending" | "disabled";
+  let message: string;
+  if (misconfigured) {
+    status = "misconfigured";
+    message =
+      "ANCHORING IS ENABLED (MPT_ANCHOR_ENABLED=true) BUT THE SIGNING KEY (CREDENTIAL_ISSUER_SEED) IS NOT SET. " +
+      "No anchor can be produced on any run until the key is added to the environment.";
+  } else if (lastFailureNewerThanAnchor && lastFailure) {
+    status = "failing";
+    message =
+      `The most recent anchor attempt ${lastFailure.status === "misconfigured" ? "hit a configuration error" : "failed"} ` +
+      `at ${lastFailure.createdAt.toISOString()}: ${lastFailure.error ?? "no detail"}. ` +
+      `${lastFailure.status === "misconfigured" ? "It will keep failing the same way until the config is fixed." : "It may clear on the next run."}`;
+  } else if (!anchoringEnabled) {
+    status = "disabled";
+    message = "Anchoring is disabled (MPT_ANCHOR_ENABLED not set). Snapshots are recorded but no tx is submitted.";
+  } else if (!latestAnchored && pending) {
+    status = "pending";
+    message = "Anchoring is enabled; a snapshot is recorded and awaiting its first on-ledger anchor.";
+  } else {
+    status = "ok";
+    message = latestAnchored
+      ? `Last anchored ${latestAnchored.anchoredAt?.toISOString() ?? latestAnchored.createdAt.toISOString()} at ledger ${latestAnchored.ledgerIndex}.`
+      : "No anchor yet.";
+  }
+
   return NextResponse.json({
+    status,
+    message,
+    health: {
+      anchoringEnabled,
+      signingKeyPresent,
+      misconfigured,
+      lastAttempt: lastAttempt ? view(lastAttempt) : null,
+      lastFailure: lastFailure ? view(lastFailure) : null,
+    },
     anchoringEnabled,
     latest: latestAnchored ? view(latestAnchored) : null,
     pendingNext: pendingDiffers ? view(pending) : null,
-    history: { totalSnapshots: total, anchoredOnLedger: anchoredCount },
+    history: {
+      totalSnapshots: total,
+      anchoredOnLedger: anchoredCount,
+      failed: await prisma.mptAnchor.count({ where: { status: { in: ["failed", "misconfigured"] } } }),
+    },
     verify: {
       summary:
         "Recompute the Merkle root from the published registry rows and check it equals `latest.merkleRoot`, " +

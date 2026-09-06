@@ -6,6 +6,8 @@
 // checkout wallet-connect (api/checkout/xaman[, /status]). Same API keys, same
 // payload endpoint the transaction-service signing already uses — no new dep.
 
+import { notifyError } from "./notify";
+
 const XUMM_PAYLOAD = "https://xumm.app/api/v1/platform/payload";
 
 export class XummNotConfiguredError extends Error {}
@@ -110,7 +112,15 @@ export async function createPayload(body: {
 
   const data = await res.json().catch(() => ({}));
   if (!res.ok || !data?.uuid) {
-    throw new Error(data?.error?.reference || data?.message || "Xaman payload rejected");
+    const reason = data?.error?.reference || data?.message || `Xaman payload rejected (HTTP ${res.status})`;
+    // A rejected payload with valid inputs means the Xaman app / API keys are
+    // bad (revoked, deleted, quota) — every Xaman payment + free-key SignIn is
+    // down until it's fixed. Make it loud.
+    void notifyError("lib/xumm createPayload", new Error(String(reason)), {
+      status: res.status,
+      identifier: body.identifier ?? null,
+    });
+    throw new Error(String(reason));
   }
 
   return {

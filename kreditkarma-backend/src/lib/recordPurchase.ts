@@ -10,6 +10,7 @@
 // env-var dependency, and it cannot silently drop a sale.
 
 import { db } from "@/lib/db";
+import { notifyError } from "@/lib/notify";
 
 export interface RecordPurchaseInput {
   productId?: string;
@@ -68,6 +69,15 @@ export async function recordPurchase(
     });
     return { id: row.id };
   } catch (err) {
+    // A verified, paid-for purchase that we failed to record — the customer
+    // paid and our books don't show it. This must be loud.
+    void notifyError("lib/recordPurchase", err, {
+      productId: input.productId ?? null,
+      txHash: input.txHash ?? null,
+      currency: input.currency ?? null,
+      amount: input.amount ?? null,
+      sender: input.sender ?? null,
+    });
     console.error("[recordPurchase]", err instanceof Error ? err.message : "purchase write failed");
     return null;
   }

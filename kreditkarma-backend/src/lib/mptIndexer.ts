@@ -39,6 +39,7 @@ import {
   submitAnchorTx,
   type AnchorMemoPayload,
 } from "./mptAnchor";
+import { notifyError } from "./notify";
 
 const PAGE_LIMIT = 200;
 
@@ -307,6 +308,8 @@ const ANCHOR_MAX_INTERVAL_MS = 8 * 24 * 60 * 60 * 1000; // re-anchor even if unc
 export interface AnchorAttempt {
   attempted: boolean;
   submitted: boolean;
+  /** "misconfigured" fails on every run until an env var is fixed; "transient" may succeed next run. */
+  faultClass?: "misconfigured" | "transient";
   reason: string;
   merkleRoot: string;
   issuanceCount: number;
@@ -347,6 +350,30 @@ export async function maybeAnchor(prisma: PrismaClient): Promise<AnchorAttempt> 
   const memo = buildAnchorMemo(payload).memoData;
 
   const gateOn = process.env.MPT_ANCHOR_ENABLED === "true";
+  const signingKeyPresent = !!process.env.CREDENTIAL_ISSUER_SEED;
+
+  // Screaming misconfiguration: anchoring turned on, no key to sign with. This
+  // fails identically on every single run until the key is added to the env.
+  if (gateOn && !signingKeyPresent) {
+    const msg =
+      "MPT_ANCHOR_ENABLED='true' but CREDENTIAL_ISSUER_SEED is not set — the anchor cannot be signed. " +
+      "No anchor will be produced on any run until the signing key is added to the environment.";
+    const row =
+      existing ??
+      (await prisma.mptAnchor.create({
+        data: {
+          canonVersion: CANON_VERSION, merkleRoot: snap.merkleRoot,
+          issuanceCount: snap.issuanceCount, issuerCount: snap.issuerCount,
+          coverage: cov.coverage, freshnessFloorAt: cov.freshnessFloorAt ? new Date(cov.freshnessFloorAt) : null,
+          memo, status: "misconfigured", error: msg,
+        },
+      }));
+    if (row.status !== "misconfigured" || row.error !== msg) {
+      await prisma.mptAnchor.update({ where: { id: row.id }, data: { status: "misconfigured", error: msg } });
+    }
+    await notifyError("cron/index-mpts anchor", new Error(msg), { merkleRoot: snap.merkleRoot, issuers: snap.issuerCount });
+    return { ...base, attempted: false, submitted: false, faultClass: "misconfigured", reason: msg, anchorId: row.id };
+  }
 
   if (!gateOn) {
     if (!existing) {
@@ -395,7 +422,19 @@ export async function maybeAnchor(prisma: PrismaClient): Promise<AnchorAttempt> 
     return { ...base, attempted: true, submitted: true, reason: "anchored", anchorId: row.id, txHash: r.txHash };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    await prisma.mptAnchor.update({ where: { id: row.id }, data: { status: "failed", error: msg } });
-    return { ...base, attempted: true, submitted: false, reason: `anchor submit failed: ${msg}`, anchorId: row.id };
+    // A config problem (bad/absent seed, wrong wallet) fails forever; a network
+    // / ledger error may clear next run. Both are recorded and alerted.
+    const misconfig = /CREDENTIAL_ISSUER_SEED|REFUSING:|derives .* expected/i.test(msg);
+    const status = misconfig ? "misconfigured" : "failed";
+    await prisma.mptAnchor.update({ where: { id: row.id }, data: { status, error: msg } });
+    await notifyError("cron/index-mpts anchor", err, {
+      faultClass: misconfig ? "misconfigured" : "transient",
+      merkleRoot: snap.merkleRoot,
+    });
+    return {
+      ...base, attempted: true, submitted: false,
+      faultClass: misconfig ? "misconfigured" : "transient",
+      reason: `anchor submit failed (${status}): ${msg}`, anchorId: row.id,
+    };
   }
 }

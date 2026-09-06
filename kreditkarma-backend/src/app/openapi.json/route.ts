@@ -751,6 +751,18 @@ export async function GET(req: Request) {
               {
                 type: "object",
                 properties: {
+                  status: { type: "string", enum: ["ok", "misconfigured", "failing", "pending", "disabled"], description: "Headline — a failed/misconfigured attempt never reads as 'nothing happened'." },
+                  message: { type: "string" },
+                  health: {
+                    type: "object",
+                    properties: {
+                      anchoringEnabled: { type: "boolean" },
+                      signingKeyPresent: { type: "boolean" },
+                      misconfigured: { type: "boolean", description: "anchoringEnabled && !signingKeyPresent — fails every run until fixed" },
+                      lastAttempt: { type: "object", nullable: true, description: "most recent MptAnchor row, any status" },
+                      lastFailure: { type: "object", nullable: true, description: "most recent failed/misconfigured attempt" },
+                    },
+                  },
                   anchoringEnabled: { type: "boolean" },
                   latest: {
                     type: "object", nullable: true,

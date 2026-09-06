@@ -24,6 +24,7 @@ import {
   verifyPayment,
   settlePayment,
   looksSuccessful,
+  reportFacilitatorFault,
   statelessInvoiceId,
   recordPaidInvoice,
   type PaymentSignaturePayload,
@@ -105,6 +106,7 @@ export async function GET(req: Request) {
   });
   const verified = await verifyPayment(payload, requirements);
   if (!looksSuccessful(verified)) {
+    reportFacilitatorFault("verify", verified, { resource: "/api/x402/tx", invoiceId });
     return NextResponse.json(
       { error: "payment_verification_failed", facilitator: verified.body ?? verified.error ?? null, status: verified.status },
       { status: 402 }
@@ -112,6 +114,7 @@ export async function GET(req: Request) {
   }
   const settled = await settlePayment(payload, requirements);
   if (!looksSuccessful(settled)) {
+    reportFacilitatorFault("settle", settled, { resource: "/api/x402/tx", invoiceId });
     return NextResponse.json(
       { error: "settlement_failed", facilitator: settled.body ?? settled.error ?? null, status: settled.status },
       { status: 402 }

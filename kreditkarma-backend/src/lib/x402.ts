@@ -8,6 +8,7 @@
 // NETWORK: CAIP-2 "xrpl:0". RESOURCE: ResourceInfo object. No custody.
 
 import { createHash, randomUUID } from "crypto";
+import { notifyError } from "./notify";
 
 export const X402_VERSION = 2;
 export const X402_SCHEME = "exact";
@@ -169,6 +170,27 @@ export function looksSuccessful(r: FacilitatorResult): boolean {
   if (!r.ok || !r.body) return false;
   const b = r.body as { success?: boolean; isValid?: boolean; valid?: boolean };
   return b.success === true || b.isValid === true || b.valid === true;
+}
+
+/**
+ * Alert on a t54-facilitator fault that isn't the customer's fault.
+ *  - phase "settle": always loud (verify already passed → payment was valid,
+ *    the customer paid and we couldn't complete the exchange).
+ *  - phase "verify": loud only when the facilitator is unreachable (status 0)
+ *    or erroring (5xx) — a clean 4xx is a bad payment, not our outage.
+ */
+export function reportFacilitatorFault(
+  phase: "verify" | "settle",
+  result: FacilitatorResult,
+  ctx: Record<string, unknown>
+): void {
+  const infraDown = result.status === 0 || result.status >= 500;
+  if (phase === "verify" && !infraDown) return;
+  void notifyError(`x402/t54 ${phase}`, new Error(result.error ?? `facilitator ${phase} failed (HTTP ${result.status})`), {
+    ...ctx,
+    facilitatorStatus: result.status,
+    facilitatorBody: result.body ? JSON.stringify(result.body).slice(0, 400) : null,
+  });
 }
 
 // ---------------------------------------------------------------------------

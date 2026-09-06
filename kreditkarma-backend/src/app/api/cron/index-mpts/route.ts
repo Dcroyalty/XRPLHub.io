@@ -11,6 +11,8 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/xrplscore-db";
 import { runMptIndexerPass, maybeAnchor } from "@/lib/mptIndexer";
 import { isAdmin } from "@/lib/adminAuth";
+import { healthProbe } from "@/lib/health";
+import { notifyError } from "@/lib/notify";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -27,12 +29,24 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   try {
-    // Leave headroom under the 60s ceiling for the anchor step (connect +
-    // autofill + submitAndWait ~= 8-12s when an anchor is actually due).
-    const progress = await runMptIndexerPass(prisma, { budgetMs: 38_000 });
+    // Leave headroom under the 60s ceiling for the anchor + health steps
+    // (connect + autofill + submitAndWait ~= 8-12s when an anchor is due).
+    const progress = await runMptIndexerPass(prisma, { budgetMs: 32_000 });
     const anchor = await maybeAnchor(prisma);
-    return NextResponse.json({ ...progress, anchor });
+
+    // Daily "is the money path working" sweep — alert on anything red.
+    const health = await healthProbe();
+    if (health.reds.length) {
+      await notifyError(
+        "cron/index-mpts healthcheck",
+        new Error(`${health.reds.length} component(s) DOWN: ${health.reds.map((r) => r.name).join(", ")}`),
+        Object.fromEntries(health.reds.map((r) => [r.name, r.detail]))
+      );
+    }
+
+    return NextResponse.json({ ...progress, anchor, health: { overall: health.overall, reds: health.reds, ambers: health.ambers } });
   } catch (err) {
+    await notifyError("cron/index-mpts", err);
     console.error("[cron/index-mpts]", err);
     return NextResponse.json(
       { error: "indexer_failed", message: err instanceof Error ? err.message : "unknown" },
