@@ -9,3 +9,8 @@ prisma/migrations/
 
 # local backups
 *.bak
+
+# local research artifacts + scratch test files
+_*.mjs
+scripts/.mpt-*.json
+scripts/.bithomp-*.json
