@@ -12,7 +12,7 @@
 // Stateless — zero new infrastructure, runs on Vercel as a standard serverless fn.
 // No new npm packages required.
 //
-// THIRTEEN TOOLS:
+// FOURTEEN TOOLS:
 //   1. check_xrpl_score        — free 300–850 wallet creditworthiness score
 //   2. list_xrpl_services      — the 35 build_xrpl_transaction actions + their params
 //   3. build_xrpl_transaction  — ready-to-sign txjson for any of 35 XRPL actions
@@ -26,6 +26,7 @@
 //  11. search_mpts             — free, indexed: find MPT issuances by issuer / id / name
 //  12. get_issuer_mpts         — free, indexed: everything one issuer has issued + its score
 //  13. verify_mpt_registry     — free: the latest on-ledger Merkle-root anchor of the registry
+//  14. check_service_health    — free: is the money path up before you pay
 //
 // © 2026 XRPLHub.io · XRPLScore™ · All Rights Reserved
 // ═══════════════════════════════════════════════════════════════════════════
@@ -49,7 +50,7 @@ const CORS = {
 // JSON-RPC surface (one source of truth for scanners like Smithery).
 export const MCP_SERVER_INFO = {
   name: 'xrplhub',
-  version: '1.7.0',
+  version: '1.8.0',
   description:
     'Free XRPL wallet creditworthiness scores · ready-to-sign txjson for 35 XRPL actions · ' +
     'verifiable score credential · credential + permissioned domain explorer · MPT issuer risk · community micro-grants · donations',
@@ -188,6 +189,15 @@ export const TOOLS = [
       },
       required: ['issuer_address'],
     },
+  },
+  {
+    name: 'check_service_health',
+    description:
+      'Check whether the XRPLHub money path is working BEFORE you pay: database, Xaman, both x402 ' +
+      'facilitators (t54 RLUSD + CDP USDC-on-Base), the on-ledger anchor config, the credential signing ' +
+      'secret, and alerting. Returns overall "ok" | "warn" | "down" plus a per-component list. Poll this ' +
+      'if a prior paid call failed. No params. Free, no signup.',
+    inputSchema: { type: 'object', properties: {} },
   },
   {
     name: 'verify_mpt_registry',
@@ -464,6 +474,16 @@ async function toolGetIssuerMpts(args: Record<string, unknown>): Promise<string>
     return JSON.stringify(d, null, 2);
   } catch (e) {
     return JSON.stringify({ error: `Issuer MPT lookup failed: ${e instanceof Error ? e.message : 'unknown'}` });
+  }
+}
+
+async function toolCheckServiceHealth(): Promise<string> {
+  try {
+    const res = await fetch(`${API_URL}/api/health?deep=1`, { signal: AbortSignal.timeout(20000) });
+    const d = await res.json();
+    return JSON.stringify(d, null, 2);
+  } catch (e) {
+    return JSON.stringify({ overall: "down", error: `health check unreachable: ${e instanceof Error ? e.message : "unknown"}` });
   }
 }
 
@@ -929,6 +949,8 @@ export async function POST(req: NextRequest) {
         output = await toolGetIssuerMpts(toolArgs);
       } else if (toolName === 'verify_mpt_registry') {
         output = await toolVerifyMptRegistry();
+      } else if (toolName === 'check_service_health') {
+        output = await toolCheckServiceHealth();
       } else {
         return rpcError(id, -32601, `Tool not found: ${toolName}`);
       }

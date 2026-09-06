@@ -95,7 +95,15 @@ export async function GET(req: Request) {
         "Pay-per-call XRP Ledger services for AI agents, settled in RLUSD. " +
         "A 300–850 wallet creditworthiness score from 8 signals, full risk reports, and " +
         "ready-to-sign prebuilt XRPL transactions for 35 actions. No account, no API key, no signup. " +
-        "A free (unauthenticated) score is also at GET /api/score/{wallet}.",
+        "A free (unauthenticated) score is also at GET /api/score/{wallet}.\n\n" +
+        "AGENT SAFETY on /api/x402/{score,report,tx}: the on-ledger payment settles ONLY after the paid " +
+        "work returns success — a handler failure returns `error: \"handler_failed\"` and does NOT charge " +
+        "you (retry with the same PAYMENT-SIGNATURE within maxTimeoutSeconds). Send an `Idempotency-Key` " +
+        "header (or rely on the payment invoiceId) — a retried request replays the original response, so " +
+        "you can never pay twice. Every failure `error` is one of the codes in /.well-known/x402 " +
+        "`errorCodes`.\n\n" +
+        "RETIRED (HTTP 410 — use the x402 route in `useInstead`): /api/x402-tx -> /api/x402/tx; " +
+        "/api/v1/wallet-report -> /api/x402/report; /api/v1/pay-per-score -> /api/x402/score.",
       contact: { name: "XRPLHub", url: origin, email: "support@xrplhub.io" },
     },
     servers: [{ url: origin }],

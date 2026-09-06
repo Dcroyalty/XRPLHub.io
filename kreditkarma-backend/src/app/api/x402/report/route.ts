@@ -1,122 +1,53 @@
 // src/app/api/x402/report/route.ts
-// Full Wallet Risk Report over the OFFICIAL x402 v2 protocol (t54, XRPL).
-// Standard PAYMENT-REQUIRED header so xrpl-ai.org auto-discovers + lists it.
-// Runs alongside /api/v1/wallet-report (destination-tag flow, untouched).
+// Full Wallet Risk Report over the official x402 v2 protocol (t54, XRPL).
 //
-// SPAM FIX: stateless challenge â€” no invoice row for a probe; a row is written
-// only after a payment settles.
-
+// AGENT-SAFE (serveX402Paid): schema in the 402; settle only after
+// buildWalletReport() succeeds; idempotent replay on retry.
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/xrplscore-db";
-import { isValidXrplAddress } from "@/lib/engine";
+import { isValidXrplAddress, AccountNotFoundError } from "@/lib/engine";
 import { buildWalletReport } from "@/lib/report";
 import { PRICE_PER_PRODUCT_RLUSD, TREASURY_ADDRESS } from "@/lib/paycall";
-import {
-  X402_VERSION,
-  decodeHeader,
-  encodeHeader,
-  paymentRequiredChallenge,
-  rlusdRequirements,
-  verifyPayment,
-  settlePayment,
-  looksSuccessful,
-  reportFacilitatorFault,
-  statelessInvoiceId,
-  recordPaidInvoice,
-  type PaymentSignaturePayload,
-} from "@/lib/x402";
+import { rlusdRequirements, serveX402Paid, type HandlerResult } from "@/lib/x402";
+import { REPORT_SCHEMA } from "@/lib/x402Schemas";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const RESOURCE = "/api/x402/report";
 
-const NAME = "XRPLHub — Full Wallet Risk Report";
-const DESC =
-  "Get a full creditworthiness report for one XRPL wallet: the 300–850 score, letter grade, " +
-  "machine-readable risk flags, all 8 weighted signals, ranked recommendations, and an on-chain " +
-  "snapshot (balance, spendable XRP, trust lines, tx count, DEX/AMM/NFT activity). " +
-  "Send ?wallet=<r-address>. Pay per call in RLUSD, no signup.";
-
-function issueChallenge() {
-  const invoiceId = statelessInvoiceId("x402:report");
-  const requirements = rlusdRequirements({
-    payTo: TREASURY_ADDRESS,
-    amountRlusd: PRICE_PER_PRODUCT_RLUSD,
-    invoiceId,
-    name: NAME,
-    description: DESC,
-  });
-  const challenge = paymentRequiredChallenge(requirements, RESOURCE, DESC);
-  return NextResponse.json(challenge, {
-    status: 402,
-    headers: { "PAYMENT-REQUIRED": encodeHeader(challenge), "Cache-Control": "no-store" },
-  });
-}
-
 export async function GET(req: Request) {
   if (!TREASURY_ADDRESS) return NextResponse.json({ error: "misconfigured" }, { status: 500 });
+  const wallet = new URL(req.url).searchParams.get("wallet");
 
-  const url = new URL(req.url);
-  const wallet = url.searchParams.get("wallet");
-  const sigHeader = req.headers.get("PAYMENT-SIGNATURE");
-
-  if (!sigHeader) return issueChallenge();
-
-  if (!wallet || !isValidXrplAddress(wallet)) {
-    return NextResponse.json({ error: "bad_request", message: "Provide &wallet=r..." }, { status: 400 });
-  }
-
-  const payload = decodeHeader<PaymentSignaturePayload>(sigHeader);
-  if (!payload || payload.x402Version !== X402_VERSION || !payload.accepted) {
-    return NextResponse.json({ error: "invalid_payment_payload" }, { status: 400 });
-  }
-  const invoiceId = payload.accepted?.extra?.invoiceId;
-  if (!invoiceId) return NextResponse.json({ error: "invoice_binding_missing" }, { status: 400 });
-
-  // Rebuild requirements server-side from OUR price + echoed invoiceId; the
-  // facilitator enforces the on-ledger payment matches. No stored row needed.
-  const requirements = rlusdRequirements({
-    payTo: TREASURY_ADDRESS,
+  return serveX402Paid({
+    req,
+    prisma,
+    resource: RESOURCE,
+    plan: "x402:report",
     amountRlusd: PRICE_PER_PRODUCT_RLUSD,
-    invoiceId,
-    name: NAME,
-    description: DESC,
+    challengeDescription: REPORT_SCHEMA.description,
+    requirements: (invoiceId) =>
+      rlusdRequirements({
+        payTo: TREASURY_ADDRESS,
+        amountRlusd: PRICE_PER_PRODUCT_RLUSD,
+        invoiceId,
+        name: "XRPLHub — Full Wallet Risk Report",
+        description: REPORT_SCHEMA.description,
+        schemas: REPORT_SCHEMA,
+      }),
+    handler: async (): Promise<HandlerResult> => {
+      if (!wallet || !isValidXrplAddress(wallet)) {
+        return { ok: false, code: "bad_request", status: 400, message: "Provide a valid XRPL wallet (&wallet=r...)." };
+      }
+      try {
+        return { ok: true, data: await buildWalletReport(wallet) };
+      } catch (err) {
+        if (err instanceof AccountNotFoundError) {
+          return { ok: false, code: "account_not_found", status: 404, message: "That wallet is not an activated account on XRPL mainnet." };
+        }
+        throw err;
+      }
+    },
   });
-
-  const verified = await verifyPayment(payload, requirements);
-  if (!looksSuccessful(verified)) {
-    reportFacilitatorFault("verify", verified, { resource: "/api/x402/report", invoiceId });
-    return NextResponse.json(
-      { error: "payment_verification_failed", facilitator: verified.body ?? verified.error ?? null, status: verified.status },
-      { status: 402 }
-    );
-  }
-  const settled = await settlePayment(payload, requirements);
-  if (!looksSuccessful(settled)) {
-    reportFacilitatorFault("settle", settled, { resource: "/api/x402/report", invoiceId });
-    return NextResponse.json(
-      { error: "settlement_failed", facilitator: settled.body ?? settled.error ?? null, status: settled.status },
-      { status: 402 }
-    );
-  }
-
-  const b = (settled.body ?? {}) as { transaction?: string; payer?: string };
-  await recordPaidInvoice(prisma, { plan: "x402:report", amountRlusd: PRICE_PER_PRODUCT_RLUSD, txHash: b.transaction });
-
-  return deliver(wallet, b.transaction, b.payer);
-}
-
-async function deliver(wallet: string, txHash?: string, payer?: string) {
-  try {
-    const report = await buildWalletReport(wallet);
-    const paymentResponse = { success: true, transaction: txHash ?? null, network: process.env.X402_NETWORK ?? "xrpl", payer: payer ?? null };
-    return NextResponse.json(
-      { data: report, x402: paymentResponse },
-      { status: 200, headers: { "PAYMENT-RESPONSE": encodeHeader(paymentResponse), "Cache-Control": "private, max-age=60" } }
-    );
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "report failed";
-    return NextResponse.json({ error: "report_failed", message }, { status: 500 });
-  }
 }

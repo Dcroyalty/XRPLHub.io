@@ -1,0 +1,224 @@
+{
+ "generatedAt": "2026-09-05T19:24:37.224Z",
+ "method": "bithomp-per-issuer union + live ledger_entry sample cross-check",
+ "knownIssuers": 34,
+ "knownIssuerList": [
+  "r3hcwikU3XyAXX9969oRzDJm7B5hepfXGe",
+  "r3iMKCiKqu522oRGQcAdyvwoRUaTn7s8fi",
+  "r4WkNmYkB1M5hcZF3vYLfiLseJfKvgkFyA",
+  "r9ASYAPBCyzW5zEy5H4e66t2oigUdZN14p",
+  "r9avT7NURuqC7jbVxUjcrMkHAr5aqmHkSN",
+  "r9o37ZXw3VQyvZzYk4p6wEgGZhH14mHmr2",
+  "rBJ2ogWEZvsxkuK7aV4k6H9VAto7k2SsH9",
+  "rEkGNmAo4R7KfA6wZre62LJXDUvmtgg66i",
+  "rGJdc5PUa5dGE6BiDcufXyU9BDSQ4Zg2r8",
+  "rGxUbYEHnmiJ55e5hKuJ9m7dthdJHSx5vz",
+  "rHCx2zWMN1r9yB78mtNX9bUUHCL5eMYHUR",
+  "rJnCt4Mm826qSA6jc4WqwmrpwPxBBgLfwp",
+  "rJyNbUbcvP19KYwMq2bPnvYQNwUY2ZQrWZ",
+  "rK5pfemxwpe2ioXKSdqnQaYCZ6NeKkgouv",
+  "rKSg2VZbw9gRRuSwBjBFAfBoGC5Vs1FmFn",
+  "rLKfWwLeimLe69mrTr3MygNavDxL8tjuUX",
+  "rLm3recAhoqwfnU4HF2RybjALBXVvhJ2Ku",
+  "rLr3ZxWy7owtSwaCH2n7tCauQENrt9MVgU",
+  "rM7ffj9GZV41K8fWUhtpfZSZvYoZB2yA4t",
+  "rMi1UL1joGAn3rH6Cu9GDiTeErFx8Pc33H",
+  "rMzydKJUk5tUq3ZuVQGNaRJMh9TQ624PML",
+  "rNyrL3hjvM3mDYtTDhHLWMiGtbnV2wdBv6",
+  "rPgswA5wCM6wvtzsNd7oQa6r3UK5YT6om9",
+  "rPm6K1fr4MNcv5W8pD4RCawVHjsK1ziCKp",
+  "rULZPkxia4xpYtb9rEJUsHenmWAMZfwAzp",
+  "rUxiSsPXBhBRznVarw3Vu1Rss8FhHEnDg",
+  "raFWVyTwpks1hd2rEbi85AtPPnJ3DuwrA9",
+  "rfXMq3BMX2dTzJtG4pnhr49u6sHkVQXpWL",
+  "rinAXYBnAf1xeSZGaZ28EVQVQvxYj2Wex",
+  "rs2uGjFkNAdLJgoLytQVXrqwbwjLoU3BT6",
+  "rsiPEXNs1XGn14DV7MHXsTfQVpGiEpJ347",
+  "rswtXJQkf1kMzrZn1xho1KrkfcsCa2nNAv",
+  "rtsTmBYcMGoNuPV6TBGU9gMhzn5vsVNsa",
+  "rwA8orrVtNPuBykRvQdDJzRDQbe7CuxCiR"
+ ],
+ "totalIssuancesAcrossKnownIssuers": 251,
+ "issuersCappedAt100_needStateWalk": [],
+ "bithompGlobalFreeListTruncated": true,
+ "sample": {
+  "checked": 51,
+  "confirmedOnValidatedLedger": 51,
+  "mismatches": [],
+  "matchRate": 1
+ },
+ "perIssuer": {
+  "rM7ffj9GZV41K8fWUhtpfZSZvYoZB2yA4t": {
+   "count": 80,
+   "capped": false,
+   "error": null
+  },
+  "rPm6K1fr4MNcv5W8pD4RCawVHjsK1ziCKp": {
+   "count": 37,
+   "capped": false,
+   "error": null
+  },
+  "rLKfWwLeimLe69mrTr3MygNavDxL8tjuUX": {
+   "count": 42,
+   "capped": false,
+   "error": null
+  },
+  "rinAXYBnAf1xeSZGaZ28EVQVQvxYj2Wex": {
+   "count": 16,
+   "capped": false,
+   "error": null
+  },
+  "rMi1UL1joGAn3rH6Cu9GDiTeErFx8Pc33H": {
+   "count": 9,
+   "capped": false,
+   "error": null
+  },
+  "rsiPEXNs1XGn14DV7MHXsTfQVpGiEpJ347": {
+   "count": 11,
+   "capped": false,
+   "error": null
+  },
+  "r9ASYAPBCyzW5zEy5H4e66t2oigUdZN14p": {
+   "count": 1,
+   "capped": false,
+   "error": null
+  },
+  "rULZPkxia4xpYtb9rEJUsHenmWAMZfwAzp": {
+   "count": 3,
+   "capped": false,
+   "error": null
+  },
+  "rGJdc5PUa5dGE6BiDcufXyU9BDSQ4Zg2r8": {
+   "count": 2,
+   "capped": false,
+   "error": null
+  },
+  "r3hcwikU3XyAXX9969oRzDJm7B5hepfXGe": {
+   "count": 4,
+   "capped": false,
+   "error": null
+  },
+  "rBJ2ogWEZvsxkuK7aV4k6H9VAto7k2SsH9": {
+   "count": 10,
+   "capped": false,
+   "error": null
+  },
+  "rHCx2zWMN1r9yB78mtNX9bUUHCL5eMYHUR": {
+   "count": 1,
+   "capped": false,
+   "error": null
+  },
+  "raFWVyTwpks1hd2rEbi85AtPPnJ3DuwrA9": {
+   "count": 1,
+   "capped": false,
+   "error": null
+  },
+  "rGxUbYEHnmiJ55e5hKuJ9m7dthdJHSx5vz": {
+   "count": 1,
+   "capped": false,
+   "error": null
+  },
+  "rPgswA5wCM6wvtzsNd7oQa6r3UK5YT6om9": {
+   "count": 1,
+   "capped": false,
+   "error": null
+  },
+  "r9o37ZXw3VQyvZzYk4p6wEgGZhH14mHmr2": {
+   "count": 1,
+   "capped": false,
+   "error": null
+  },
+  "r4WkNmYkB1M5hcZF3vYLfiLseJfKvgkFyA": {
+   "count": 3,
+   "capped": false,
+   "error": null
+  },
+  "rKSg2VZbw9gRRuSwBjBFAfBoGC5Vs1FmFn": {
+   "count": 2,
+   "capped": false,
+   "error": null
+  },
+  "rEkGNmAo4R7KfA6wZre62LJXDUvmtgg66i": {
+   "count": 1,
+   "capped": false,
+   "error": null
+  },
+  "rJyNbUbcvP19KYwMq2bPnvYQNwUY2ZQrWZ": {
+   "count": 1,
+   "capped": false,
+   "error": null
+  },
+  "rJnCt4Mm826qSA6jc4WqwmrpwPxBBgLfwp": {
+   "count": 1,
+   "capped": false,
+   "error": null
+  },
+  "rswtXJQkf1kMzrZn1xho1KrkfcsCa2nNAv": {
+   "count": 6,
+   "capped": false,
+   "error": null
+  },
+  "rNyrL3hjvM3mDYtTDhHLWMiGtbnV2wdBv6": {
+   "count": 3,
+   "capped": false,
+   "error": null
+  },
+  "rfXMq3BMX2dTzJtG4pnhr49u6sHkVQXpWL": {
+   "count": 2,
+   "capped": false,
+   "error": null
+  },
+  "r9avT7NURuqC7jbVxUjcrMkHAr5aqmHkSN": {
+   "count": 2,
+   "capped": false,
+   "error": null
+  },
+  "rMzydKJUk5tUq3ZuVQGNaRJMh9TQ624PML": {
+   "count": 2,
+   "capped": false,
+   "error": null
+  },
+  "r3iMKCiKqu522oRGQcAdyvwoRUaTn7s8fi": {
+   "count": 1,
+   "capped": false,
+   "error": null
+  },
+  "rLm3recAhoqwfnU4HF2RybjALBXVvhJ2Ku": {
+   "count": 1,
+   "capped": false,
+   "error": null
+  },
+  "rwA8orrVtNPuBykRvQdDJzRDQbe7CuxCiR": {
+   "count": 1,
+   "capped": false,
+   "error": null
+  },
+  "rUxiSsPXBhBRznVarw3Vu1Rss8FhHEnDg": {
+   "count": 1,
+   "capped": false,
+   "error": null
+  },
+  "rs2uGjFkNAdLJgoLytQVXrqwbwjLoU3BT6": {
+   "count": 1,
+   "capped": false,
+   "error": null
+  },
+  "rK5pfemxwpe2ioXKSdqnQaYCZ6NeKkgouv": {
+   "count": 1,
+   "capped": false,
+   "error": null
+  },
+  "rtsTmBYcMGoNuPV6TBGU9gMhzn5vsVNsa": {
+   "count": 1,
+   "capped": false,
+   "error": null
+  },
+  "rLr3ZxWy7owtSwaCH2n7tCauQENrt9MVgU": {
+   "count": 1,
+   "capped": false,
+   "error": null
+  }
+ },
+ "coverageVerdict": "complete-per-known-issuer",
+ "caveat": "Guarantees: every issuance of every one of the 34 known issuers is indexed and sample-verified against the validated ledger. Does NOT guarantee: that no MPT issuer exists outside this set — Bithomp's free global enumeration stops at 100 issuances and our own ledger_data walk has not completed a full pass. A new issuer is only picked up when it appears in Bithomp's newest-100 window or the slow walk reaches it."
+}

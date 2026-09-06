@@ -26,6 +26,8 @@ import { BASE_PAY_TO, BASE_NETWORK, USDC_BASE_ASSET, CDP_FACILITATOR_URL, PRICE_
 import { PLANS, type PlanId } from "@/lib/plans";
 import { USDC_PLAN_OUTPUT_SCHEMA, usdcPlanOutputExample } from "@/lib/checkoutUsdc";
 import { walletProp, SCORE_OUTPUT_SCHEMA as scoreOutputSchema, SCORE_OUTPUT_EXAMPLE as scoreOutputExample } from "@/lib/scoreSchema";
+import { SCORE_SCHEMA, REPORT_SCHEMA, TX_SCHEMA } from "@/lib/x402Schemas";
+import { X402_ERROR_CODES } from "@/lib/x402";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -193,131 +195,31 @@ export async function GET(req: Request) {
             "Use it before you pay, lend to, or onboard a wallet.",
           ...common,
           amount: PRICE_PER_SCORE_RLUSD.toFixed(6),
-          inputSchema: {
-            type: "object",
-            properties: { wallet: walletProp },
-            required: ["wallet"],
-          },
-          outputSchema: scoreOutputSchema,
-          outputExample: scoreOutputExample,
+          inputSchema: SCORE_SCHEMA.input,
+          outputSchema: SCORE_SCHEMA.output,
+          outputExample: SCORE_SCHEMA.outputExample,
         },
         {
           resource: `${origin}/api/x402/report`,
           method: "GET",
           name: "Full wallet risk report",
-          description:
-            "Get everything the score endpoint returns plus machine-readable risk flags, ranked " +
-            "recommendations, and an on-chain snapshot (balance, spendable XRP, trust lines, tx " +
-            "count, DEX/AMM/NFT activity, counterparties).",
+          description: REPORT_SCHEMA.description,
           ...common,
           amount: PRICE_PER_PRODUCT_RLUSD.toFixed(6),
-          inputSchema: {
-            type: "object",
-            properties: { wallet: walletProp },
-            required: ["wallet"],
-          },
-          outputSchema: {
-            type: "object",
-            properties: {
-              ...scoreOutputSchema.properties,
-              riskFlags: { type: "array", items: { type: "string" }, description: "Machine-readable risk flags." },
-              recommendations: {
-                type: "array",
-                items: {
-                  type: "object",
-                  properties: {
-                    action: { type: "string" }, points: { type: "string" },
-                    priority: { type: "string", enum: ["high", "medium", "low"] },
-                  },
-                },
-              },
-              snapshot: {
-                type: "object",
-                properties: {
-                  balanceXRP: { type: "number" }, spendableXRP: { type: "number" },
-                  trustLines: { type: "integer" }, txCount: { type: "integer" },
-                  hasMultiSig: { type: "boolean" }, hasOffers: { type: "boolean" }, hasAMM: { type: "boolean" },
-                },
-              },
-            },
-          },
-          outputExample: {
-            ...scoreOutputExample,
-            riskFlags: [],
-            recommendations: [
-              { action: "Add 2–3 trust lines to established issuers", points: "+18", priority: "medium" },
-            ],
-            snapshot: {
-              balanceXRP: 2500.4, spendableXRP: 2480.1, trustLines: 6, txCount: 4200,
-              hasMultiSig: false, hasOffers: true, hasAMM: false,
-            },
-          },
+          inputSchema: REPORT_SCHEMA.input,
+          outputSchema: REPORT_SCHEMA.output,
+          outputExample: REPORT_SCHEMA.outputExample,
         },
         {
           resource: `${origin}/api/x402/tx`,
           method: "GET",
           name: "Prebuilt XRPL transaction (35 actions)",
-          description:
-            "Get a ready-to-sign transaction JSON for any of 35 XRPL actions (CheckCreate, Escrow, " +
-            "TrustSet, NFT mint/sell/burn, AMM, DEX order, MPT, multisig, DID, credentials, and more). " +
-            "The wallet owner signs the returned txjson — this never signs for anyone.",
+          description: TX_SCHEMA.description,
           ...common,
           amount: PRICE_PER_TX_PRODUCT_RLUSD.toFixed(6),
-          inputSchema: {
-            type: "object",
-            properties: {
-              productId: {
-                type: "string",
-                enum: BUILDABLE_SERVICE_IDS,
-                description: "Which XRPL action to build. Full catalogue + per-action params at /api/mcp (list_xrpl_services).",
-                example: "checkcreate",
-              },
-              account: {
-                type: "string",
-                pattern: "^r[1-9A-HJ-NP-Za-km-z]{24,34}$",
-                description: "XRPL classic address that will sign the transaction.",
-                example: "rMxCKbEDwqr76QuheSUMdEGf4B9xJ8m5De",
-              },
-            },
-            required: ["productId", "account"],
-            additionalProperties: {
-              type: "string",
-              description: "Per-action parameters (e.g. destination, amount, issuer, currency, uri). See list_xrpl_services.",
-            },
-          },
-          outputSchema: {
-            type: "object",
-            properties: {
-              data: {
-                type: "object",
-                properties: {
-                  productId: { type: "string" },
-                  label: { type: "string" },
-                  tier: { type: "string", enum: ["safe", "caution", "blocked"] },
-                  txjson: { type: "object", description: "The unsigned XRPL transaction, ready for the account to sign." },
-                  signWith: { type: "string" },
-                  instructions: { type: "string" },
-                },
-              },
-              x402: { type: "object", properties: { success: { type: "boolean" }, network: { type: "string" } } },
-            },
-          },
-          outputExample: {
-            data: {
-              productId: "checkcreate",
-              label: "Create Check",
-              tier: "safe",
-              txjson: {
-                TransactionType: "CheckCreate",
-                Account: "rMxCKbEDwqr76QuheSUMdEGf4B9xJ8m5De",
-                Destination: "rDest00000000000000000000000000000",
-                SendMax: "10000000",
-              },
-              signWith: "rMxCKbEDwqr76QuheSUMdEGf4B9xJ8m5De",
-              instructions: "Sign this txjson with your own XRPL wallet and submit it.",
-            },
-            x402: { success: true, network: "xrpl" },
-          },
+          inputSchema: TX_SCHEMA.input,
+          outputSchema: TX_SCHEMA.output,
+          outputExample: TX_SCHEMA.outputExample,
         },
         usdcScoreResource(origin),
         usdcMptResource(origin),
@@ -335,9 +237,17 @@ export async function GET(req: Request) {
         freeCredentialsIssuer: `${origin}/api/credentials/issuer?address={issuer}`,
         freeDomainsEligible: `${origin}/api/domains/eligible?address={wallet}&domain={domainId}`,
         freeMptRisk: `${origin}/api/mpt/{mptokenIssuanceID}`,
+        health: `${origin}/api/health`,
         freeMptSearch: `${origin}/api/mpt/search?q={query}`,
         freeMptIssuer: `${origin}/api/mpt/issuer?address={issuer}`,
         freeMptAnchor: `${origin}/api/mpt/anchor`,
+      },
+      // Stable machine-readable error codes returned by the RLUSD/t54 paid
+      // routes. `error` is always one of these keys; the value describes it.
+      errorCodes: X402_ERROR_CODES,
+      guarantees: {
+        settlement: "On /api/x402/{score,report,tx}: the on-ledger payment settles ONLY after the paid work returns success. A handler failure returns error:handler_failed and does NOT charge you — retry with the same PAYMENT-SIGNATURE within maxTimeoutSeconds.",
+        idempotency: "Send an Idempotency-Key header (or rely on the payment's invoiceId). A retried request replays the original response — you can never pay twice.",
       },
     },
     { headers: { "Cache-Control": "public, max-age=300" } }

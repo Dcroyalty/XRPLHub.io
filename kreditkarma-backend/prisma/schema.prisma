@@ -191,6 +191,26 @@ model SignInChallenge {
   @@index([createdAt])
 }
 
+// -------- x402 paid-request idempotency -----------------------------------
+// One row per paid call on the RLUSD/t54 routes, keyed by the caller's
+// Idempotency-Key header (or, absent that, the payment's invoiceId). A
+// retrying agent that isn't sure its first call landed gets the SAME stored
+// response back instead of paying again. See src/lib/x402.ts serveX402Paid().
+model X402PaidRequest {
+  key         String    @id                 // Idempotency-Key header, else the payload invoiceId
+  resource    String                        // "/api/x402/score" etc.
+  invoiceId   String
+  status      String    @default("in_progress") // in_progress | completed | failed
+  settled     Boolean   @default(false)
+  txHash      String?
+  responseJson Json?                         // the exact success body to replay
+  httpStatus  Int?
+  createdAt   DateTime  @default(now())
+  completedAt DateTime?
+
+  @@index([createdAt])
+}
+
 // -------- Usage (also the billing signal) ----------------------------------
 model UsageRecord {
   id        String   @id @default(cuid())

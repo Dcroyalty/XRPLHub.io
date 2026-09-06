@@ -91,13 +91,22 @@ MCP server (Streamable HTTP, JSON-RPC 2.0, no auth):
   - search_mpts — find MPT issuances in the registry index by issuer / MPTokenIssuanceID or prefix / token name. Param: q. Free.
   - get_issuer_mpts — every MPT one issuer has out + the issuer's XRPLScore, from the index. Param: issuer_address. Free.
   - verify_mpt_registry — the latest on-ledger Merkle-root anchor of the registry + tx hash + ledger index + the canonicalisation scheme to reproduce the root. No params. Free.
+  - check_service_health — DB / Xaman / both x402 facilitators / anchor config, up or down. Poll before paying. No params. Free.
+
+Health: GET ${origin}/api/health  (503 when a money-path component is down; ?deep=1 for live facilitator probes)
 
 x402 pay-per-call (RLUSD, t54 facilitator, no signup):
-- Discovery: ${origin}/.well-known/x402
+- Discovery: ${origin}/.well-known/x402  (carries per-resource inputSchema + outputSchema, the errorCodes map, and the settlement/idempotency guarantees)
 - OpenAPI 3.1: ${origin}/openapi.json
 - GET ${origin}/api/x402/score?wallet=r... — 300-850 score + 8 signals
 - GET ${origin}/api/x402/report?wallet=r... — score + risk flags + recommendations + on-chain snapshot
 - GET ${origin}/api/x402/tx?productId=<id>&account=r... — one prebuilt XRPL transaction (35 actions)
+- The 402 challenge embeds the full schema. Settlement fires ONLY after the paid
+  work succeeds — a handler failure returns error:"handler_failed" and does NOT
+  charge you (retry with the same PAYMENT-SIGNATURE). Send an Idempotency-Key
+  header (or rely on the invoiceId) — a retry replays the original response.
+- RETIRED (410, use the x402 route above): /api/x402-tx, /api/v1/wallet-report,
+  /api/v1/pay-per-score.
 
 x402 pay-per-call (USDC on Base, CDP facilitator, no signup):
 - POST ${origin}/api/x402/usdc/score — 300-850 score, $0.01
