@@ -2,15 +2,16 @@
 // GET /api/mpt/anchor — the latest on-ledger anchor of the MPT registry, so a
 // third party can prove the published registry hasn't been altered.
 //
-// BIS Working Paper 1374 pattern: after a cron pass, the registry index is
+// BIS Working Paper 1374 pattern: after a cron pass the registry index is
 // canonicalised, a Merkle root is computed over the issuance records, and that
-// root is committed in a Memo on a transaction from the issuer wallet. This
-// endpoint returns the latest root + its tx hash + ledger index + record
-// counts, plus the exact canonicalisation and Merkle scheme so the root can
-// be reproduced from the published /api/mpt/search + /api/mpt/issuer data.
+// root is committed in a Memo on a transaction from a DEDICATED anchor wallet
+// (NOT the credential issuer). This endpoint returns the latest root + its tx
+// hash + ledger index + record counts + the anchor account verifiers must
+// trust, plus the exact canonicalisation and Merkle scheme so the root can be
+// reproduced from the published /api/mpt/search + /api/mpt/issuer data.
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/xrplscore-db";
-import { CANON_SPEC, CANON_VERSION } from "@/lib/mptAnchor";
+import { CANON_SPEC, CANON_VERSION, ANCHOR_ACCOUNT, anchorSigningKeyPresent } from "@/lib/mptAnchor";
 import { EXPECTED_ISSUER } from "@/lib/credentials";
 
 export const runtime = "nodejs";
@@ -51,7 +52,7 @@ export async function GET() {
   ]);
 
   const anchoringEnabled = process.env.MPT_ANCHOR_ENABLED === "true";
-  const signingKeyPresent = !!process.env.CREDENTIAL_ISSUER_SEED;
+  const signingKeyPresent = anchorSigningKeyPresent();
   const misconfigured = anchoringEnabled && !signingKeyPresent;
   const pendingDiffers = !!pending && pending.merkleRoot !== latestAnchored?.merkleRoot;
 
@@ -65,7 +66,7 @@ export async function GET() {
   if (misconfigured) {
     status = "misconfigured";
     message =
-      "ANCHORING IS ENABLED (MPT_ANCHOR_ENABLED=true) BUT THE SIGNING KEY (CREDENTIAL_ISSUER_SEED) IS NOT SET. " +
+      "ANCHORING IS ENABLED (MPT_ANCHOR_ENABLED=true) BUT THE ANCHOR-WALLET SIGNING KEY (ANCHOR_WALLET_SEED) IS NOT SET. " +
       "No anchor can be produced on any run until the key is added to the environment.";
   } else if (lastFailureNewerThanAnchor && lastFailure) {
     status = "failing";
@@ -89,6 +90,11 @@ export async function GET() {
   return NextResponse.json({
     status,
     message,
+    // The account verifiers must trust for anchor roots — deliberately a
+    // dedicated wallet, NOT the credential issuer. A compromised anchor key
+    // can only publish false memos (recoverable); it cannot mint credentials.
+    anchorAccount: ANCHOR_ACCOUNT,
+    isNotTheCredentialIssuer: EXPECTED_ISSUER,
     health: {
       anchoringEnabled,
       signingKeyPresent,
@@ -126,7 +132,10 @@ export async function GET() {
       },
       canonicalisation: CANON_SPEC,
       onLedger: {
-        account: EXPECTED_ISSUER,
+        account: ANCHOR_ACCOUNT,
+        accountNote:
+          `Trust roots ONLY from ${ANCHOR_ACCOUNT}. This is a dedicated anchor wallet, deliberately NOT ` +
+          `the credential issuer ${EXPECTED_ISSUER} — the anchor key can publish memos but cannot mint credentials.`,
         transactionType: "AccountSet",
         memoType: MEMO_TYPE,
         memoTypeHex: Buffer.from(MEMO_TYPE, "utf8").toString("hex").toUpperCase(),

@@ -89,10 +89,12 @@ async function checkCdp(deep: boolean): Promise<Check> {
 }
 
 async function checkAnchor(): Promise<Check> {
+  // The MPT registry anchor — a DEDICATED wallet (ANCHOR_WALLET_SEED), not the
+  // credential issuer. This is a separate capability from credential issuance.
   const enabled = process.env.MPT_ANCHOR_ENABLED === "true";
-  const keyed = !!process.env.CREDENTIAL_ISSUER_SEED;
+  const keyed = !!process.env.ANCHOR_WALLET_SEED;
   if (enabled && !keyed) {
-    return { name: "mpt-anchor", level: "down", detail: "MPT_ANCHOR_ENABLED=true but CREDENTIAL_ISSUER_SEED is not set — anchor fails every run" };
+    return { name: "mpt-anchor", level: "down", detail: "MPT_ANCHOR_ENABLED=true but ANCHOR_WALLET_SEED is not set — anchor fails every run" };
   }
   try {
     const lastFail = await prisma.mptAnchor.findFirst({
@@ -101,10 +103,13 @@ async function checkAnchor(): Promise<Check> {
     });
     const lastAnchor = await prisma.mptAnchor.findFirst({ where: { status: "anchored" }, orderBy: { createdAt: "desc" } });
     if (lastFail && (!lastAnchor || lastFail.createdAt > lastAnchor.createdAt)) {
-      return { name: "mpt-anchor", level: enabled ? "down" : "warn", detail: `last anchor attempt ${lastFail.status}: ${lastFail.error ?? "no detail"}` };
+      // A stale misconfigured row from before ANCHOR_WALLET_SEED existed isn't
+      // a live outage once the key is present — the next cron clears it.
+      const stale = lastFail.status === "misconfigured" && keyed;
+      return { name: "mpt-anchor", level: stale || !enabled ? "warn" : "down", detail: `last anchor attempt ${lastFail.status}: ${lastFail.error ?? "no detail"}${stale ? " (stale — anchor key now present, next cron clears it)" : ""}` };
     }
     if (!enabled) return { name: "mpt-anchor", level: "warn", detail: "anchoring disabled (MPT_ANCHOR_ENABLED not set)" };
-    return { name: "mpt-anchor", level: "ok", detail: lastAnchor ? `last anchored at ledger ${lastAnchor.ledgerIndex}` : "enabled, no anchor yet" };
+    return { name: "mpt-anchor", level: "ok", detail: lastAnchor ? `last anchored at ledger ${lastAnchor.ledgerIndex} by the anchor wallet` : "enabled, anchor key present, no anchor yet" };
   } catch (e) {
     return { name: "mpt-anchor", level: "warn", detail: e instanceof Error ? e.message : "check failed" };
   }
@@ -112,8 +117,18 @@ async function checkAnchor(): Promise<Check> {
 
 function checkCredentialSigning(): Check {
   return process.env.CREDENTIAL_SIGNING_SECRET
-    ? { name: "credential-signing", level: "ok", detail: "CREDENTIAL_SIGNING_SECRET set — paid certificates are cryptographically binding" }
+    ? { name: "credential-signing", level: "ok", detail: "CREDENTIAL_SIGNING_SECRET set — paid off-ledger certificates are cryptographically binding" }
     : { name: "credential-signing", level: "down", detail: "CREDENTIAL_SIGNING_SECRET NOT set — paid signed certificates issue but are NOT binding" };
+}
+
+function checkCredentialIssuance(): Check {
+  // On-ledger XLS-70 credential issuance is deliberately NOT wired to the
+  // serverless env — the issuer seed lives only on the operator's machine, so
+  // a compromised Vercel env can never forge an XRPLHub credential. Its
+  // absence here is the intended posture, not an outage — WARN, never DOWN.
+  return process.env.CREDENTIAL_ISSUER_SEED
+    ? { name: "credential-issuance", level: "ok", detail: "CREDENTIAL_ISSUER_SEED present — on-ledger credential issuance available server-side" }
+    : { name: "credential-issuance", level: "warn", detail: "on-ledger credential issuance is operator-only by design (CREDENTIAL_ISSUER_SEED kept off Vercel); run it from the operator's machine" };
 }
 
 function checkAlerting(): Check {
@@ -136,7 +151,7 @@ export async function healthProbe(opts: { deep?: boolean } = {}): Promise<Health
     if (s.status === "fulfilled") checks.push(s.value);
     else checks.push({ name: "unknown", level: "warn", detail: String(s.reason) });
   }
-  checks.push(checkXumm(), checkCredentialSigning(), checkAlerting(), checkCron());
+  checks.push(checkXumm(), checkCredentialSigning(), checkCredentialIssuance(), checkAlerting(), checkCron());
 
   const reds = checks.filter((c) => c.level === "down");
   const ambers = checks.filter((c) => c.level === "warn");

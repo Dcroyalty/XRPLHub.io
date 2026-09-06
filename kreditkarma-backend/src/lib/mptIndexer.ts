@@ -350,14 +350,14 @@ export async function maybeAnchor(prisma: PrismaClient): Promise<AnchorAttempt> 
   const memo = buildAnchorMemo(payload).memoData;
 
   const gateOn = process.env.MPT_ANCHOR_ENABLED === "true";
-  const signingKeyPresent = !!process.env.CREDENTIAL_ISSUER_SEED;
+  const signingKeyPresent = !!process.env.ANCHOR_WALLET_SEED;
 
   // Screaming misconfiguration: anchoring turned on, no key to sign with. This
   // fails identically on every single run until the key is added to the env.
   if (gateOn && !signingKeyPresent) {
     const msg =
-      "MPT_ANCHOR_ENABLED='true' but CREDENTIAL_ISSUER_SEED is not set — the anchor cannot be signed. " +
-      "No anchor will be produced on any run until the signing key is added to the environment.";
+      "MPT_ANCHOR_ENABLED='true' but ANCHOR_WALLET_SEED is not set — the anchor cannot be signed. " +
+      "No anchor will be produced on any run until the dedicated anchor-wallet seed is added to the environment.";
     const row =
       existing ??
       (await prisma.mptAnchor.create({
@@ -424,7 +424,7 @@ export async function maybeAnchor(prisma: PrismaClient): Promise<AnchorAttempt> 
     const msg = err instanceof Error ? err.message : String(err);
     // A config problem (bad/absent seed, wrong wallet) fails forever; a network
     // / ledger error may clear next run. Both are recorded and alerted.
-    const misconfig = /CREDENTIAL_ISSUER_SEED|REFUSING:|derives .* expected/i.test(msg);
+    const misconfig = /ANCHOR_WALLET_SEED|REFUSING:|derives .* expected/i.test(msg);
     const status = misconfig ? "misconfigured" : "failed";
     await prisma.mptAnchor.update({ where: { id: row.id }, data: { status, error: msg } });
     await notifyError("cron/index-mpts anchor", err, {

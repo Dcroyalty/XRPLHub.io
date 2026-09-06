@@ -1,8 +1,12 @@
 // src/lib/mptAnchor.ts
 // On-ledger anchoring of the MPT registry — BIS Working Paper 1374 pattern:
 // commit a Merkle root of the canonicalised index in a Memo on a transaction
-// from the issuer wallet, so anyone can later prove the published registry
-// wasn't altered after the fact.
+// so anyone can later prove the published registry wasn't altered after.
+//
+// SIGNING KEY: a DEDICATED anchor wallet (ANCHOR_WALLET_SEED), NOT the
+// credential issuer. The anchor key can only publish memos; if the serverless
+// env is compromised the blast radius is fake anchors (recoverable), never a
+// forged XRPLHub credential. The credential issuer seed never touches Vercel.
 //
 // The canonicalisation and Merkle scheme below are FROZEN under CANON_VERSION.
 // GET /api/mpt/anchor echoes this exact description so a third party can
@@ -11,9 +15,14 @@
 import { createHash } from "crypto";
 import { Wallet } from "xrpl";
 import type { PrismaClient } from "@prisma/client";
-import { connectMainnetOrThrow, EXPECTED_ISSUER } from "./credentials";
+import { connectMainnetOrThrow } from "./credentials";
 
 export const CANON_VERSION = "mpt-anchor-v1";
+
+// The dedicated anchor account. Verifiers trust roots ONLY from this address.
+// It is deliberately NOT rmWjCGeLtuLGerEuvHDkrsr46ej2Ni13f (the credential
+// issuer) — a compromised anchor key cannot mint credentials.
+export const ANCHOR_ACCOUNT = "r9dQS1oGms3B7SdY6nyU24Dy7dWyWXuJXb";
 
 export const CANON_SPEC = {
   version: CANON_VERSION,
@@ -176,19 +185,24 @@ export function buildAnchorMemo(p: AnchorMemoPayload) {
   };
 }
 
+export function anchorSigningKeyPresent(): boolean {
+  return !!process.env.ANCHOR_WALLET_SEED;
+}
+
 /**
- * Submit one anchor transaction from the issuer wallet. AccountSet with no
- * settings — nothing moves, it just carries the Memo and costs the base fee.
- * Requires CREDENTIAL_ISSUER_SEED (must derive EXPECTED_ISSUER).
+ * Submit one anchor transaction from the DEDICATED anchor wallet. AccountSet
+ * with no settings — nothing moves, it just carries the Memo and costs the
+ * base fee (~10 drops). Requires ANCHOR_WALLET_SEED (must derive
+ * ANCHOR_ACCOUNT). The credential issuer seed is never used here.
  */
 export async function submitAnchorTx(payload: AnchorMemoPayload): Promise<{
   txHash: string; ledgerIndex: number; account: string; feeDrops: string; validated: boolean; engineResult: string;
 }> {
-  const seed = process.env.CREDENTIAL_ISSUER_SEED;
-  if (!seed) throw new Error("CREDENTIAL_ISSUER_SEED not set — cannot sign the anchor.");
+  const seed = process.env.ANCHOR_WALLET_SEED;
+  if (!seed) throw new Error("ANCHOR_WALLET_SEED not set — cannot sign the anchor.");
   const wallet = Wallet.fromSeed(seed);
-  if (wallet.classicAddress !== EXPECTED_ISSUER) {
-    throw new Error(`REFUSING: CREDENTIAL_ISSUER_SEED derives ${wallet.classicAddress}, expected ${EXPECTED_ISSUER}.`);
+  if (wallet.classicAddress !== ANCHOR_ACCOUNT) {
+    throw new Error(`REFUSING: ANCHOR_WALLET_SEED derives ${wallet.classicAddress}, expected ${ANCHOR_ACCOUNT}.`);
   }
   const { Memos } = buildAnchorMemo(payload);
   const client = await connectMainnetOrThrow();
