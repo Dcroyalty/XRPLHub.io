@@ -11,15 +11,36 @@ import { computeScore, isValidXrplAddress, AccountNotFoundError } from "@/lib/en
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic"; // never cache the auth'd response itself
 
+const RENEW = {
+  pricing: "https://www.xrplhub.io/pricing",
+  checkoutXrpRlusd: "https://www.xrplhub.io/checkout?plan={starter|growth|scale}",
+  checkoutUsdc: "https://www.xrplhub.io/api/checkout/usdc/{starter|growth|scale}",
+};
+
 async function handle(wallet: string | null, req: Request) {
   // 1) Auth
-  const key = await resolveApiKey(extractKey(req));
-  if (!key) {
+  const r = await resolveApiKey(extractKey(req));
+  if (!r.ok) {
+    if (r.reason === "expired") {
+      // Distinct from a bad key: the key WAS valid, its 30-day term ended.
+      // 402 + machine-readable renewal pointers so an agent can re-buy without
+      // a human. (XRPL rails = no card on file; access is time-boxed.)
+      return NextResponse.json(
+        {
+          error: "key_expired",
+          message: `This API key's 30-day term ended at ${r.expiredAt}. Purchase a new key to continue.`,
+          expiredAt: r.expiredAt,
+          renew: RENEW,
+        },
+        { status: 402, headers: { "Cache-Control": "no-store" } }
+      );
+    }
     return NextResponse.json(
       { error: "unauthorized", message: "Missing or invalid API key." },
       { status: 401 }
     );
   }
+  const key = r.key;
 
   // 2) Validate input
   if (!wallet || !isValidXrplAddress(wallet)) {
@@ -46,15 +67,25 @@ async function handle(wallet: string | null, req: Request) {
   // 4) Score
   try {
     const result = await computeScore(wallet);
+    const expiresSoon =
+      !!key.expiresAt && new Date(key.expiresAt).getTime() - Date.now() < 72 * 3600_000;
+    const headers: Record<string, string> = {
+      // Cache TTL varies by tier (decision from the plan table).
+      "Cache-Control": `private, max-age=${key.plan.cacheTtlSeconds}`,
+      "X-RateLimit-Remaining": String(g.remaining ?? ""),
+    };
+    if (key.expiresAt) headers["X-Key-Expires"] = key.expiresAt;
+    if (expiresSoon) headers["X-Key-Expires-Soon"] = "true";
     return NextResponse.json(
-      { data: result, plan: key.planId, remaining: g.remaining, overage: g.overage },
       {
-        headers: {
-          // Cache TTL varies by tier (decision from the plan table).
-          "Cache-Control": `private, max-age=${key.plan.cacheTtlSeconds}`,
-          "X-RateLimit-Remaining": String(g.remaining ?? ""),
-        },
-      }
+        data: result,
+        plan: key.planId,
+        remaining: g.remaining,
+        overage: g.overage,
+        keyExpiresAt: key.expiresAt,
+        ...(expiresSoon ? { keyExpiresSoon: true, renew: RENEW } : {}),
+      },
+      { headers }
     );
   } catch (err) {
     if (err instanceof AccountNotFoundError) {

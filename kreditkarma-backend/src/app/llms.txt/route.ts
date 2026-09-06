@@ -103,11 +103,16 @@ x402 pay-per-call (USDC on Base, CDP facilitator, no signup):
 - POST ${origin}/api/x402/usdc/score — 300-850 score, $0.01
 - GET ${origin}/api/x402/usdc/mpt/<48-hex id> — full MPT issuer risk, $0.01
 
-## B2B API (subscription)
+## B2B API (prepaid key, 30-day term)
 
-Buy a key at ${origin}/pricing — pay in XRP or RLUSD, connect Xaman and sign (no
-address typing), no signup. Then: GET ${origin}/api/v1/score?wallet=r... with
-header "Authorization: Bearer xrs_live_...". Returns the same number as the site.
+Buy a key at ${origin}/pricing — pay once in XRP, RLUSD, or USDC-on-Base (x402),
+no signup. Then: GET ${origin}/api/v1/score?wallet=r... with header
+"Authorization: Bearer xrs_live_...". Returns the same number as the site.
+The key works for 30 days from purchase (no card on file, no auto-renew) — buy
+again to continue. Responses carry an X-Key-Expires header, and in the last 72h
+an X-Key-Expires-Soon header plus a renew object in the body. An expired key
+returns HTTP 402 (error "key_expired", with expiredAt and renew URLs) — not
+401 — so an agent can re-buy without a human.
 
 ${plans}
 

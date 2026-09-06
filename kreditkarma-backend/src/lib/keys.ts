@@ -45,20 +45,29 @@ export interface ResolvedKey {
   plan: Plan;
   planId: string;
   name: string | null;
+  expiresAt: string | null; // ISO; null = never expires
 }
 
+export type KeyResolution =
+  | { ok: true; key: ResolvedKey }
+  | { ok: false; reason: "missing" | "malformed" | "unknown" | "disabled" | "expired"; expiredAt?: string };
+
 /**
- * Resolve a raw API key from an incoming request to its DB record.
- * Returns null if the key is malformed, unknown, or disabled.
+ * Resolve a raw API key to its DB record. A discriminated result so a caller
+ * can tell an EXPIRED key (pay again — 402) apart from a bad key (401).
  */
-export async function resolveApiKey(raw: string | null): Promise<ResolvedKey | null> {
-  if (!raw || !raw.startsWith(LIVE_PREFIX)) return null;
+export async function resolveApiKey(raw: string | null): Promise<KeyResolution> {
+  if (!raw) return { ok: false, reason: "missing" };
+  if (!raw.startsWith(LIVE_PREFIX)) return { ok: false, reason: "malformed" };
 
   const keyPrefix = raw.slice(0, PREFIX_LOOKUP_LEN);
   const record = await prisma.apiKey.findUnique({ where: { keyPrefix } });
-  if (!record || !record.active) return null;
-
-  if (!hashesEqual(sha256(raw), record.keyHash)) return null;
+  if (!record) return { ok: false, reason: "unknown" };
+  if (!hashesEqual(sha256(raw), record.keyHash)) return { ok: false, reason: "unknown" };
+  if (!record.active) return { ok: false, reason: "disabled" };
+  if (record.expiresAt && record.expiresAt.getTime() <= Date.now()) {
+    return { ok: false, reason: "expired", expiredAt: record.expiresAt.toISOString() };
+  }
 
   // touch lastUsedAt without blocking the request path
   prisma.apiKey
@@ -66,10 +75,14 @@ export async function resolveApiKey(raw: string | null): Promise<ResolvedKey | n
     .catch(() => {});
 
   return {
-    id: record.id,
-    plan: getPlan(record.plan),
-    planId: record.plan,
-    name: record.name,
+    ok: true,
+    key: {
+      id: record.id,
+      plan: getPlan(record.plan),
+      planId: record.plan,
+      name: record.name,
+      expiresAt: record.expiresAt ? record.expiresAt.toISOString() : null,
+    },
   };
 }
 

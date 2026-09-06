@@ -156,6 +156,7 @@ model ApiKey {
   name        String?
   plan        String        @default("free")      // "free" | "starter" | "growth" | "scale"
   active      Boolean       @default(true)
+  expiresAt   DateTime?                            // paid keys: paidAt + PLAN_KEY_TTL_DAYS. null = never expires (free + admin keys)
   ownerWallet String?       @unique               // set only for self-serve free keys — one per XRPL wallet
   createdAt   DateTime      @default(now())
   lastUsedAt  DateTime?

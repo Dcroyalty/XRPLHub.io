@@ -16,7 +16,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/xrplscore-db";
 import { generateApiKey } from "@/lib/keys";
-import { getPlan, type PlanId } from "@/lib/plans";
+import { getPlan, PLAN_KEY_TTL_DAYS, type PlanId } from "@/lib/plans";
 
 const MAX_TAG = 2_147_483_647; // Invoice.destinationTag is a unique 32-bit int
 
@@ -32,9 +32,11 @@ export const USDC_PLAN_OUTPUT_SCHEMA = {
     network: { type: "string", enum: ["base"] },
     invoiceId: { type: "string", description: "Internal purchase record id." },
     key: { type: "string", description: "The live XRPLHub API key (xrs_live_...). Shown exactly once in this response — store it immediately, it cannot be retrieved again." },
+    expiresAt: { type: "string", format: "date-time", description: "The key stops working at this time (30 days). Purchase again to continue — there is no auto-renew (XRPL/Base rails, no card on file)." },
+    termDays: { type: "integer", description: "Days the key is valid from purchase (30)." },
     note: { type: "string" },
   },
-  required: ["status", "plan", "currency", "network", "key"],
+  required: ["status", "plan", "currency", "network", "key", "expiresAt"],
 } as const;
 
 export function usdcPlanOutputExample(planId: PlanId) {
@@ -45,7 +47,9 @@ export function usdcPlanOutputExample(planId: PlanId) {
     network: "base",
     invoiceId: "clx0000000000000000000000",
     key: "xrs_live_ExampleKeyDoNotUseXXXXXXXXXXXXXXXX",
-    note: "Store this key now. It cannot be shown again.",
+    expiresAt: "2026-10-06T00:00:00.000Z",
+    termDays: PLAN_KEY_TTL_DAYS,
+    note: "Store this key now — it cannot be shown again. It works for 30 days; buy another to continue.",
   };
 }
 
@@ -58,6 +62,7 @@ export function usdcPlanOutputExample(planId: PlanId) {
 export async function mintPlanKey(planId: PlanId) {
   const plan = getPlan(planId);
   const gen = generateApiKey();
+  const keyExpiresAt = new Date(Date.now() + PLAN_KEY_TTL_DAYS * 86_400_000);
 
   for (let i = 0; i < 3; i++) {
     try {
@@ -69,13 +74,14 @@ export async function mintPlanKey(planId: PlanId) {
           destinationTag: 1 + Math.floor(Math.random() * (MAX_TAG - 1)),
           status: "paid",
           paidAt: new Date(),
-          expiresAt: new Date(), // already paid; field is meaningless post-hoc
+          expiresAt: new Date(), // Invoice.expiresAt = quote TTL; meaningless post-hoc
           apiKey: {
             create: {
               keyPrefix: gen.keyPrefix,
               keyHash: gen.keyHash,
               name: `invoice:usdc:${planId}`,
               plan: planId,
+              expiresAt: keyExpiresAt, // ApiKey.expiresAt = the 30-day access term
             },
           },
         },
@@ -87,7 +93,9 @@ export async function mintPlanKey(planId: PlanId) {
         network: "base",
         invoiceId: invoice.id,
         key: gen.full, // shown ONCE
-        note: "Store this key now. It cannot be shown again.",
+        expiresAt: keyExpiresAt.toISOString(),
+        termDays: PLAN_KEY_TTL_DAYS,
+        note: `Store this key now — it cannot be shown again. It works for ${PLAN_KEY_TTL_DAYS} days (until ${keyExpiresAt.toISOString()}); buy another to continue.`,
       });
     } catch {
       /* destinationTag collision — retry a couple times, then give up */

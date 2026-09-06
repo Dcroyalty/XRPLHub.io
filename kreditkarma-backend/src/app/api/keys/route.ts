@@ -30,8 +30,13 @@ export async function POST(req: Request) {
   const body = (await req.json().catch(() => ({}))) as {
     name?: string;
     plan?: string;
+    ttlDays?: number; // admin-minted keys don't expire by default; pass to time-box one
   };
   const plan = getPlan(body.plan ?? "free").id;
+  const expiresAt =
+    typeof body.ttlDays === "number" && body.ttlDays > 0
+      ? new Date(Date.now() + body.ttlDays * 86_400_000)
+      : null;
 
   const gen = generateApiKey();
   const record = await prisma.apiKey.create({
@@ -40,6 +45,7 @@ export async function POST(req: Request) {
       keyHash: gen.keyHash,
       name: body.name ?? null,
       plan,
+      expiresAt,
     },
   });
 
@@ -47,6 +53,7 @@ export async function POST(req: Request) {
     {
       id: record.id,
       plan,
+      expiresAt: expiresAt ? expiresAt.toISOString() : null,
       key: gen.full, // shown ONCE — tell the customer to store it now
       note: "Store this key now. It cannot be shown again.",
     },

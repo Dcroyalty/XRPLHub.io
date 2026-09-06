@@ -57,6 +57,7 @@ export const PLANS: Record<PlanId, Plan> = {
       "60 requests / minute",
       "Full signal breakdown + insights",
       "Email support",
+      "30-day key term — buy again to continue (no card, no auto-renew)",
     ],
   },
   growth: {
@@ -74,6 +75,7 @@ export const PLANS: Record<PlanId, Plan> = {
       "300 requests / minute",
       "Overage billing — never cut off mid-spike",
       "Priority support",
+      "30-day key term — buy again to continue (no card, no auto-renew)",
     ],
   },
   scale: {
@@ -91,11 +93,17 @@ export const PLANS: Record<PlanId, Plan> = {
       "1,000 requests / minute",
       "Lowest overage rate",
       "Priority support + integration help",
+      "30-day key term — buy again to continue (no card, no auto-renew)",
     ],
   },
 };
 
 export const PLAN_ORDER: PlanId[] = ["free", "starter", "growth", "scale"];
+
+// A paid key is minted with expiresAt = paidAt + this many days. On XRPL rails
+// there's no card on file to auto-charge, so access is time-boxed and the
+// buyer (human or agent) repurchases. Free + admin keys never expire.
+export const PLAN_KEY_TTL_DAYS = 30;
 
 export function getPlan(id: string): Plan {
   return PLANS[(id as PlanId)] ?? PLANS.free;
