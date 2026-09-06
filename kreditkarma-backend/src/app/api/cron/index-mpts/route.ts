@@ -35,7 +35,7 @@ export async function GET(req: Request) {
     const anchor = await maybeAnchor(prisma);
 
     // Daily "is the money path working" sweep — alert on anything red.
-    const health = await healthProbe();
+    const health = await healthProbe({ deep: true });
     if (health.reds.length) {
       await notifyError(
         "cron/index-mpts healthcheck",

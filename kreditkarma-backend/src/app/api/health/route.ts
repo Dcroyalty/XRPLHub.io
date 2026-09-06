@@ -14,8 +14,9 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 20;
 
-export async function GET() {
-  const report = await healthProbe();
+export async function GET(req: Request) {
+  const deep = new URL(req.url).searchParams.get("deep") === "1";
+  const report = await healthProbe({ deep });
   return NextResponse.json(report, {
     status: report.overall === "down" ? 503 : 200,
     headers: { "Cache-Control": "no-store" },

@@ -48,7 +48,8 @@ function checkXumm(): Check {
     : { name: "xumm", level: "down", detail: "XUMM_API_KEY / XUMM_API_SECRET missing — every Xaman payment + free-key SignIn is down" };
 }
 
-async function checkT54(): Promise<Check> {
+async function checkT54(deep: boolean): Promise<Check> {
+  if (!deep) return { name: "x402-t54", level: "ok", detail: "t54 facilitator (deep probe skipped — pass ?deep=1)" };
   try {
     const r = await timed(() => facilitatorSupported());
     if (r.ok) return { name: "x402-t54", level: "ok", detail: "t54 facilitator /supported OK" };
@@ -58,15 +59,17 @@ async function checkT54(): Promise<Check> {
   }
 }
 
-async function checkCdp(): Promise<Check> {
+async function checkCdp(deep: boolean): Promise<Check> {
   const idSet = !!process.env.CDP_API_KEY_ID;
   const secretSet = !!process.env.CDP_API_KEY_SECRET;
   if (!idSet || !secretSet) {
     return { name: "x402-cdp", level: "down", detail: "CDP_API_KEY_ID / CDP_API_KEY_SECRET missing — USDC-on-Base checkout + x402 USDC routes can't settle" };
   }
-  // Unauthenticated liveness of the CDP facilitator host. A 401/403/400 all
+  if (!deep) return { name: "x402-cdp", level: "ok", detail: "CDP keys set (deep probe skipped — pass ?deep=1)" };
+  // Unauthenticated liveness of the CDP facilitator host. A 400/401/403 all
   // mean "the service is up" (auth happens per-request inside withX402); only a
-  // network failure or 5xx is a real outage.
+  // network failure or 5xx is a real outage. Gated behind `deep` so a 1/min
+  // uptime monitor doesn't hammer CDP with rejected probes.
   try {
     const res = await timed(() =>
       fetch("https://api.cdp.coinbase.com/platform/v2/x402/verify", {
@@ -125,9 +128,10 @@ function checkCron(): Check {
     : { name: "cron-auth", level: "down", detail: "CRON_SECRET not set — both cron jobs 401 and do nothing" };
 }
 
-export async function healthProbe(): Promise<HealthReport> {
+export async function healthProbe(opts: { deep?: boolean } = {}): Promise<HealthReport> {
+  const deep = opts.deep ?? false;
   const checks: Check[] = [];
-  const settled = await Promise.allSettled([checkDb(), checkT54(), checkCdp(), checkAnchor()]);
+  const settled = await Promise.allSettled([checkDb(), checkT54(deep), checkCdp(deep), checkAnchor()]);
   for (const s of settled) {
     if (s.status === "fulfilled") checks.push(s.value);
     else checks.push({ name: "unknown", level: "warn", detail: String(s.reason) });
