@@ -14,6 +14,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/xrplscore-db";
+import { notifyError } from "@/lib/notify";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -65,9 +66,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, id: row.id, recorded: true });
   } catch (err) {
     // The on-chain donation already happened; this endpoint is a record-keeping
-    // helper, not the money path — so still return 200. (Fix #2 wires this into
-    // notifyError so a record-write failure on the grants-funding path is loud.)
-    console.error("[donate]", err instanceof Error ? err.message : "donate write failed");
+    // helper, not the money path — so still return 200. But a write failure here
+    // means we've lost the donor record on the grants-funding path, so it's loud.
+    await notifyError("POST /api/donate", err, { fromAddress, txHash, amount, currency });
     return NextResponse.json({ ok: false, error: "record write failed", recorded: false });
   }
 }
