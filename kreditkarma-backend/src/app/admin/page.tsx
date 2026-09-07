@@ -11,7 +11,7 @@ interface Grant {
   id: string; walletAddress: string; category: string;
   amountRequested: number; currency: string; description: string;
   urgency: string; status: string; aiScore?: number; aiReasoning?: string;
-  approvedAmount?: number; txHash?: string; paidAt?: string;
+  approvedAmount?: number; paidAmount?: number; txHash?: string; paidAt?: string;
   createdAt: string; scoreSnapshot?: number;
 }
 interface ScoreCheck {
@@ -94,7 +94,7 @@ function GrantActions({ grant, token, onUpdate }: { grant: Grant; token: string;
   if (['PAID','REJECTED','FAILED'].includes(grant.status)) {
     return (
       <div style={{ fontSize:11, color:'rgba(255,255,255,.3)', fontStyle:'italic' }}>
-        {grant.status === 'PAID' ? `✅ Paid ${grant.paidAmount} RLUSD · TX: ${trunc(grant.txHash||'',10)}` : `Closed — ${grant.status}`}
+        {grant.status === 'PAID' ? `✅ Paid ${grant.paidAmount ?? grant.approvedAmount ?? grant.amountRequested} ${grant.currency} · TX: ${trunc(grant.txHash||'',10)}` : `Closed — ${grant.status}`}
       </div>
     );
   }

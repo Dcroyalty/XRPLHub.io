@@ -190,14 +190,14 @@ export async function getAMMPositions(address: string): Promise<AMMPosition[]> {
 
   try {
     // Fetch account_objects and look for AMMBid / LP token trust lines
-    const res = await xrpl.request({
+    const res = (await xrpl.request({
       command: "account_objects",
       account: address,
       type: "amm",
       ledger_index: "validated",
-    } as any);
+    } as any)) as { result: { account_objects?: unknown[] } };
 
-    for (const obj of (res.result.account_objects ?? []) as any[]) {
+    for (const obj of ((res.result.account_objects ?? []) as any[])) {
       if (obj.LedgerEntryType === "AMM") {
         positions.push({
           ammAccount: obj.Account ?? "",
@@ -294,7 +294,11 @@ export async function buildAccountSnapshot(address: string): Promise<AccountSnap
     receivedPayments,
     uniqueCounterparties: counterparties.size,
     regularKeySet: !!(accountData.RegularKey),
-    signerListSet: !!(accountData.signer_lists?.length),
+    // NOTE: getAccountInfo() does not request signer_lists, so this is always
+    // false here. buildAccountSnapshot is superseded by src/lib/xrplscore.ts
+    // (the ONE scoring engine, which reads SignerLists correctly) and is not
+    // called anywhere — kept only for the exported AccountSnapshot type.
+    signerListSet: !!((accountData as { signer_lists?: unknown[] }).signer_lists?.length),
     accountAge,
     recentVolume30d,
   };

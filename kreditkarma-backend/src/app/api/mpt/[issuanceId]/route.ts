@@ -17,8 +17,9 @@ import { getMptRisk, MPT_ISSUANCE_ID_RE } from "@/lib/mpt";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET(_req: NextRequest, { params }: { params: { issuanceId: string } }) {
-  const issuanceId = (params.issuanceId ?? "").trim();
+export async function GET(_req: NextRequest, { params }: { params: Promise<{ issuanceId: string }> }) {
+  const { issuanceId: raw } = await params;
+  const issuanceId = (raw ?? "").trim();
   if (!MPT_ISSUANCE_ID_RE.test(issuanceId)) {
     return NextResponse.json(
       {

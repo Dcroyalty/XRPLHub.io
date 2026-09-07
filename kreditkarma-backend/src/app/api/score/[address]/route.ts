@@ -10,9 +10,10 @@ const prisma = new PrismaClient();
 // write and the public JSON shape on top.
 export async function GET(
   _req: NextRequest,
-  { params }: { params: { address: string } }
+  { params }: { params: Promise<{ address: string }> }
 ) {
-  const address = decodeURIComponent(params.address);
+  const { address: rawAddress } = await params;
+  const address = decodeURIComponent(rawAddress);
 
   if (!address || !address.startsWith('r') || address.length < 25 || address.length > 35) {
     return NextResponse.json({ error: 'Invalid XRPL address format' }, { status: 400 });

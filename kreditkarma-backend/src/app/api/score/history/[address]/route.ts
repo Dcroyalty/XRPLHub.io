@@ -6,9 +6,10 @@ const prisma = new PrismaClient();
 // GET /api/score/history/[address] — returns score check history for a wallet
 export async function GET(
   _req: NextRequest,
-  { params }: { params: { address: string } }
+  { params }: { params: Promise<{ address: string }> }
 ) {
-  const address = decodeURIComponent(params.address);
+  const { address: rawAddress } = await params;
+  const address = decodeURIComponent(rawAddress);
 
   if (!address || !address.startsWith('r') || address.length < 25) {
     return NextResponse.json({ error: 'Invalid XRPL address' }, { status: 400 });

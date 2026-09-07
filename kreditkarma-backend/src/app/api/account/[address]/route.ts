@@ -7,9 +7,9 @@ import { isValidClassicAddress } from "xrpl";
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: { address: string } }
+  { params }: { params: Promise<{ address: string }> }
 ) {
-  const { address } = params;
+  const { address } = await params;
 
   if (!isValidClassicAddress(address)) {
     return NextResponse.json({ error: "Invalid XRPL address" }, { status: 400 });

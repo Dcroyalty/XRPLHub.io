@@ -264,7 +264,11 @@ const PRODUCTS = [
 
 ] as const;
 
-type Product = typeof PRODUCTS[number];
+// PRODUCTS is a heterogeneous array literal — not every entry has `tag`, and
+// `isMonthly` is referenced by the pricing UI but never set on any entry today
+// (renders as "" / "Buy"). Widen the element type so both are safely optional
+// rather than a per-member union access.
+type Product = typeof PRODUCTS[number] & { tag?: string; isMonthly?: boolean };
 
 // ─── EXECUTION FORM SCHEMA ───
 // Per-product fields the customer fills AFTER payment so AI builds the exact
@@ -1878,7 +1882,7 @@ export default function XRPLHubHome() {
   }, [connectedWallet]);
 
   const handleLogout = () => { setUser(null); if (typeof window !== 'undefined') localStorage.removeItem('xh_user'); };
-  const featured = PRODUCTS.filter(p => p.featured);
+  const featured = (PRODUCTS as readonly Product[]).filter(p => p.featured);
   // Order the grid by how a normal person relates to it, NOT by technical category.
   // Checks & everyday money first → familiar concepts (escrow=safe-hold, NFT=digital art,
   // identity) → then the power-user / wizard tools (DeFi, token issuing, wallet security) last.
@@ -1922,7 +1926,7 @@ export default function XRPLHubHome() {
     'depositauth',    // Deposit auth
     'desttag',        // Destination tag lock
   ];
-  const others   = PRODUCTS.filter(p => !p.featured).sort((a,b) => {
+  const others   = (PRODUCTS as readonly Product[]).filter(p => !p.featured).sort((a,b) => {
     const ai = TOP_ORDER.indexOf(a.id), bi = TOP_ORDER.indexOf(b.id);
     if (ai === -1 && bi === -1) return 0;
     if (ai === -1) return 1;

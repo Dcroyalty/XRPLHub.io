@@ -4,10 +4,11 @@ import { db } from "@/lib/db";
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params;
   const grant = await db.grantRequest.findUnique({
-    where: { id: params.id },
+    where: { id },
     include: { ledgerScore: { select: { score: true, tier: true } } },
   });
 
