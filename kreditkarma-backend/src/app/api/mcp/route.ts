@@ -59,12 +59,13 @@ const CORS = {
 // JSON-RPC surface (one source of truth for scanners like Smithery).
 export const MCP_SERVER_INFO = {
   name: 'xrplhub',
-  version: '1.10.0',
+  version: '1.11.0',
   description:
-    'Free XRPL wallet creditworthiness scores · ready-to-sign txjson for 35 XRPL actions · ' +
-    'verifiable score credential · credential + permissioned domain explorer · MPT issuer risk · ' +
-    'OFAC SDN screening attestation (process, not ground truth) · XLS-66 cross-broker lending exposure ' +
-    '(attested — the ledger keeps current exposure only) · community micro-grants · donations',
+    'Free XRPL wallet creditworthiness scores · ready-to-sign txjson for 35 XRPL actions (incl. MPT ' +
+    'issuance with a plain-English flag guide + on-ledger backing declaration) · verifiable score ' +
+    'credential · credential + permissioned domain explorer · MPT issuer risk + backing declarations · ' +
+    'OFAC SDN screening attestation (process, not ground truth) · XLS-66 cross-broker lending exposure & ' +
+    'underwriting inputs (attested, facts only) · community micro-grants · donations',
 };
 
 // ─── TOOL DEFINITIONS (descriptions are the marketing copy to the AI) ────────
