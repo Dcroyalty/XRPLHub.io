@@ -12,6 +12,7 @@ import { isValidXrplAddress } from "@/lib/engine";
 import { mptCoverage, decodeMptFlags, issuanceIdsHash } from "@/lib/mptIndex";
 import { scoreWallet, AccountNotFoundError } from "@/lib/xrplscore";
 import { scoreLink, mptIssuanceLink, credentialsAccountLink } from "@/lib/related";
+import { backingDeclarationView } from "@/lib/mptBacking";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -85,6 +86,7 @@ export async function GET(req: Request) {
       flags: r.flagsRaw,                    // raw MPTokenIssuance Flags
       issuerPowers: decodeMptFlags(r.flagsRaw),
       metadata: r.metadata,                 // raw decoded MPTokenMetadata string (or null)
+      backingDeclaration: backingDeclarationView(r.metadata), // what the issuer DECLARED — unverified
       holderCount: r.holderCount,
       sources: r.sources ? r.sources.split(",").sort() : [],
     })),

@@ -24,6 +24,8 @@ import { SCREEN_DISCLAIMER_SHORT } from "@/lib/screen";
 import { LENDING_CANON_SPEC, canonLendingLeaf, lendingLeafHash, type LendingExposureLeaf } from "@/lib/lendingCanon";
 import { LENDING_MEMO_TYPE } from "@/lib/lendingAnchor";
 import { LENDING_DISCLAIMER } from "@/lib/lendingExposure";
+import { UNDERWRITE_CANON_SPEC, canonUnderwriteLeaf, underwriteLeafHash, UNDERWRITE_DISCLAIMER, type UnderwriteLeaf } from "@/lib/underwriteCanon";
+import { UNDERWRITE_MEMO_TYPE } from "@/lib/underwriteAnchor";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -42,8 +44,11 @@ export async function GET(req: Request) {
   const lending = await prisma.lendingExposureSnapshot.findUnique({ where: { queryId } });
   if (lending) return verifyLending(queryId);
 
+  const bundle = await prisma.underwriteBundleReceipt.findUnique({ where: { queryId } });
+  if (bundle) return verifyUnderwrite(queryId);
+
   return NextResponse.json(
-    { error: "not_found", message: "No screening receipt or lending-exposure snapshot with that queryId." },
+    { error: "not_found", message: "No screening, lending-exposure, or underwrite-bundle record with that queryId." },
     { status: 404 }
   );
 }
@@ -256,6 +261,82 @@ async function verifyLending(queryId: string) {
         "4. The result must equal `anchor.merkleRoot`.",
         "5. Fetch tx `anchor.txHash`; it is an AccountSet from `anchor.account`; decode MemoData from hex; its `root` must equal `anchor.merkleRoot`, MemoType hex must decode to " + LENDING_MEMO_TYPE + ".",
         "6. `snapshot.visibleLoanIds` is the exact set of Loan objects that were on the ledger at `snapshot.ledgerIndex` — a loan later deleted is still provably attested here.",
+      ],
+    },
+    { headers: { "Cache-Control": "public, max-age=30" } }
+  );
+}
+
+// ── Underwriting-inputs bundle ───────────────────────────────────────────────
+async function verifyUnderwrite(queryId: string) {
+  const b = (await prisma.underwriteBundleReceipt.findUnique({ where: { queryId } }))!;
+  const leaf = b.leafJson as unknown as UnderwriteLeaf;
+  const canonicalJson = canonUnderwriteLeaf(leaf);
+  const recomputedLeafHash = underwriteLeafHash(leaf);
+
+  const base = {
+    product: "underwrite-bundle",
+    queryId,
+    canonVersion: b.canonVersion,
+    engineVersion: b.engineVersion,
+    bundle: {
+      borrower: b.borrower,
+      requestedBy: b.requestedBy,
+      observedAt: b.createdAt.toISOString(),
+      ledgerIndex: b.ledgerIndex,
+      xrplScore: b.xrplScore,
+      screeningListed: b.screeningListed,
+      worstStatus: b.worstStatus,
+      components: {
+        exposureQueryId: b.exposureQueryId,
+        screeningQueryId: b.screeningQueryId,
+        exposureLeafHash: leaf.exposureLeafHash,
+        screeningLeafHash: leaf.screeningLeafHash || null,
+      },
+      leaf,
+    },
+    componentVerify: {
+      exposure: `https://www.xrplhub.io/api/attest/verify?queryId=${b.exposureQueryId}`,
+      screening: b.screeningQueryId ? `https://www.xrplhub.io/api/attest/verify?queryId=${b.screeningQueryId}` : null,
+    },
+    leaf: {
+      canonicalJson,
+      leafHash: recomputedLeafHash,
+      storedLeafHash: b.leafHash,
+      leafHashMatches: recomputedLeafHash === b.leafHash,
+    },
+    canonicalisation: UNDERWRITE_CANON_SPEC,
+    disclaimer: UNDERWRITE_DISCLAIMER,
+  };
+
+  if (!b.anchorId) {
+    return NextResponse.json(
+      { ...base, status: "pending", anchor: null, note: "Recorded but not yet anchored on-ledger. The daily Merkle anchor will include it." },
+      { headers: { "Cache-Control": "no-store" } }
+    );
+  }
+
+  const anchor = await prisma.underwriteBundleAnchor.findUnique({ where: { id: b.anchorId } });
+  const batch = await prisma.underwriteBundleReceipt.findMany({
+    where: { anchorId: b.anchorId },
+    orderBy: { queryId: "asc" },
+    select: { queryId: true, leafHash: true },
+  });
+  const idx = batch.findIndex((r) => r.queryId === queryId);
+  const leafHashes = batch.map((r) => r.leafHash);
+  const proof = idx >= 0 ? merkleInclusionProof(leafHashes, idx) : [];
+  const recomputedRoot = merkleRootFromLeafHashes(leafHashes);
+
+  return NextResponse.json(
+    {
+      ...base,
+      status: anchor?.status === "anchored" ? "anchored" : anchor?.status ?? "unknown",
+      anchor: anchorBlock(anchor, recomputedRoot, proof, idx, UNDERWRITE_MEMO_TYPE),
+      recipe: [
+        "1. Rebuild the leaf JSON from `bundle.leaf` using canonicalisation.record.keys order. JSON.stringify, no whitespace.",
+        "2. leafHash = SHA-256( 0x00 || utf8(leafJson) ) — must equal `leaf.leafHash`.",
+        "3. Fold `anchor.inclusionProof`; the result must equal `anchor.merkleRoot`, which must be the `root` in tx `anchor.txHash` MemoData (MemoType " + UNDERWRITE_MEMO_TYPE + ").",
+        "4. The bundle commits to the component leaf hashes. Verify each component separately: componentVerify.exposure and componentVerify.screening.",
       ],
     },
     { headers: { "Cache-Control": "public, max-age=30" } }

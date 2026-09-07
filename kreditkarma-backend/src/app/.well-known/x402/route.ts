@@ -22,7 +22,8 @@ import {
   TREASURY_ADDRESS,
 } from "@/lib/paycall";
 import { BUILDABLE_SERVICE_IDS } from "@/app/api/execute/serviceCatalog";
-import { BASE_PAY_TO, BASE_NETWORK, USDC_BASE_ASSET, CDP_FACILITATOR_URL, PRICE_PER_SCORE_USDC, PRICE_PER_MPT_USDC, PRICE_PER_SCREEN_USDC, PRICE_PER_EXPOSURE_USDC } from "@/lib/x402Base";
+import { BASE_PAY_TO, BASE_NETWORK, USDC_BASE_ASSET, CDP_FACILITATOR_URL, PRICE_PER_SCORE_USDC, PRICE_PER_MPT_USDC, PRICE_PER_SCREEN_USDC, PRICE_PER_EXPOSURE_USDC, PRICE_PER_UNDERWRITE_USDC } from "@/lib/x402Base";
+import { UNDERWRITE_DISCLAIMER } from "@/lib/underwriteCanon";
 import {
   SCREEN_OFAC_DESCRIPTION,
   SCREEN_OFAC_INPUT_SCHEMA,
@@ -229,6 +230,41 @@ function usdcExposureResource(origin: string) {
   };
 }
 
+// XLS-66 underwriting-inputs bundle — the highest-value call. Facts only.
+function usdcUnderwriteResource(origin: string) {
+  return {
+    resource: `${origin}/api/x402/lending/underwrite`,
+    method: "GET",
+    name: "XLS-66 underwriting inputs — full bundle, pay per call in USDC on Base",
+    description:
+      "Every input a LoanBroker needs for an XLS-66 underwriting decision in one call: cross-broker exposure, " +
+      "XRPLScore + grade, OFAC SDN screening with its own receipt, observation history + gaps, and one " +
+      "Merkle-anchored attestation over the whole bundle. FACTS ONLY — no recommended principal, rate, " +
+      "approve/decline, or probability of default. The broker decides. Not lending or underwriting advice.",
+    x402Version: 1,
+    scheme: "exact",
+    network: BASE_NETWORK,
+    asset: USDC_BASE_ASSET,
+    assetSymbol: "USDC",
+    payTo: BASE_PAY_TO,
+    maxTimeoutSeconds: 300,
+    facilitator: CDP_FACILITATOR_URL,
+    noSignup: true,
+    amount: PRICE_PER_UNDERWRITE_USDC.toFixed(6),
+    inputSchema: {
+      type: "object",
+      properties: {
+        borrower: { type: "string", pattern: "^r[1-9A-HJ-NP-Za-km-z]{24,34}$", description: "the borrower's XRPL address" },
+      },
+      required: ["borrower"],
+    },
+    factsOnlyNoRecommendation: true,
+    amendmentGated: "LendingProtocol (XLS-66) — 503 (with the live XRPLScore + OFAC result) until enabled on mainnet",
+    verify: `${origin}/api/attest/verify?queryId={queryId}`,
+    disclaimer: UNDERWRITE_DISCLAIMER,
+  };
+}
+
 export async function GET(req: Request) {
   const origin = new URL(req.url).origin;
   const asset = {
@@ -299,6 +335,7 @@ export async function GET(req: Request) {
         usdcMptResource(origin),
         usdcScreenResource(origin),
         usdcExposureResource(origin),
+        usdcUnderwriteResource(origin),
         usdcPlanResource(origin, "starter"),
         usdcPlanResource(origin, "growth"),
         usdcPlanResource(origin, "scale"),

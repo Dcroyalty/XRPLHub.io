@@ -1028,6 +1028,71 @@ export async function GET(req: Request) {
         },
       },
 
+      "/api/x402/lending/underwrite": {
+        get: {
+          operationId: "x402LendingUnderwrite",
+          summary: "XLS-66 underwriting inputs — full bundle (x402, $0.05 USDC on Base)",
+          description:
+            "Every input a LoanBroker needs for an XLS-66 underwriting decision in one call: cross-broker " +
+            "exposure (outstanding by asset, defaults, impairments), XRPLScore + grade, OFAC SDN screening " +
+            "with its own verifiable receipt, observation history + gaps, and one Merkle-anchored attestation " +
+            "over the whole bundle. FACTS ONLY — the response has no field for a recommended principal, rate, " +
+            "rate floor, approve/decline, probability of default, risk score, or eligibility, and never will. " +
+            "The lending decision, and responsibility for it, is entirely the broker's. Not lending or " +
+            "underwriting advice. x402 only — no free tier, no API-key path. Amendment-gated: 503 (carrying " +
+            "the live XRPLScore + OFAC result) until the LendingProtocol amendment enables on mainnet.",
+          tags: ["Lending"],
+          parameters: [borrowerParam],
+          "x-payment-info": {
+            price: { mode: "fixed", currency: "USD", amount: "0.050000" },
+            protocols: [{ x402: {} }],
+            description: "The full underwriting-inputs bundle for one borrower, USDC on Base via the CDP x402 facilitator.",
+          },
+          responses: {
+            "200": { description: "The bundle: exposure, score, screening (+ receipt), observation history, one attestation." },
+            "402": { description: "Payment Required — x402 challenge. Pay in USDC on Base and retry with the X-PAYMENT header." },
+            "503": { description: "LendingProtocol (XLS-66) not yet enabled — body carries the live XRPLScore + OFAC screening." },
+          },
+        },
+      },
+
+      "/api/execute/preview": {
+        post: {
+          operationId: "executePreview",
+          summary: "Free preview of a service transaction (no payment)",
+          description:
+            "Builds the exact service transaction and returns it DECODED, unsigned, with nothing submitted. " +
+            "For the MPT issuance builder (productId 'mptissue') it also returns the full manifest of what is " +
+            "PERMANENT once signed, a plain-English guide to all 6 capability flags (what each lets the issuer " +
+            "do to holders — clawback means you can take the token back from anyone), and the issuer's backing " +
+            "declaration echoed back with the hard line: XRPLHub publishes the declaration and does not verify " +
+            "it. Pay via /api/create-payment then /api/execute to actually build and sign. Free.",
+          security: [],
+          tags: ["Transactions"],
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["productId", "account"],
+                  properties: {
+                    productId: { type: "string", example: "mptissue" },
+                    account: { type: "string", pattern: "^r[1-9A-HJ-NP-Za-km-z]{24,34}$", description: "the issuer / signer" },
+                    params: { type: "object", description: "per-service params — see /api/mcp list_xrpl_services" },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            "200": { description: "The decoded txjson + (for mptissue) the permanence manifest, flag guide, and backing declaration." },
+            "400": { description: "Bad request / invalid params." },
+            "422": { description: "Missing required params (see needsParams)." },
+          },
+        },
+      },
+
       "/api/x402/usdc/score": {
         post: {
           operationId: "x402UsdcScore",

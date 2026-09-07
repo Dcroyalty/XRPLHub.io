@@ -120,6 +120,7 @@ Amendments object, no redeploy. Not underwriting or credit advice.
 - GET ${origin}/api/lending/history?borrower=r... — API key: every loan ever observed for this borrower, first/last observed, last-known status, ever-defaulted/impaired flags, and the ledger window in which any vanished loan disappeared. Carries a sweepCoverage block: when this borrower was last swept, which pass, and any gaps in the observation window (honest about what we did and didn't see).
 - A daily cron sweep re-observes EVERY borrower we've ever seen so the attested history has no gaps where nobody happened to run a paid query. Borrowers with active or impaired loans are swept first (their evidence is the most likely to be deleted). A sweep observation is byte-identical in the attested record to a paid one.
 - GET ${origin}/api/x402/lending/exposure?borrower=r... — $0.01 USDC on Base (x402), no key: adds every loan decoded, per-broker first-loss context (DebtTotal / CoverAvailable), vanished-loan detail, and the attestation receipt.
+- GET ${origin}/api/x402/lending/underwrite?borrower=r... — $0.05 USDC on Base (x402), no key, no free tier: the full underwriting-inputs bundle for a LoanBroker — cross-broker exposure + XRPLScore + OFAC SDN screening (with its own receipt) + observation history/gaps + ONE attestation over the whole bundle. FACTS ONLY: no recommended principal, rate, approve/decline, or probability of default. The broker decides. Amendment-gated (503 with the live XRPLScore + OFAC result until XLS-66 enables).
 - GET ${origin}/api/attest/verify?queryId=<uuid> — free: the exposure snapshot + Merkle inclusion proof + on-ledger anchor tx. The leaf commits to visibleLoanIds, so a loan later deleted is still provably attested to have existed.
 
 ## For AI agents
@@ -130,7 +131,7 @@ MCP server (Streamable HTTP, JSON-RPC 2.0, no auth):
 - Tools:
   - check_xrpl_score — free 300-850 wallet score + 8-signal breakdown + tips. Param: wallet_address.
   - list_xrpl_services — the 35 build_xrpl_transaction actions, each with its params + examples. No params.
-  - build_xrpl_transaction — ready-to-sign txjson for one of 35 XRPL actions. Params: product_id, wallet_address, params. Free.
+  - build_xrpl_transaction — ready-to-sign txjson for one of 35 XRPL actions. Params: product_id, wallet_address, params. Free. NOTE: mptissue (MPT issuance) has a full form — name, ticker, supply cap, decimals, 6 permanent capability flags (canTransfer/canTrade/canEscrow/canLock/requireAuth/canClawback — clawback = you can take the token back from any holder), an optional transfer fee, and a backing declaration (backingType, backingStatement, verifiedBy, redeemable). Free preview at POST /api/execute/preview shows the decoded tx + everything that is permanent + the flag guide + the backing hard line (XRPLHub publishes the declaration, never verifies it).
   - issue_score_credential — paid (1 XRP or 1 RLUSD) signed, verifiable score certificate, 90 days. Params: wallet_address, currency, uuid (2nd call).
   - submit_grant_application — apply for a 1-100 RLUSD community micro-grant. Params: wallet_address, category, amount, description.
   - donate_to_community_fund — donate XRP or RLUSD to the grant treasury. Params: amount, currency, donor_wallet, message.
@@ -167,6 +168,7 @@ x402 pay-per-call (USDC on Base, CDP facilitator, no signup):
 - GET ${origin}/api/x402/usdc/mpt/<48-hex id> — full MPT issuer risk, $0.01
 - GET ${origin}/api/x402/screen/ofac?address=r... — OFAC SDN screening attestation, $0.01 (process not ground truth; see the screening section above)
 - GET ${origin}/api/x402/lending/exposure?borrower=r... — XLS-66 cross-broker lending exposure, full detail + attestation, $0.01 (503 until XLS-66 activates; see the lending section above)
+- GET ${origin}/api/x402/lending/underwrite?borrower=r... — full underwriting-inputs bundle, $0.05, facts only, no recommendation (503 until XLS-66 activates)
 
 ## B2B API (prepaid key, 30-day term)
 

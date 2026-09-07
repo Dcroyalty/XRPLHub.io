@@ -6,6 +6,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { recordPurchase } from '@/lib/recordPurchase';
+import { prisma } from '@/lib/xrplscore-db';
+import { registerNewMptIssuance } from '@/lib/mptRegister';
 
 const XUMM_STATUS = 'https://xumm.app/api/v1/platform/payload';
 const XRPL_API    = 'https://xrplcluster.com/';
@@ -59,7 +61,11 @@ export async function GET(req: NextRequest) {
           serviceTxHash: hashParam, status: 'DELIVERED', deliveredAt: new Date().toISOString(),
         });
       } catch {}
-      return NextResponse.json({ status: 'delivered', txHash: hashParam });
+      let mpt: Awaited<ReturnType<typeof registerNewMptIssuance>> | undefined;
+      if (productId === 'mptissue') {
+        mpt = await registerNewMptIssuance(prisma, account || String(tx.Account ?? ''), tx).catch(() => undefined);
+      }
+      return NextResponse.json({ status: 'delivered', txHash: hashParam, mptIssuanceId: mpt?.issuanceId ?? null, registry: mpt });
     }
 
     if (!uuid) return NextResponse.json({ error: 'uuid required' }, { status: 400 });
@@ -84,15 +90,17 @@ export async function GET(req: NextRequest) {
     const txHash = data?.response?.txid;
     if (!txHash) return NextResponse.json({ status: 'pending' });
 
-    const result = await txResult(txHash);
+    const fullTx = await fetchTx(txHash);
+    const result = (fullTx?.meta as Record<string, unknown> | undefined)?.TransactionResult as string | undefined;
     if (!result) return NextResponse.json({ status: 'pending', txHash });
     if (result !== 'tesSUCCESS') return NextResponse.json({ status: 'failed', txHash, result });
 
     // Mark the purchase DELIVERED â€” directly in the DB (no internal HTTP hop).
     // blob = { productId, account, payTxHash }; payTxHash is the PAYMENT tx, the
     // key the check-payment row was written under, so map it to txHash.
+    let blob: { productId?: string; account?: string; payTxHash?: string } = {};
     try {
-      const blob = data?.custom_meta?.blob ? JSON.parse(data.custom_meta.blob) : {};
+      blob = data?.custom_meta?.blob ? JSON.parse(data.custom_meta.blob) : {};
       await recordPurchase({
         productId: blob.productId,
         sender: blob.account ?? null,
@@ -103,7 +111,12 @@ export async function GET(req: NextRequest) {
       });
     } catch {}
 
-    return NextResponse.json({ status: 'delivered', txHash });
+    let mpt: Awaited<ReturnType<typeof registerNewMptIssuance>> | undefined;
+    if (blob.productId === 'mptissue' && fullTx) {
+      mpt = await registerNewMptIssuance(prisma, blob.account || String(fullTx.Account ?? ''), fullTx).catch(() => undefined);
+    }
+
+    return NextResponse.json({ status: 'delivered', txHash, mptIssuanceId: mpt?.issuanceId ?? null, registry: mpt });
   } catch (err) {
     console.error('[execute/verify]', err);
     return NextResponse.json({ status: 'pending' });

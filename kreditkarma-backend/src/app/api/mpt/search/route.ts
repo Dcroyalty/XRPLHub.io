@@ -9,6 +9,7 @@ import { prisma } from "@/lib/xrplscore-db";
 import { isValidXrplAddress } from "@/lib/engine";
 import { mptCoverage, decodeMptFlags } from "@/lib/mptIndex";
 import { mptIssuanceLink, mptIssuerLink } from "@/lib/related";
+import { backingDeclarationView } from "@/lib/mptBacking";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -36,6 +37,9 @@ function shape(r: Awaited<ReturnType<typeof prisma.indexedMPT.findMany>>[number]
     flags: r.flagsRaw,                     // raw MPTokenIssuance Flags
     issuerPowers: decodeMptFlags(r.flagsRaw),
     metadata: r.metadata,                  // raw decoded MPTokenMetadata string (or null)
+    // What the issuer DECLARED backs this token (from the on-ledger metadata).
+    // XRPLHub does not verify it — see backingDeclaration.note.
+    backingDeclaration: backingDeclarationView(r.metadata),
     holderCount: r.holderCount,
     sources: r.sources ? r.sources.split(",").sort() : [],
     lastSeenAt: r.lastSeenAt.toISOString(),

@@ -9,6 +9,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { buildServiceTx } from './txBuilder';
+import { describeMptIssuanceCreate } from '@/lib/mptMeta';
+import { BACKING_HARD_LINE } from '@/lib/mptBacking';
 
 const XUMM_API  = 'https://xumm.app/api/v1/platform/payload';
 const XRPL_API  = 'https://xrplcluster.com/';
@@ -54,6 +56,26 @@ export async function POST(req: NextRequest) {
     }
     // Caution tier requires explicit customer acknowledgement of irreversibility risk.
     if (built.tier === 'caution' && !confirmedCaution) {
+      // MPT issuance: spell out EXACTLY what can't be undone — the flag choices,
+      // the fixed supply/scale/fee/metadata, and the backing hard line.
+      if (productId === 'mptissue') {
+        const manifest = describeMptIssuanceCreate(built.txjson as Record<string, unknown>);
+        return NextResponse.json({
+          tier: 'caution',
+          requiresConfirmation: true,
+          label: built.label,
+          permanent: true,
+          warning:
+            'MPTokenIssuanceCreate is the ONLY chance to set these. None of it can be changed after you sign: ' +
+            'the 6 capability flags, the supply cap, decimals, transfer fee, and the metadata (including the backing declaration).',
+          manifest,
+          irreversible: manifest.irreversible,
+          backingNotice: BACKING_HARD_LINE,
+          confirmPrompt:
+            'I understand every choice above is permanent, and that XRPLHub publishes my backing declaration ' +
+            'without verifying it.',
+        }, { status: 409 });
+      }
       return NextResponse.json({
         tier: 'caution',
         requiresConfirmation: true,

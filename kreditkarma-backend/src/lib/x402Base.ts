@@ -42,6 +42,7 @@ export const PRICE_PER_SCORE_USDC = 0.01;
 export const PRICE_PER_MPT_USDC = 0.01; // full MPT issuer risk view
 export const PRICE_PER_SCREEN_USDC = 0.01; // one OFAC SDN screening attestation
 export const PRICE_PER_EXPOSURE_USDC = 0.01; // full XLS-66 cross-broker lending exposure
+export const PRICE_PER_UNDERWRITE_USDC = 0.05; // the full underwriting-inputs bundle (exposure + score + OFAC + attestation)
 
 // Display-only mirror of what @coinbase/x402's `facilitator` actually calls —
 // for the .well-known/x402 discovery document, which needs a URL string, not

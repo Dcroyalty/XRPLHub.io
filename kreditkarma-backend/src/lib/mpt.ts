@@ -14,6 +14,7 @@
 
 import { convertHexToString } from "xrpl";
 import { connectMainnetOrThrow } from "./credentials";
+import { backingDeclarationView } from "./mptBacking";
 import { listCredentialsHeldBy, type LiveCredential } from "./credentialLookup";
 import { scoreWallet, AccountNotFoundError } from "./xrplscore";
 import { bithompMptLookup, bithompConfigured } from "./bithomp";
@@ -64,6 +65,10 @@ export interface MptRisk {
     requiresAuth: boolean;   // issuer must approve each holder
     transferable: boolean;   // false = can only be returned to issuer (store credit)
   } | null;
+  /** What the issuer DECLARED backs the token (on-ledger, immutable). XRPLHub
+   *  publishes this; it does not verify it. `declared` is null for issuances
+   *  created before the declaration convention. */
+  backingDeclaration?: ReturnType<typeof backingDeclarationView>;
   issuerRisk: {
     xrplScore: number | null;
     grade: string | null;
@@ -174,19 +179,27 @@ export async function getMptRisk(issuanceId: string, opts: { full?: boolean } = 
     requiresAuth: (flags & F.requireAuth) !== 0,
     transferable: (flags & F.canTransfer) !== 0,
   };
+  const metaRaw = node.MPTokenMetadata as string | undefined;
+  let metaDecoded: string | null = null;
+  if (metaRaw) {
+    try { metaDecoded = convertHexToString(metaRaw); } catch { metaDecoded = null; }
+  }
   const issuance = {
     assetScale: Number(node.AssetScale ?? 0),
     maximumAmount: node.MaximumAmount != null ? String(node.MaximumAmount) : null,
     outstandingAmount: String(node.OutstandingAmount ?? "0"),
     transferFeeBps: Number(node.TransferFee ?? 0) / 10,
-    metadata: parseMetadata(node.MPTokenMetadata as string | undefined),
+    metadata: parseMetadata(metaRaw),
   };
+  // What the issuer DECLARED backs this token (on-ledger, immutable). XRPLHub
+  // does not and cannot verify it — see backingDeclaration.note.
+  const backingDeclaration = backingDeclarationView(metaDecoded);
 
   if (!full) {
     return {
       issuanceId: id, found: true, tier: "basic",
       source: { ledger: "MPTokenIssuance present on the validated ledger (live read)", bithompIndex: bithompStr, interpretation: "exists" },
-      issuer, issuance, issuerPowers,
+      issuer, issuance, issuerPowers, backingDeclaration,
       issuerRisk: { xrplScore, grade: gradeStr },
       related: [mptFullLink(id)],
     };
@@ -215,7 +228,7 @@ export async function getMptRisk(issuanceId: string, opts: { full?: boolean } = 
   return {
     issuanceId: id, found: true, tier: "full",
     source: { ledger: "MPTokenIssuance present on the validated ledger (live read)", bithompIndex: bithompStr, interpretation: "exists" },
-    issuer, issuance, issuerPowers,
+    issuer, issuance, issuerPowers, backingDeclaration,
     issuerRisk: {
       xrplScore, grade: gradeStr, accountAgeDays, blackholed, domain, domainVerified,
       credentialsHeld: credList.length,

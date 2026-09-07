@@ -12,7 +12,7 @@
 // Stateless — zero new infrastructure, runs on Vercel as a standard serverless fn.
 // No new npm packages required.
 //
-// EIGHTEEN TOOLS:
+// NINETEEN TOOLS:
 //   1. check_xrpl_score        — free 300–850 wallet creditworthiness score
 //   2. list_xrpl_services      — the 35 build_xrpl_transaction actions + their params
 //   3. build_xrpl_transaction  — ready-to-sign txjson for any of 35 XRPL actions
@@ -31,6 +31,7 @@
 //  16. verify_attestation      — free: inclusion proof + on-ledger anchor for a screening / lending receipt
 //  17. get_lending_exposure    — free: a borrower's total XLS-66 exposure across ALL brokers + observation history
 //  18. get_lending_history     — free: every loan XRPLHub has ever observed for a borrower
+//  19. get_underwriting_inputs — paid ($0.05 USDC/Base x402): the full underwriting-inputs bundle, facts only
 //
 // © 2026 XRPLHub.io · XRPLScore™ · All Rights Reserved
 // ═══════════════════════════════════════════════════════════════════════════
@@ -412,6 +413,23 @@ export const TOOLS = [
     },
   },
   {
+    name: 'get_underwriting_inputs',
+    description:
+      "The full underwriting-inputs bundle a LoanBroker needs for an XLS-66 decision, in one call: " +
+      "cross-broker exposure, XRPLScore + grade, OFAC SDN screening (with its own verifiable receipt), " +
+      "observation history + gaps, and one Merkle-anchored attestation over the whole bundle. " +
+      "FACTS ONLY — it never returns a recommended principal, rate, approve/decline, or probability of " +
+      "default; the broker decides. This is a PAID x402 call: $0.05 USDC on Base at " +
+      "GET /api/x402/lending/underwrite?borrower=r... (no free tier, no API key). For the free components " +
+      "use get_lending_exposure and screen_address_ofac. This tool returns the payment resource details. " +
+      "Params: borrower (r..., required).",
+    inputSchema: {
+      type: 'object',
+      properties: { borrower: { type: 'string', description: 'XRPL classic address (r...) of the borrower' } },
+      required: ['borrower'],
+    },
+  },
+  {
     name: 'get_lending_history',
     description:
       "Every loan XRPLHub has EVER observed for a borrower, built from append-only exposure snapshots — the " +
@@ -691,6 +709,35 @@ async function toolGetLendingExposure(args: Record<string, unknown>): Promise<st
   } catch (e) {
     return JSON.stringify({ error: `Lending exposure query failed: ${e instanceof Error ? e.message : 'unknown'}` });
   }
+}
+
+async function toolGetUnderwritingInputs(args: Record<string, unknown>): Promise<string> {
+  const borrower = String(args.borrower || '').trim();
+  if (!borrower.startsWith('r') || borrower.length < 25 || borrower.length > 35) {
+    return JSON.stringify({ error: 'Invalid XRPL address. Must start with r and be 25–35 characters.' });
+  }
+  // Paid x402 call — no free tier. Return the payment resource so an agent with a
+  // wallet can pay for it, and point at the free components.
+  return JSON.stringify(
+    {
+      paid: true,
+      resource: `${API_URL}/api/x402/lending/underwrite?borrower=${encodeURIComponent(borrower)}`,
+      price: '0.05 USDC on Base (x402)',
+      returns:
+        'cross-broker exposure + XRPLScore + OFAC SDN screening (with receipt) + observation history/gaps + one attestation over the whole bundle',
+      factsOnly:
+        'No recommended principal, rate, approve/decline, or probability of default. The lending decision is entirely the broker’s.',
+      freeComponents: {
+        exposure: 'MCP tool get_lending_exposure',
+        screening: 'MCP tool screen_address_ofac',
+        history: 'MCP tool get_lending_history',
+      },
+      amendmentGated: 'XLS-66 not yet enabled — the paid call returns 503 (with the live XRPLScore + OFAC result) until it is.',
+      discovery: `${API_URL}/.well-known/x402`,
+    },
+    null,
+    2
+  );
 }
 
 async function toolGetLendingHistory(args: Record<string, unknown>): Promise<string> {
@@ -1173,6 +1220,8 @@ export async function POST(req: NextRequest) {
         output = await toolGetLendingExposure(toolArgs);
       } else if (toolName === 'get_lending_history') {
         output = await toolGetLendingHistory(toolArgs);
+      } else if (toolName === 'get_underwriting_inputs') {
+        output = await toolGetUnderwritingInputs(toolArgs);
       } else {
         return rpcError(id, -32601, `Tool not found: ${toolName}`);
       }

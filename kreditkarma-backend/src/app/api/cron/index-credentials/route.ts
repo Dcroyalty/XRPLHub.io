@@ -18,6 +18,7 @@ import { notifyError } from "@/lib/notify";
 import { refreshSdnSnapshot } from "@/lib/ofac";
 import { maybeAnchorScreeningReceipts } from "@/lib/screenAnchor";
 import { maybeAnchorLendingReceipts } from "@/lib/lendingAnchor";
+import { maybeAnchorUnderwriteReceipts } from "@/lib/underwriteAnchor";
 import { runLendingSweep } from "@/lib/lendingSweep";
 
 export const runtime = "nodejs";
@@ -65,7 +66,12 @@ export async function GET(req: Request) {
       return { attempted: false, submitted: false, reason: "anchor threw", leafCount: 0 };
     });
 
-    return NextResponse.json({ ...progress, sdn, lendingSweep, screeningAnchor, lendingAnchor });
+    const underwriteAnchor = await maybeAnchorUnderwriteReceipts(prisma).catch((e) => {
+      void notifyError("cron/index-credentials underwrite-anchor", e);
+      return { attempted: false, submitted: false, reason: "anchor threw", leafCount: 0 };
+    });
+
+    return NextResponse.json({ ...progress, sdn, lendingSweep, screeningAnchor, lendingAnchor, underwriteAnchor });
   } catch (err) {
     await notifyError("cron/index-credentials", err);
     console.error("[cron/index-credentials]", err);

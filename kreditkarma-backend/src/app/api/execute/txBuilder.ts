@@ -10,6 +10,10 @@
 // Every builder returns a txjson object for the customer's own wallet.
 // Params come from the customer (validated here). Never trust raw input.
 
+import { buildMptFlagsValue, flagSelectionFromParams } from '@/lib/mptFlags';
+import { normalizeBacking, validateBacking, type BackingDeclaration } from '@/lib/mptBacking';
+import { buildMptMetadata } from '@/lib/mptMeta';
+
 export type SafetyTier = 'safe' | 'caution' | 'blocked';
 
 export interface BuildResult {
@@ -87,15 +91,67 @@ const builders: Record<string, Builder> = {
     return SAFE({ TransactionType: 'AccountSet', Account: account, [enable ? 'ClearFlag' : 'SetFlag']: 8 }, 'Rippling Control');
   },
   mptissue: (account, p) => {
-    const max = str(p.maximumAmount || '1000000000');
-    const scale = Number(p.assetScale || 0);
-    return SAFE({
+    // Full MPTokenIssuanceCreate builder. Every choice here is PERMANENT
+    // (XLS-33 §3.1.1) so this is `caution` tier — the execute route forces a
+    // confirmation manifest before signing. See src/lib/mptFlags.ts,
+    // src/lib/mptBacking.ts, src/lib/mptMeta.ts.
+    const name = str(p.name);
+    const ticker = str(p.ticker);
+    const max = str(p.maximumAmount);
+    if (!name || !ticker || !max) return NEED(['name', 'ticker', 'maximumAmount']);
+    if (name.length > 64) return BAD('name must be 64 characters or fewer');
+    if (ticker.length > 6 || !/^[A-Za-z0-9]+$/.test(ticker)) return BAD('ticker must be 1–6 letters or digits');
+
+    let maxBig: bigint;
+    try {
+      maxBig = BigInt(max);
+    } catch {
+      return BAD('maximum supply must be a whole number');
+    }
+    const MAX_MPT_SUPPLY = BigInt('9223372036854775807'); // 0x7FFF_FFFF_FFFF_FFFF
+    if (maxBig <= BigInt(0) || maxBig > MAX_MPT_SUPPLY) return BAD('maximum supply must be between 1 and 9223372036854775807');
+
+    const scale = Number(p.assetScale ?? 0);
+    if (!Number.isInteger(scale) || scale < 0 || scale > 19) return BAD('decimal places (assetScale) must be a whole number 0–19');
+
+    const sel = flagSelectionFromParams(p as Record<string, unknown>);
+    const flags = buildMptFlagsValue(sel);
+
+    // TransferFee is only valid with tfMPTCanTransfer (else temMALFORMED on-ledger).
+    let transferFee: number | undefined;
+    if (p.transferFee !== undefined && p.transferFee !== '' && Number(p.transferFee) > 0) {
+      if (!sel.canTransfer) return BAD('a transfer fee requires "holders can transfer" to be enabled');
+      const pct = Number(p.transferFee);
+      if (!Number.isFinite(pct) || pct < 0 || pct > 50) return BAD('transfer fee must be between 0% and 50%');
+      transferFee = Math.round(pct * 1000); // percent -> tenths of a basis point
+    }
+
+    const backing = normalizeBacking({
+      backingType: str(p.backingType) as BackingDeclaration['backingType'],
+      backingStatement: str(p.backingStatement) ?? '',
+      verifiedBy: str(p.verifiedBy),
+      redeemable: str(p.redeemable) as BackingDeclaration['redeemable'],
+    });
+    const bErr = validateBacking(backing);
+    if (bErr) return BAD(bErr);
+
+    const weblink = str(p.metadataUrl) || undefined;
+    if (weblink && !/^https?:\/\/.+/i.test(weblink)) return BAD('metadata URL must start with http:// or https://');
+
+    const md = buildMptMetadata({ name, ticker: ticker.toUpperCase(), weblink, backing });
+    if (md.bytes > 1024) return BAD('metadata is too large (>1024 bytes) — shorten the name or the backing statement');
+
+    const txjson: Record<string, unknown> = {
       TransactionType: 'MPTokenIssuanceCreate',
       Account: account,
-      MaximumAmount: max,
+      MaximumAmount: maxBig.toString(),
       AssetScale: scale,
-      Flags: 0x0000002, // tfMPTCanTransfer
-    }, 'Issue Multi-Purpose Token');
+      Flags: flags,
+      MPTokenMetadata: md.hex,
+    };
+    if (transferFee !== undefined) txjson.TransferFee = transferFee;
+
+    return CAUTION(txjson, 'Multi-Purpose Token Issuance');
   },
   mptsend: (account, p) => {
     const dest = str(p.destination), issuanceId = str(p.mptIssuanceId), amount = str(p.amount);

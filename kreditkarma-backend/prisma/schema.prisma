@@ -565,6 +565,57 @@ model LendingBorrowerSweep {
   @@index([lastSweptPass])
 }
 
+// One lending-underwriting-inputs bundle (underwrite-bundle-v1). FACTS ONLY —
+// composes an exposure snapshot, an OFAC screening receipt, the XRPLScore and
+// the observation summary. Carries no recommendation. The leaf commits to the
+// component leaf hashes; each component is also independently verifiable.
+model UnderwriteBundleReceipt {
+  queryId          String   @id
+  borrower         String
+  ledgerIndex      Int
+  requestedBy      String
+  exposureQueryId  String
+  screeningQueryId String?
+  xrplScore        Int?
+  screeningListed  Boolean  @default(false)
+  worstStatus      String   @default("none")
+  leafJson         Json
+  leafHash         String
+  canonVersion     String   @default("underwrite-bundle-v1")
+  engineVersion    String   @default("underwrite-bundle-v1")
+  anchorId         String?
+  anchor           UnderwriteBundleAnchor? @relation(fields: [anchorId], references: [id])
+  createdAt        DateTime @default(now())
+
+  @@index([borrower, createdAt])
+  @@index([anchorId])
+  @@index([createdAt])
+}
+
+model UnderwriteBundleAnchor {
+  id           String   @id @default(cuid())
+  canonVersion String
+  merkleRoot   String
+  leafCount    Int
+  rangeStart   DateTime?
+  rangeEnd     DateTime?
+  memo         String
+  txHash       String?  @unique
+  ledgerIndex  Int?
+  account      String?
+  feeDrops     String?
+  closeTime    DateTime?
+  status       String   @default("pending")
+  error        String?
+  createdAt    DateTime @default(now())
+  anchoredAt   DateTime?
+
+  receipts     UnderwriteBundleReceipt[]
+
+  @@index([status])
+  @@index([createdAt])
+}
+
 // One daily Merkle anchor over a batch of exposure snapshots. Same wallet + hash
 // scheme as ScreeningAnchor / MptAnchor; separate memo type + batch.
 model LendingExposureAnchor {
