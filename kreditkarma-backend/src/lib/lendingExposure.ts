@@ -38,11 +38,11 @@ const LSF_LOAN_IMPAIRED = 0x00020000;
 const LSF_LOAN_OVERPAYMENT = 0x00040000;
 
 export const LENDING_EXPOSURE_DESCRIPTION =
-  "A borrower's total XLS-66 lending exposure across ALL loan brokers in one call — total outstanding by " +
-  "asset, loan count, distinct broker count, any impairments or defaults, and XRPLHub's XRPLScore. The XRP " +
-  "Ledger has no aggregate borrower-debt object; a broker sees only its own loans. Reflects the validated " +
-  "ledger NOW: defaulted loans zero their own amounts and paid/defaulted loans get deleted, so absence is " +
-  "not proof of no borrowing history. Not underwriting or credit advice.";
+  "A borrower's total XLS-66 lending exposure across ALL loan brokers in one call: outstanding by asset, " +
+  "loan count, broker count, impairments, defaults, plus XRPLHub's XRPLScore. The XRP Ledger has no " +
+  "aggregate borrower-debt object; a broker sees only its own loans. Reflects the validated ledger NOW: " +
+  "defaulted loans zero their own amounts and paid/defaulted loans get deleted, so absence is not proof " +
+  "of no borrowing history. Not underwriting or credit advice.";
 
 export const LENDING_DISCLAIMER =
   "This is on-chain lending exposure as the validated XRP Ledger shows it at the stated ledger index. " +
