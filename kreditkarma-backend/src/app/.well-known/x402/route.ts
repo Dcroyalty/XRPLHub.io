@@ -22,7 +22,13 @@ import {
   TREASURY_ADDRESS,
 } from "@/lib/paycall";
 import { BUILDABLE_SERVICE_IDS } from "@/app/api/execute/serviceCatalog";
-import { BASE_PAY_TO, BASE_NETWORK, USDC_BASE_ASSET, CDP_FACILITATOR_URL, PRICE_PER_SCORE_USDC, PRICE_PER_MPT_USDC } from "@/lib/x402Base";
+import { BASE_PAY_TO, BASE_NETWORK, USDC_BASE_ASSET, CDP_FACILITATOR_URL, PRICE_PER_SCORE_USDC, PRICE_PER_MPT_USDC, PRICE_PER_SCREEN_USDC } from "@/lib/x402Base";
+import {
+  SCREEN_OFAC_DESCRIPTION,
+  SCREEN_OFAC_INPUT_SCHEMA,
+  SCREEN_OFAC_OUTPUT_SCHEMA,
+  SCREEN_OFAC_OUTPUT_EXAMPLE,
+} from "@/lib/screen";
 import { PLANS, type PlanId } from "@/lib/plans";
 import { USDC_PLAN_OUTPUT_SCHEMA, usdcPlanOutputExample } from "@/lib/checkoutUsdc";
 import { walletProp, SCORE_OUTPUT_SCHEMA as scoreOutputSchema, SCORE_OUTPUT_EXAMPLE as scoreOutputExample } from "@/lib/scoreSchema";
@@ -155,6 +161,38 @@ function usdcMptResource(origin: string) {
   };
 }
 
+// OFAC SDN screening attestation — paid, no signup. The API-key route at
+// /api/screen/ofac stays free for key holders (free tier included).
+function usdcScreenResource(origin: string) {
+  return {
+    resource: `${origin}/api/x402/screen/ofac`,
+    method: "GET",
+    name: "OFAC SDN screening attestation — pay per call in USDC on Base",
+    description: SCREEN_OFAC_DESCRIPTION,
+    x402Version: 1,
+    scheme: "exact",
+    network: BASE_NETWORK,
+    asset: USDC_BASE_ASSET,
+    assetSymbol: "USDC",
+    payTo: BASE_PAY_TO,
+    maxTimeoutSeconds: 300,
+    facilitator: CDP_FACILITATOR_URL,
+    noSignup: true,
+    amount: PRICE_PER_SCREEN_USDC.toFixed(6),
+    inputSchema: {
+      type: "object",
+      properties: { address: SCREEN_OFAC_INPUT_SCHEMA.properties.address },
+      required: ["address"],
+      description: "?address=<r-address> query parameter.",
+    },
+    outputSchema: SCREEN_OFAC_OUTPUT_SCHEMA,
+    outputExample: SCREEN_OFAC_OUTPUT_EXAMPLE,
+    attestsProcessNotGroundTruth: true,
+    verify: `${origin}/api/attest/verify?queryId={queryId}`,
+    terms: `${origin}/legal/screening`,
+  };
+}
+
 export async function GET(req: Request) {
   const origin = new URL(req.url).origin;
   const asset = {
@@ -223,6 +261,7 @@ export async function GET(req: Request) {
         },
         usdcScoreResource(origin),
         usdcMptResource(origin),
+        usdcScreenResource(origin),
         usdcPlanResource(origin, "starter"),
         usdcPlanResource(origin, "growth"),
         usdcPlanResource(origin, "scale"),
@@ -241,6 +280,10 @@ export async function GET(req: Request) {
         freeMptSearch: `${origin}/api/mpt/search?q={query}`,
         freeMptIssuer: `${origin}/api/mpt/issuer?address={issuer}`,
         freeMptAnchor: `${origin}/api/mpt/anchor`,
+        ofacScreenWithApiKey: `${origin}/api/screen/ofac?address={wallet}`,
+        screeningVerify: `${origin}/api/attest/verify?queryId={queryId}`,
+        screeningSpec: `${origin}/api/attest/anchor`,
+        screeningTerms: `${origin}/legal/screening`,
       },
       // Stable machine-readable error codes returned by the RLUSD/t54 paid
       // routes. `error` is always one of these keys; the value describes it.

@@ -12,7 +12,7 @@
 // Stateless — zero new infrastructure, runs on Vercel as a standard serverless fn.
 // No new npm packages required.
 //
-// FOURTEEN TOOLS:
+// SIXTEEN TOOLS:
 //   1. check_xrpl_score        — free 300–850 wallet creditworthiness score
 //   2. list_xrpl_services      — the 35 build_xrpl_transaction actions + their params
 //   3. build_xrpl_transaction  — ready-to-sign txjson for any of 35 XRPL actions
@@ -27,6 +27,8 @@
 //  12. get_issuer_mpts         — free, indexed: everything one issuer has issued + its score
 //  13. verify_mpt_registry     — free: the latest on-ledger Merkle-root anchor of the registry
 //  14. check_service_health    — free: is the money path up before you pay
+//  15. screen_address_ofac     — free: compare an address to a pinned OFAC SDN snapshot (process, not ground truth)
+//  16. verify_attestation      — free: inclusion proof + on-ledger anchor for a screening receipt
 //
 // © 2026 XRPLHub.io · XRPLScore™ · All Rights Reserved
 // ═══════════════════════════════════════════════════════════════════════════
@@ -34,6 +36,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { buildServiceTx } from '@/app/api/execute/txBuilder';
 import { SERVICE_CATALOG, SERVICE_IDS, serviceParamLines } from '@/app/api/execute/serviceCatalog';
+import { prisma } from '@/lib/xrplscore-db';
+import { screenOfac, NoSnapshotError } from '@/lib/screen';
+import { isValidXrplAddress } from '@/lib/engine';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://www.xrplhub.io';
 
@@ -50,10 +55,11 @@ const CORS = {
 // JSON-RPC surface (one source of truth for scanners like Smithery).
 export const MCP_SERVER_INFO = {
   name: 'xrplhub',
-  version: '1.8.0',
+  version: '1.9.0',
   description:
     'Free XRPL wallet creditworthiness scores · ready-to-sign txjson for 35 XRPL actions · ' +
-    'verifiable score credential · credential + permissioned domain explorer · MPT issuer risk · community micro-grants · donations',
+    'verifiable score credential · credential + permissioned domain explorer · MPT issuer risk · ' +
+    'OFAC SDN screening attestation (process, not ground truth) · community micro-grants · donations',
 };
 
 // ─── TOOL DEFINITIONS (descriptions are the marketing copy to the AI) ────────
@@ -336,6 +342,51 @@ export const TOOLS = [
       required: ['amount'],
     },
   },
+  {
+    name: 'screen_address_ofac',
+    description:
+      'Compare one XRPL address against a vintage-pinned snapshot of the US Treasury OFAC SDN list ' +
+      '(exact address-string match only) and get a factual, Merkle-anchored receipt. ' +
+      'ATTESTS TO PROCESS, NOT GROUND TRUTH: the receipt records that the address was compared against a ' +
+      'named list snapshot (its OFAC publish date + the SHA-256 of the exact file) at a stated time, and ' +
+      'what the comparison found. A "no match" means the address did NOT appear on that list version — it ' +
+      'is NOT a statement that the address is clean, safe, or unsanctioned. This is not legal or compliance ' +
+      'advice, makes no compliance decision, and does not discharge your own screening obligations. Scope: ' +
+      'OFAC SDN only — no EU/UK/UN lists, no name/alias/fuzzy matching, no transaction-graph analysis. ' +
+      'Returns queryId (verify it later with verify_attestation), the list {name,vintage,sha256}, ' +
+      'result {listed, matches[]}, and a one-sentence factual statement. ' +
+      'Params: address (r..., required). Free via MCP. Terms: /legal/screening.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        address: {
+          type: 'string',
+          description: 'XRPL classic address (r..., 25–35 chars) to compare against the OFAC SDN list',
+        },
+      },
+      required: ['address'],
+    },
+  },
+  {
+    name: 'verify_attestation',
+    description:
+      "Given a screening receipt's queryId (from screen_address_ofac), return everything needed to verify " +
+      'it WITHOUT trusting XRPLHub: the canonical leaf, its Merkle inclusion proof, the on-ledger anchor ' +
+      'transaction hash + ledger close time, and the SHA-256 of the OFAC SDN snapshot that was screened ' +
+      'against. Rebuild the leaf, fold the proof to the Merkle root, confirm that root is in the anchor ' +
+      "tx's MemoData, and re-hash the cited OFAC publication. Before the daily anchor runs the receipt " +
+      'shows status "pending" with the leaf hash only. Params: query_id (UUID, required). Free, no signup.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query_id: {
+          type: 'string',
+          description: 'The screening receipt queryId (UUID) returned by screen_address_ofac',
+        },
+      },
+      required: ['query_id'],
+    },
+  },
 ];
 
 // ─── TOOL IMPLEMENTATIONS ─────────────────────────────────────────────────────
@@ -495,6 +546,57 @@ async function toolVerifyMptRegistry(): Promise<string> {
     return JSON.stringify(d, null, 2);
   } catch (e) {
     return JSON.stringify({ error: `Anchor lookup failed: ${e instanceof Error ? e.message : 'unknown'}` });
+  }
+}
+
+async function toolScreenAddressOfac(args: Record<string, unknown>): Promise<string> {
+  const address = String(args.address || '').trim();
+  if (!isValidXrplAddress(address)) {
+    return JSON.stringify({ error: 'Invalid XRPL address. Must start with r and be 25–35 characters.' });
+  }
+  try {
+    const out = await screenOfac(prisma, address, 'mcp');
+    return JSON.stringify(
+      {
+        attestation: {
+          queryId: out.queryId,
+          canonVersion: 'ofac-screen-v1',
+          engineVersion: out.leaf.engineVersion,
+          leafHash: out.leafHash,
+          verify: `${API_URL}/api/attest/verify?queryId=${out.queryId}`,
+        },
+        subject: out.leaf.subjectAddress,
+        screenedAt: out.leaf.screenedAt,
+        method: 'exact-match',
+        ledgerIndex: out.leaf.ledgerIndex,
+        lists: out.leaf.lists,
+        result: out.leaf.result,
+        statement: out.statement,
+        attestsProcessNotGroundTruth:
+          'A "no match" means the address did not appear on the named OFAC SDN snapshot — NOT that it is clean, safe, or unsanctioned. Not legal/compliance advice; does not discharge your screening obligations.',
+        terms: `${API_URL}/legal/screening`,
+      },
+      null,
+      2
+    );
+  } catch (e) {
+    if (e instanceof NoSnapshotError) return JSON.stringify({ error: e.message });
+    return JSON.stringify({ error: `Screen failed: ${e instanceof Error ? e.message : 'unknown'}` });
+  }
+}
+
+async function toolVerifyAttestation(args: Record<string, unknown>): Promise<string> {
+  const queryId = String(args.query_id || '').trim();
+  if (!queryId) return JSON.stringify({ error: 'query_id is required (the UUID from screen_address_ofac).' });
+  try {
+    const res = await fetch(`${API_URL}/api/attest/verify?queryId=${encodeURIComponent(queryId)}`, {
+      signal: AbortSignal.timeout(15000),
+    });
+    const d = await res.json();
+    if (!res.ok) return JSON.stringify({ error: d.message || `Verify failed (HTTP ${res.status})` });
+    return JSON.stringify(d, null, 2);
+  } catch (e) {
+    return JSON.stringify({ error: `Verify lookup failed: ${e instanceof Error ? e.message : 'unknown'}` });
   }
 }
 
@@ -951,6 +1053,10 @@ export async function POST(req: NextRequest) {
         output = await toolVerifyMptRegistry();
       } else if (toolName === 'check_service_health') {
         output = await toolCheckServiceHealth();
+      } else if (toolName === 'screen_address_ofac') {
+        output = await toolScreenAddressOfac(toolArgs);
+      } else if (toolName === 'verify_attestation') {
+        output = await toolVerifyAttestation(toolArgs);
       } else {
         return rpcError(id, -32601, `Tool not found: ${toolName}`);
       }

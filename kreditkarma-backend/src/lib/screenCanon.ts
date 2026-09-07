@@ -60,7 +60,7 @@ export const SCREEN_CANON_SPEC = {
     keys: [
       "queryId", // UUIDv4
       "subjectAddress", // the XRPL address screened, verbatim as supplied (after whitespace trim)
-      "requestedBy", // "key:<keyPrefix>" | "x402:<invoiceId>" | "public"
+      "requestedBy", // "key:<keyPrefix>" | "x402:<paymentId>" | "mcp" | "public"
       "lists", // [{ "name", "vintage", "sha256" }], sorted by name ascending
       "method", // "exact-match"
       "result", // { "listed": false } | { "listed": true, "matches": [ { "list","entryId","entryName","addressField" } ] }; matches sorted by [list, entryId]

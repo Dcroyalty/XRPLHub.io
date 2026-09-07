@@ -420,7 +420,7 @@ model SanctionedAddress {
 model ScreeningReceipt {
   queryId        String   @id                  // UUIDv4
   subjectAddress String
-  requestedBy    String                        // "key:<keyPrefix>" | "x402:<invoiceId>" | "public"
+  requestedBy    String                        // "key:<keyPrefix>" | "x402:<paymentId>" | "mcp" | "public"
   screenedAt     DateTime                      // instant of the comparison (ms precision; also in the leaf)
   method         String   @default("exact-match")
   ledgerIndex    Int      @default(0)          // validated ledger index pinned at screen time; 0 if unknown

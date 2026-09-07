@@ -72,6 +72,26 @@ and "partial" must be read as a floor, not the whole population.
 - GET ${origin}/api/mpt/<48-hex MPTokenIssuanceID> — free, live: issuance facts + issuer powers + issuer score/grade
 - GET ${origin}/api/x402/usdc/mpt/<48-hex id> — $0.01 USDC on Base (x402): full issuer risk — account age, xrp-ledger.toml-verified domain, credentials held, Bithomp cross-check
 
+## OFAC SDN screening attestation
+
+Compare one XRPL address against a vintage-pinned snapshot of the US Treasury
+OFAC SDN list (exact address-string match only) and get a factual receipt that
+is Merkle-anchored on-ledger daily. The receipt attests to PROCESS, not ground
+truth: it records that the address was compared against a named list snapshot
+(identified by its OFAC publish date and the SHA-256 of the exact file) at a
+stated time, and what the comparison found. A "no match" means the address did
+not appear on that list version — it is NOT a statement that the address is
+clean, safe, or unsanctioned. It is not legal or compliance advice, makes no
+compliance decision, and does not discharge your own screening obligations.
+Scope: OFAC SDN only (no EU/UK/UN, no Consolidated list, no name/alias/fuzzy
+matching, no 1-hop graph analysis). Full terms: ${origin}/legal/screening
+
+- GET ${origin}/api/screen/ofac?address=r... — API key (a free key works), metered. Returns queryId, the list {name, vintage, sha256}, result {listed, matches[]}, a one-sentence factual statement, the canonical leaf, and the disclaimer.
+- GET ${origin}/api/x402/screen/ofac?address=r... — $0.01 USDC on Base (x402), no key, no signup. Same receipt.
+- GET ${origin}/api/attest/verify?queryId=<uuid> — free: the receipt + Merkle inclusion proof + anchor tx hash + ledger close time + list hash. Verify without trusting XRPLHub. Add &include=snapshot for the full canonical list archive.
+- GET ${origin}/api/attest/anchor — free: the frozen ofac-screen-v1 canonicalisation spec, the sanction-screen-v1 engine rules + version-bump policy, the current SDN snapshot, and the latest on-ledger anchor.
+- engineVersion "sanction-screen-v1" is immutable per receipt — it changes only if the match algorithm changes (normalisation, match rule, extracted idTypes, source lists, snapshot selection). A newer SDN snapshot is a new vintage, not a version bump.
+
 ## For AI agents
 
 MCP server (Streamable HTTP, JSON-RPC 2.0, no auth):
@@ -92,6 +112,8 @@ MCP server (Streamable HTTP, JSON-RPC 2.0, no auth):
   - get_issuer_mpts — every MPT one issuer has out + the issuer's XRPLScore, from the index. Param: issuer_address. Free.
   - verify_mpt_registry — the latest on-ledger Merkle-root anchor of the registry + tx hash + ledger index + the canonicalisation scheme to reproduce the root. No params. Free.
   - check_service_health — DB / Xaman / both x402 facilitators / anchor config, up or down. Poll before paying. No params. Free.
+  - screen_address_ofac — compare one XRPL address against a vintage-pinned OFAC SDN snapshot (exact match only); returns a Merkle-anchored receipt. Attests to PROCESS, not ground truth — a "no match" is NOT "this address is clean". Param: address. Free via MCP.
+  - verify_attestation — given a screening receipt's queryId, return the inclusion proof + on-ledger anchor tx + list hash so it can be verified without trusting XRPLHub. Param: query_id. Free.
 
 Health: GET ${origin}/api/health  (503 when a money-path component is down; ?deep=1 for live facilitator probes)
 
@@ -111,6 +133,7 @@ x402 pay-per-call (RLUSD, t54 facilitator, no signup):
 x402 pay-per-call (USDC on Base, CDP facilitator, no signup):
 - POST ${origin}/api/x402/usdc/score — 300-850 score, $0.01
 - GET ${origin}/api/x402/usdc/mpt/<48-hex id> — full MPT issuer risk, $0.01
+- GET ${origin}/api/x402/screen/ofac?address=r... — OFAC SDN screening attestation, $0.01 (process not ground truth; see the screening section above)
 
 ## B2B API (prepaid key, 30-day term)
 
@@ -145,6 +168,7 @@ publicly verifiable: https://xrpscan.com/account/rs59g3amo5iT6T64Cg96XXMAWuw3WPQ
 - OpenAPI: ${origin}/openapi.json
 - x402 discovery: ${origin}/.well-known/x402
 - MCP: ${origin}/api/mcp
+- Screening spec + terms: ${origin}/api/attest/anchor · ${origin}/legal/screening
 - Source: https://github.com/Dcroyalty/XRPLHub.io
 - Contact: support@xrplhub.io
 `;

@@ -12,9 +12,21 @@ import {
   PRICE_PER_TX_PRODUCT_RLUSD,
 } from "@/lib/paycall";
 import { BUILDABLE_SERVICE_IDS } from "@/app/api/execute/serviceCatalog";
+import { SCREEN_OFAC_OUTPUT_SCHEMA, SCREEN_OFAC_OUTPUT_EXAMPLE } from "@/lib/screen";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+const screenOutputSchema = SCREEN_OFAC_OUTPUT_SCHEMA as unknown as object;
+const screenOutputExample = SCREEN_OFAC_OUTPUT_EXAMPLE as unknown as object;
+const screenAddrParam = {
+  name: "address",
+  in: "query" as const,
+  required: true,
+  description: "XRPL classic address (r...) to compare against the OFAC SDN list.",
+  schema: { type: "string", pattern: "^r[1-9A-HJ-NP-Za-km-z]{24,34}$" },
+  example: "rnXyVQzgxZe7TR1EPzTkGj2jxH4LMJYh66",
+};
 
 function payment(amount: number, description: string) {
   return {
@@ -103,13 +115,19 @@ export async function GET(req: Request) {
         "you can never pay twice. Every failure `error` is one of the codes in /.well-known/x402 " +
         "`errorCodes`.\n\n" +
         "RETIRED (HTTP 410 — use the x402 route in `useInstead`): /api/x402-tx -> /api/x402/tx; " +
-        "/api/v1/wallet-report -> /api/x402/report; /api/v1/pay-per-score -> /api/x402/score.",
+        "/api/v1/wallet-report -> /api/x402/report; /api/v1/pay-per-score -> /api/x402/score.\n\n" +
+        "OFAC SDN SCREENING (/api/screen/ofac, /api/x402/screen/ofac): attests to PROCESS, not ground " +
+        "truth. A receipt records that an address was compared against a named, hash-pinned OFAC SDN " +
+        "snapshot at a stated time and what the comparison found. It never states that any address or " +
+        "person is sanctioned, clean, or risky, is not legal/compliance advice, and does not discharge " +
+        "your own screening obligations. Every receipt is Merkle-anchored on-ledger; verify at " +
+        "/api/attest/verify?queryId=. Terms: /legal/screening.",
       contact: { name: "XRPLHub", url: origin, email: "support@xrplhub.io" },
     },
     servers: [{ url: origin }],
     "x-service-info": {
       name: "XRPLHub — XRPLScore",
-      categories: ["defi", "risk", "credit-scoring", "xrpl", "data"],
+      categories: ["defi", "risk", "credit-scoring", "xrpl", "data", "compliance", "sanctions-screening"],
       network: "xrpl-mainnet",
       asset: {
         symbol: "RLUSD",
@@ -842,6 +860,87 @@ export async function GET(req: Request) {
           responses: {
             "200": { description: "Full risk view — see /api/mpt/{issuanceId} 200 schema plus issuerRisk.{accountAgeDays,blackholed,domain,domainVerified,credentials} and a related[] block." },
             "402": { description: "Payment Required — x402 challenge. Pay in USDC on Base and retry with the X-PAYMENT header." },
+          },
+        },
+      },
+
+      "/api/screen/ofac": {
+        get: {
+          operationId: "screenOfac",
+          summary: "OFAC SDN screening attestation (API key — free tier included)",
+          description:
+            "Compare one XRPL address against a vintage-pinned OFAC SDN snapshot (exact address-string " +
+            "match only) and get a factual, Merkle-anchored receipt: which list, its published version, the " +
+            "file SHA-256, and whether the address appeared on it. A 'no match' means the address was not on " +
+            "that list version — NOT that it is clean or unsanctioned. This attests to PROCESS, not ground " +
+            "truth: it does not say any address or person is sanctioned or risky, gives no legal or " +
+            "compliance advice, and does not discharge your own screening obligations. Every receipt (match " +
+            "or no-match) is anchored on-ledger daily; verify at GET /api/attest/verify?queryId=. " +
+            "Auth: Authorization: Bearer <API key> (a free key works). Terms: /legal/screening.",
+          tags: ["Screening"],
+          parameters: [screenAddrParam],
+          responses: {
+            "200": ok("The screening receipt.", screenOutputSchema, screenOutputExample),
+            "401": { description: "Missing or invalid API key." },
+            "402": { description: "API key term ended (error \"key_expired\") — buy a new key." },
+            "503": { description: "No OFAC SDN snapshot ingested yet." },
+          },
+        },
+      },
+
+      "/api/x402/screen/ofac": {
+        get: {
+          operationId: "x402ScreenOfac",
+          summary: "OFAC SDN screening attestation (x402, $0.01 USDC on Base)",
+          description:
+            "The same OFAC SDN screening attestation as /api/screen/ofac, priced for agents at $0.01 per " +
+            "call and settled in USDC on Base via the CDP x402 facilitator — no API key, no signup. " +
+            "Compares one XRPL address against a vintage-pinned SDN snapshot (exact match only) and returns " +
+            "a Merkle-anchored receipt. A 'no match' is not a statement that the address is clean or " +
+            "unsanctioned. Attests to process, not ground truth. Not legal/compliance advice; does not " +
+            "discharge your screening obligations. Verify at GET /api/attest/verify?queryId=.",
+          tags: ["Screening"],
+          parameters: [screenAddrParam],
+          "x-payment-info": {
+            price: { mode: "fixed", currency: "USD", amount: "0.010000" },
+            protocols: [{ x402: {} }],
+            description: "One OFAC SDN screening attestation, USDC on Base via the CDP x402 facilitator.",
+          },
+          responses: {
+            "200": ok("The screening receipt.", screenOutputSchema, screenOutputExample),
+            "402": { description: "Payment Required — x402 challenge. Pay in USDC on Base and retry with the X-PAYMENT header." },
+          },
+        },
+      },
+
+      "/api/attest/verify": {
+        get: {
+          operationId: "attestVerify",
+          summary: "Verify a screening attestation receipt (free)",
+          description:
+            "Given a screening receipt's queryId, returns the canonical leaf, its Merkle inclusion proof, " +
+            "the on-ledger anchor transaction and ledger close time, and the list snapshot hash — " +
+            "everything needed to verify the receipt WITHOUT trusting XRPLHub. Rebuild the leaf, fold the " +
+            "proof to the Merkle root, confirm that root is in the anchor tx's MemoData, and re-hash the " +
+            "cited OFAC SDN publication. Add &include=snapshot to fetch the full canonical list archive " +
+            "that was screened against. Free, no signup.",
+          security: [],
+          tags: ["Screening"],
+          parameters: [
+            {
+              name: "queryId", in: "query", required: true,
+              description: "The receipt's queryId (UUID), returned by /api/screen/ofac.",
+              schema: { type: "string", format: "uuid" },
+            },
+            {
+              name: "include", in: "query", required: false,
+              description: "Pass 'snapshot' to return the full canonical OFAC SDN list archive instead of the receipt.",
+              schema: { type: "string", enum: ["snapshot"] },
+            },
+          ],
+          responses: {
+            "200": { description: "The receipt, its inclusion proof, the anchor tx, and the list snapshot hash." },
+            "404": { description: "No receipt with that queryId." },
           },
         },
       },

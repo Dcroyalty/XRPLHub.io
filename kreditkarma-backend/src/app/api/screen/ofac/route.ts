@@ -18,8 +18,7 @@ import { prisma } from "@/lib/xrplscore-db";
 import { extractKey, resolveApiKey } from "@/lib/keys";
 import { guard } from "@/lib/guard";
 import { isValidXrplAddress } from "@/lib/engine";
-import { XRPL_NODES } from "@/lib/xrplscore";
-import { runOfacScreen, NoSnapshotError, SCREEN_DISCLAIMER_SHORT } from "@/lib/screen";
+import { screenOfac, NoSnapshotError, SCREEN_DISCLAIMER_SHORT } from "@/lib/screen";
 import { SCREEN_CANON_VERSION } from "@/lib/screenCanon";
 
 export const runtime = "nodejs";
@@ -28,31 +27,6 @@ export const maxDuration = 20;
 
 const RENEW = { pricing: "https://www.xrplhub.io/pricing" };
 const VERIFY_BASE = "https://www.xrplhub.io/api/attest/verify?queryId=";
-
-/** Pin the current VALIDATED ledger index as a time anchor for the screen.
- *  Independent of whether the subject is an activated account. 0 on total
- *  failure — the receipt records that honestly. */
-async function pinValidatedLedger(): Promise<number> {
-  for (const url of XRPL_NODES) {
-    try {
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ method: "ledger", params: [{ ledger_index: "validated" }] }),
-        signal: AbortSignal.timeout(8_000),
-      });
-      if (!res.ok) continue;
-      const j = (await res.json()) as {
-        result?: { ledger_index?: number; ledger?: { ledger_index?: number | string } };
-      };
-      const li = Number(j.result?.ledger_index ?? j.result?.ledger?.ledger_index ?? 0);
-      if (Number.isFinite(li) && li > 0) return li;
-    } catch {
-      /* try next node */
-    }
-  }
-  return 0;
-}
 
 async function handle(address: string | null, req: Request) {
   const r = await resolveApiKey(extractKey(req));
@@ -89,10 +63,8 @@ async function handle(address: string | null, req: Request) {
     );
   }
 
-  const ledgerIndex = await pinValidatedLedger();
-
   try {
-    const out = await runOfacScreen(prisma, address, `key:${r.key.keyPrefix}`, ledgerIndex);
+    const out = await screenOfac(prisma, address, `key:${r.key.keyPrefix}`);
     return NextResponse.json(
       {
         attestation: {
@@ -109,7 +81,7 @@ async function handle(address: string | null, req: Request) {
         subject: out.leaf.subjectAddress,
         screenedAt: out.leaf.screenedAt,
         method: "exact-match",
-        ledgerIndex,
+        ledgerIndex: out.leaf.ledgerIndex,
         lists: out.leaf.lists,
         result: out.leaf.result,
         statement: out.statement,
