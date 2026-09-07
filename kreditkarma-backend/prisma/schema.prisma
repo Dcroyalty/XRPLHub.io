@@ -365,3 +365,102 @@ model IndexerCheckpoint {
                                     // the "now" used for expiry math on the INDEXED (not live) endpoint
   updatedAt               DateTime  @updatedAt
 }
+
+// ─── OFAC SDN screening — snapshots, extracted addresses, receipts, anchors ────
+// A screening receipt attests to PROCESS, never ground truth: "XRPL address X
+// was compared against OFAC-SDN snapshot V at time T; result R." It never says
+// "X is sanctioned" or "X is clean". Canonicalisation is frozen under
+// canonVersion "ofac-screen-v1" (src/lib/screenCanon.ts) and echoed by
+// GET /api/attest/anchor. Snapshots, receipts and the Merkle inputs are the
+// product — APPEND-ONLY, never pruned.
+
+// One immutable capture of the OFAC SDN list. `sha256` is over `canonicalArchive`
+// (the normalised JSON), so a third party can reproduce it. Written only when the
+// content hash changes AND the parse produced a sane XRP-address count.
+model SanctionListSnapshot {
+  id               String   @id @default(cuid())
+  listName         String                       // "OFAC-SDN"
+  vintage          String                       // OFAC Publish_Date as ISO (YYYY-MM-DD)
+  publishRaw       String                       // the Publish_Date string exactly as OFAC wrote it
+  recordCount      Int                          // OFAC Record_Count for the whole list
+  addressCount     Int                          // XRP addresses we extracted
+  sha256           String                       // hex SHA-256 of canonicalArchive
+  sourceUrl        String
+  fetchedAt        DateTime @default(now())
+  canonicalArchive Json                         // full normalised snapshot — retained forever
+  createdAt        DateTime @default(now())
+
+  addresses        SanctionedAddress[]
+
+  @@unique([listName, sha256])
+  @@index([listName, fetchedAt])
+}
+
+// One XRP address extracted from one snapshot. Per-snapshot rows, never deleted —
+// history is the full set of snapshots + their address rows.
+model SanctionedAddress {
+  id           String   @id @default(cuid())
+  snapshotId   String
+  snapshot     SanctionListSnapshot @relation(fields: [snapshotId], references: [id])
+  listName     String                          // "OFAC-SDN"
+  address      String                          // XRPL r-address, verbatim from the list
+  entryId      String                          // OFAC sdnEntry uid
+  entryName    String                          // the sdnEntry's own listed name
+  programs     String                          // comma-joined sanctions programs, e.g. "CYBER2"
+  addressField String                          // "Digital Currency Address - XRP"
+  idUid        String                          // the <id> element uid
+  createdAt    DateTime @default(now())
+
+  @@index([snapshotId])
+  @@index([listName, address])
+}
+
+// One screening receipt. `leafHash` is SHA-256(0x00 || utf8(canonical leaf));
+// once `anchorId` is set the leaf is frozen into an on-ledger Merkle root.
+model ScreeningReceipt {
+  queryId        String   @id                  // UUIDv4
+  subjectAddress String
+  requestedBy    String                        // "key:<keyPrefix>" | "x402:<invoiceId>" | "public"
+  screenedAt     DateTime                      // instant of the comparison (ms precision; also in the leaf)
+  method         String   @default("exact-match")
+  ledgerIndex    Int      @default(0)          // validated ledger index pinned at screen time; 0 if unknown
+  listsJson      Json                          // canonical lists[]: [{ name, vintage, sha256 }]
+  resultJson     Json                          // canonical result: { listed } | { listed, matches[] }
+  engineVersion  String                        // "sanction-screen-v1" — IMMUTABLE per receipt
+  canonVersion   String   @default("ofac-screen-v1")
+  leafHash       String                        // 64-hex
+  snapshotId     String                        // the SanctionListSnapshot this screen ran against
+  anchorId       String?
+  anchor         ScreeningAnchor? @relation(fields: [anchorId], references: [id])
+  createdAt      DateTime @default(now())
+
+  @@index([subjectAddress])
+  @@index([anchorId])
+  @@index([createdAt])
+}
+
+// One daily Merkle anchor over a batch of receipts. Same wallet + scheme as
+// MptAnchor; separate memo type and batch.
+model ScreeningAnchor {
+  id           String   @id @default(cuid())
+  canonVersion String                          // "ofac-screen-v1"
+  merkleRoot   String                          // 64-hex
+  leafCount    Int
+  rangeStart   DateTime?
+  rangeEnd     DateTime?
+  memo         String                          // exact UTF-8 memo payload written on-ledger
+  txHash       String?  @unique
+  ledgerIndex  Int?
+  account      String?
+  feeDrops     String?
+  closeTime    DateTime?                       // ledger close time of the anchor tx
+  status       String   @default("pending")    // pending | anchored | failed | misconfigured | superseded
+  error        String?
+  createdAt    DateTime @default(now())
+  anchoredAt   DateTime?
+
+  receipts     ScreeningReceipt[]
+
+  @@index([status])
+  @@index([createdAt])
+}

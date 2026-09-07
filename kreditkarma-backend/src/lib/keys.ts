@@ -42,6 +42,7 @@ function hashesEqual(a: string, b: string): boolean {
 
 export interface ResolvedKey {
   id: string;
+  keyPrefix: string; // first 16 chars — indexed, not secret; safe to log / attest with
   plan: Plan;
   planId: string;
   name: string | null;
@@ -78,6 +79,7 @@ export async function resolveApiKey(raw: string | null): Promise<KeyResolution> 
     ok: true,
     key: {
       id: record.id,
+      keyPrefix: record.keyPrefix,
       plan: getPlan(record.plan),
       planId: record.plan,
       name: record.name,

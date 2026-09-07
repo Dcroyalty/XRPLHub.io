@@ -14,6 +14,9 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/xrplscore-db";
 import { runIndexerPass } from "@/lib/credentialIndexer";
 import { isAdmin } from "@/lib/adminAuth";
+import { notifyError } from "@/lib/notify";
+import { refreshSdnSnapshot } from "@/lib/ofac";
+import { maybeAnchorScreeningReceipts } from "@/lib/screenAnchor";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -31,9 +34,25 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   try {
-    const progress = await runIndexerPass(prisma, { budgetMs: 45_000 });
-    return NextResponse.json(progress);
+    // Credential census gets the bulk of the budget; the OFAC steps below are a
+    // cheap no-op on the ~360 days/yr the SDN Publish_Date is unchanged at cron
+    // time, and one AccountSet (~10 drops) when there are receipts to anchor.
+    const progress = await runIndexerPass(prisma, { budgetMs: 30_000 });
+
+    const sdn = await refreshSdnSnapshot(prisma).catch((e) => ({
+      action: "blocked-error" as const,
+      listName: "OFAC-SDN",
+      detail: e instanceof Error ? e.message : "refresh threw",
+    }));
+
+    const screeningAnchor = await maybeAnchorScreeningReceipts(prisma).catch((e) => {
+      void notifyError("cron/index-credentials screening-anchor", e);
+      return { attempted: false, submitted: false, reason: "anchor threw", leafCount: 0 };
+    });
+
+    return NextResponse.json({ ...progress, sdn, screeningAnchor });
   } catch (err) {
+    await notifyError("cron/index-credentials", err);
     console.error("[cron/index-credentials]", err);
     return NextResponse.json(
       { error: "indexer_failed", message: err instanceof Error ? err.message : "unknown" },

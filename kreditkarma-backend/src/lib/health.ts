@@ -115,6 +115,39 @@ async function checkAnchor(): Promise<Check> {
   }
 }
 
+async function checkScreening(): Promise<Check> {
+  // OFAC SDN screening attestation pipeline: is a snapshot present and fresh,
+  // and did the last anchor succeed. A stale/missing snapshot is the failure
+  // that matters — every screen would attest against nothing.
+  try {
+    const [snap, lastFail, lastOk, unanchored] = await Promise.all([
+      prisma.sanctionListSnapshot.findFirst({ where: { listName: "OFAC-SDN" }, orderBy: { fetchedAt: "desc" } }),
+      prisma.screeningAnchor.findFirst({ where: { status: { in: ["failed", "misconfigured"] } }, orderBy: { createdAt: "desc" } }),
+      prisma.screeningAnchor.findFirst({ where: { status: "anchored" }, orderBy: { createdAt: "desc" } }),
+      prisma.screeningReceipt.count({ where: { anchorId: null } }),
+    ]);
+    if (!snap) {
+      return { name: "screening-ofac", level: "warn", detail: "no OFAC SDN snapshot ingested yet — screening returns 503" };
+    }
+    const ageDays = (Date.now() - snap.fetchedAt.getTime()) / 86_400_000;
+    if (snap.addressCount === 0) {
+      return { name: "screening-ofac", level: "down", detail: `latest OFAC SDN snapshot (${snap.vintage}) has 0 XRP addresses — integrity gate should have blocked this` };
+    }
+    if (ageDays > 21) {
+      return { name: "screening-ofac", level: "warn", detail: `OFAC SDN snapshot is ${Math.floor(ageDays)}d old (${snap.vintage}) — the daily refresh may be stuck` };
+    }
+    const failNewer = lastFail && (!lastOk || lastFail.createdAt > lastOk.createdAt);
+    if (failNewer && lastFail) {
+      const keyed = !!process.env.ANCHOR_WALLET_SEED;
+      const level: Level = lastFail.status === "misconfigured" && !keyed ? "down" : "warn";
+      return { name: "screening-ofac", level, detail: `last screening anchor ${lastFail.status}: ${lastFail.error ?? "no detail"}${unanchored ? ` (${unanchored} receipt(s) unanchored)` : ""}` };
+    }
+    return { name: "screening-ofac", level: "ok", detail: `OFAC SDN ${snap.vintage}, ${snap.addressCount} XRP addr; ${unanchored} receipt(s) awaiting the next anchor` };
+  } catch (e) {
+    return { name: "screening-ofac", level: "warn", detail: e instanceof Error ? e.message : "check failed" };
+  }
+}
+
 function checkCredentialSigning(): Check {
   return process.env.CREDENTIAL_SIGNING_SECRET
     ? { name: "credential-signing", level: "ok", detail: "CREDENTIAL_SIGNING_SECRET set — paid off-ledger certificates are cryptographically binding" }
@@ -146,7 +179,7 @@ function checkCron(): Check {
 export async function healthProbe(opts: { deep?: boolean } = {}): Promise<HealthReport> {
   const deep = opts.deep ?? false;
   const checks: Check[] = [];
-  const settled = await Promise.allSettled([checkDb(), checkT54(deep), checkCdp(deep), checkAnchor()]);
+  const settled = await Promise.allSettled([checkDb(), checkT54(deep), checkCdp(deep), checkAnchor(), checkScreening()]);
   for (const s of settled) {
     if (s.status === "fulfilled") checks.push(s.value);
     else checks.push({ name: "unknown", level: "warn", detail: String(s.reason) });
