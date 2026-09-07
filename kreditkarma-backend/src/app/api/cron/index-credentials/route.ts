@@ -18,6 +18,7 @@ import { notifyError } from "@/lib/notify";
 import { refreshSdnSnapshot } from "@/lib/ofac";
 import { maybeAnchorScreeningReceipts } from "@/lib/screenAnchor";
 import { maybeAnchorLendingReceipts } from "@/lib/lendingAnchor";
+import { runLendingSweep } from "@/lib/lendingSweep";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -34,17 +35,25 @@ export async function GET(req: Request) {
   if (!isAdmin(req) && !isCronRequest(req)) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
+  const t0 = Date.now();
   try {
-    // Credential census gets a bounded slice; the anchor steps below are each a
-    // no-op most runs and one ~10-drop AccountSet when there's a batch to anchor.
-    // Budget kept tight so both anchors + the SDN refresh fit under the 60s ceiling.
-    const progress = await runIndexerPass(prisma, { budgetMs: 20_000 });
+    // Order matters. Credential census first (bounded, resumable, least urgent),
+    // then SDN refresh, then the daily lending sweep, then the anchors LAST so
+    // the sweep's fresh snapshots are anchored the same day. Every step is
+    // budget/deadline-aware so both anchors still fit under the 60s ceiling.
+    const progress = await runIndexerPass(prisma, { budgetMs: 12_000 });
 
     const sdn = await refreshSdnSnapshot(prisma).catch((e) => ({
       action: "blocked-error" as const,
       listName: "OFAC-SDN",
       detail: e instanceof Error ? e.message : "refresh threw",
     }));
+
+    // Re-observe every known borrower so the attested history has no gaps.
+    const lendingSweep = await runLendingSweep(prisma, { deadlineMs: t0 + 42_000 }).catch((e) => {
+      void notifyError("cron/index-credentials lending-sweep", e);
+      return { ran: false, reason: "sweep threw", pass: 0, processed: 0, failed: 0, worklistTotal: 0, remainingThisPass: 0, passCompleted: false, lastCompletedPassAt: null, errors: [] };
+    });
 
     const screeningAnchor = await maybeAnchorScreeningReceipts(prisma).catch((e) => {
       void notifyError("cron/index-credentials screening-anchor", e);
@@ -56,7 +65,7 @@ export async function GET(req: Request) {
       return { attempted: false, submitted: false, reason: "anchor threw", leafCount: 0 };
     });
 
-    return NextResponse.json({ ...progress, sdn, screeningAnchor, lendingAnchor });
+    return NextResponse.json({ ...progress, sdn, lendingSweep, screeningAnchor, lendingAnchor });
   } catch (err) {
     await notifyError("cron/index-credentials", err);
     console.error("[cron/index-credentials]", err);

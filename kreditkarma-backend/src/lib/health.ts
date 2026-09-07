@@ -150,16 +150,18 @@ async function checkScreening(): Promise<Check> {
 
 async function checkLendingExposure(): Promise<Check> {
   // XLS-66 exposure attestation pipeline. The amendment being inactive is
-  // expected (info, not down). What matters: is the anchor healthy once there
-  // are snapshots to anchor.
+  // expected (info, not down). What matters once it's live: is the daily sweep
+  // keeping up (no borrower going unswept), and is the anchor healthy.
   try {
-    const [lastFail, lastOk, unanchored, snapCount] = await Promise.all([
+    const [lastFail, lastOk, unanchored, snapCount, sweepCp, worklist] = await Promise.all([
       prisma.lendingExposureAnchor.findFirst({ where: { status: { in: ["failed", "misconfigured"] } }, orderBy: { createdAt: "desc" } }),
       prisma.lendingExposureAnchor.findFirst({ where: { status: "anchored" }, orderBy: { createdAt: "desc" } }),
       prisma.lendingExposureSnapshot.count({ where: { anchorId: null } }),
       prisma.lendingExposureSnapshot.count(),
+      prisma.indexerCheckpoint.findUnique({ where: { id: "lending-sweep" } }),
+      prisma.lendingBorrowerSweep.count(),
     ]);
-    if (snapCount === 0) {
+    if (snapCount === 0 && worklist === 0) {
       return { name: "lending-exposure", level: "ok", detail: "no exposure snapshots yet (XLS-66 not active on mainnet)" };
     }
     const failNewer = lastFail && (!lastOk || lastFail.createdAt > lastOk.createdAt);
@@ -168,7 +170,14 @@ async function checkLendingExposure(): Promise<Check> {
       const level: Level = lastFail.status === "misconfigured" && !keyed ? "down" : "warn";
       return { name: "lending-exposure", level, detail: `last lending anchor ${lastFail.status}: ${lastFail.error ?? "no detail"}${unanchored ? ` (${unanchored} snapshot(s) unanchored)` : ""}` };
     }
-    return { name: "lending-exposure", level: "ok", detail: `${snapCount} snapshot(s), ${unanchored} awaiting the next anchor` };
+    // Sweep staleness: a completed pass older than ~3 days, or a pass stuck
+    // running for >2 days, means borrowers are going unobserved.
+    const passAgeDays = sweepCp?.lastCompletedPassAt ? (Date.now() - sweepCp.lastCompletedPassAt.getTime()) / 86_400_000 : null;
+    const stuckDays = sweepCp?.status === "running" && sweepCp.passStartedAt ? (Date.now() - sweepCp.passStartedAt.getTime()) / 86_400_000 : null;
+    if (worklist > 0 && ((passAgeDays != null && passAgeDays > 3) || (stuckDays != null && stuckDays > 2))) {
+      return { name: "lending-exposure", level: "warn", detail: `sweep behind: ${worklist} borrower(s), last full pass ${passAgeDays != null ? passAgeDays.toFixed(1) + "d ago" : "never"}${stuckDays != null ? `, current pass running ${stuckDays.toFixed(1)}d` : ""}` };
+    }
+    return { name: "lending-exposure", level: "ok", detail: `${snapCount} snapshot(s), ${unanchored} awaiting anchor; sweep work-list ${worklist}, last full pass ${passAgeDays != null ? passAgeDays.toFixed(1) + "d ago" : "n/a"}` };
   } catch (e) {
     return { name: "lending-exposure", level: "warn", detail: e instanceof Error ? e.message : "check failed" };
   }

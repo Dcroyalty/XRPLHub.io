@@ -117,7 +117,8 @@ amendment activates, then serve automatically — gated on the on-ledger
 Amendments object, no redeploy. Not underwriting or credit advice.
 
 - GET ${origin}/api/lending/exposure?borrower=r... — API key (a free key works): the aggregate + observation summary. Persists a snapshot every call.
-- GET ${origin}/api/lending/history?borrower=r... — API key: every loan ever observed for this borrower, first/last observed, last-known status, ever-defaulted/impaired flags, and the ledger window in which any vanished loan disappeared.
+- GET ${origin}/api/lending/history?borrower=r... — API key: every loan ever observed for this borrower, first/last observed, last-known status, ever-defaulted/impaired flags, and the ledger window in which any vanished loan disappeared. Carries a sweepCoverage block: when this borrower was last swept, which pass, and any gaps in the observation window (honest about what we did and didn't see).
+- A daily cron sweep re-observes EVERY borrower we've ever seen so the attested history has no gaps where nobody happened to run a paid query. Borrowers with active or impaired loans are swept first (their evidence is the most likely to be deleted). A sweep observation is byte-identical in the attested record to a paid one.
 - GET ${origin}/api/x402/lending/exposure?borrower=r... — $0.01 USDC on Base (x402), no key: adds every loan decoded, per-broker first-loss context (DebtTotal / CoverAvailable), vanished-loan detail, and the attestation receipt.
 - GET ${origin}/api/attest/verify?queryId=<uuid> — free: the exposure snapshot + Merkle inclusion proof + on-ledger anchor tx. The leaf commits to visibleLoanIds, so a loan later deleted is still provably attested to have existed.
 

@@ -541,6 +541,30 @@ model LendingLoanObservation {
   @@index([everDefaulted])
 }
 
+// The daily-sweep work-list: one row per borrower XRPLHub has ever observed.
+// The sweep re-observes every borrower every day so the attested history has no
+// gaps where nobody happened to run a paid query. `hasActiveOrImpaired` is the
+// priority signal — those borrowers' evidence is most likely to be deleted, so
+// they are swept first. `lastSweptAt` / `lastSweptPass` drive stalest-first
+// round-robin and let a pass resume across cron windows without skipping anyone.
+model LendingBorrowerSweep {
+  borrower             String   @id
+  firstObservedAt      DateTime                       // first observation of this borrower, any source
+  addedToSweepAt       DateTime @default(now())
+  lastObservedAt       DateTime                       // last observation, any source (sweep or paid query)
+  lastSweptAt          DateTime?                      // last SWEEP observation specifically
+  lastSweptLedger      Int?
+  lastSweptPass        Int      @default(0)
+  sweepCount           Int      @default(0)
+  hasActiveOrImpaired  Boolean  @default(false)       // priority — refreshed on every observation
+  lastKnownWorstStatus String   @default("none")
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@index([hasActiveOrImpaired, lastSweptAt])
+  @@index([lastSweptPass])
+}
+
 // One daily Merkle anchor over a batch of exposure snapshots. Same wallet + hash
 // scheme as ScreeningAnchor / MptAnchor; separate memo type + batch.
 model LendingExposureAnchor {

@@ -990,7 +990,9 @@ export async function GET(req: Request) {
             "everDefaulted / everImpaired / everOverdue flags, and — for loans since deleted from the ledger " +
             "— the ledger window in which they vanished. A borrower who defaulted and deleted the loan shows " +
             "nothing on-ledger; here it shows as vanished with everDefaulted true. `observationWindow` states " +
-            "how far back our view goes — loans deleted before firstObservedAt are invisible to us. Free.",
+            "how far back our view goes — loans deleted before firstObservedAt are invisible to us. A daily cron " +
+            "sweep re-observes every known borrower so the history has no gaps where nobody queried; the " +
+            "sweepCoverage block reports when this borrower was last swept and lists any observation gaps. Free.",
           tags: ["Lending"],
           parameters: [borrowerParam],
           responses: {

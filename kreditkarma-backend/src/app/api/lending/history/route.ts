@@ -15,8 +15,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/xrplscore-db";
 import { extractKey, resolveApiKey } from "@/lib/keys";
 import { guard } from "@/lib/guard";
-import { isValidXrplAddress } from "@/lib/lendingExposure";
-import { LENDING_DISCLAIMER } from "@/lib/lendingExposure";
+import { isValidXrplAddress, LENDING_DISCLAIMER, sweepCoverageFor } from "@/lib/lendingExposure";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -41,11 +40,12 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "rate_limited", message: g.reason }, { status: g.status });
   }
 
-  const [obs, snapCount, firstSnap, lastSnap] = await Promise.all([
+  const [obs, snapCount, firstSnap, lastSnap, sweepCoverage] = await Promise.all([
     prisma.lendingLoanObservation.findMany({ where: { borrower }, orderBy: { firstObservedAt: "asc" } }),
     prisma.lendingExposureSnapshot.count({ where: { borrower } }),
     prisma.lendingExposureSnapshot.findFirst({ where: { borrower }, orderBy: { observedAt: "asc" }, select: { observedAt: true, ledgerIndex: true } }),
     prisma.lendingExposureSnapshot.findFirst({ where: { borrower }, orderBy: { observedAt: "desc" }, select: { observedAt: true, ledgerIndex: true, queryId: true } }),
+    sweepCoverageFor(prisma, borrower),
   ]);
 
   const vanished = obs.filter((o) => o.disappearedAt != null);
@@ -64,6 +64,7 @@ export async function GET(req: Request) {
         note:
           "XRPLHub cannot see loans created and deleted before firstObservedAt. Query /api/lending/exposure to add an observation now.",
       },
+      sweepCoverage,
       summary: {
         loansEverObserved: obs.length,
         currentlyOnLedger: obs.length - vanished.length,

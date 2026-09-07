@@ -48,6 +48,11 @@ async function rpc(method: string, params: object): Promise<RpcResult | null> {
 let amendmentCache: { active: boolean; at: number } | null = null;
 const AMENDMENT_TTL_MS = 60 * 60 * 1000;
 
+/** Test-only: clear the amendment-status cache. Not used in production paths. */
+export function _resetAmendmentCacheForTest(): void {
+  amendmentCache = null;
+}
+
 export async function lendingProtocolActive(): Promise<boolean> {
   if (amendmentCache && Date.now() - amendmentCache.at < AMENDMENT_TTL_MS) return amendmentCache.active;
   const r = await rpc("ledger_entry", { index: AMENDMENTS_INDEX, ledger_index: "validated" });

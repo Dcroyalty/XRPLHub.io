@@ -170,25 +170,51 @@ export interface ExposureResult {
 /**
  * Walk the borrower's loans, aggregate, PERSIST an immutable snapshot, update the
  * loan-observation tracker (detecting any loan that has vanished), and return the
- * full result. `requestedBy` is "key:<prefix>" | "x402:<id>" | "mcp".
+ * full result. `requestedBy` is "key:<prefix>" | "x402:<id>" | "mcp" | "sweep".
+ *
+ * A "sweep" observation is byte-identical in the attested record to a paid one —
+ * `requestedBy` is stored on the row but is NOT part of the canonical leaf, so
+ * the leaf hash and the daily anchor treat both the same. `reuseScoreWithinMs`
+ * lets the daily sweep reuse a recent cached XRPLScore instead of recomputing it
+ * for every borrower (the snapshot shape is unchanged either way).
  */
 export async function runExposureQuery(
   prisma: PrismaClient,
   borrower: string,
-  requestedBy: string
+  requestedBy: string,
+  opts: { reuseScoreWithinMs?: number } = {}
 ): Promise<ExposureResult> {
   const queryId = randomUUID();
   const generatedAt = new Date().toISOString();
 
-  // XRPLScore is always computed — useful even pre-activation.
+  // XRPLScore: fresh by default; a sweep may reuse a recent cached value.
   let xrplScore: number | null = null;
   let grade: string | null = null;
-  try {
-    const s = await computeScore(borrower);
-    xrplScore = s.score;
-    grade = s.grade;
-  } catch (e) {
-    if (!(e instanceof AccountNotFoundError)) throw e;
+  let scoreFromCache = false;
+  if (opts.reuseScoreWithinMs) {
+    const cached = await prisma.ledgerScore.findUnique({ where: { address: borrower } });
+    if (cached && Date.now() - cached.updatedAt.getTime() < opts.reuseScoreWithinMs) {
+      xrplScore = cached.score;
+      grade = cached.tier;
+      scoreFromCache = true;
+    }
+  }
+  if (!scoreFromCache) {
+    try {
+      const s = await computeScore(borrower);
+      xrplScore = s.score;
+      grade = s.grade;
+      // Keep the shared score cache warm for the next sweep / public lookup.
+      await prisma.ledgerScore
+        .upsert({
+          where: { address: borrower },
+          update: { score: s.score, tier: s.grade },
+          create: { address: borrower, score: s.score, tier: s.grade, breakdown: "{}", rawData: "{}" },
+        })
+        .catch(() => {});
+    } catch (e) {
+      if (!(e instanceof AccountNotFoundError)) throw e;
+    }
   }
 
   const active = await lendingProtocolActive();
@@ -381,6 +407,25 @@ export async function runExposureQuery(
   // ── Update the loan-observation tracker (accumulate-only) ─────────────────
   const obsSummary = await updateObservations(prisma, borrower, led.index, enriched);
 
+  // ── Keep the sweep work-list current (priority = has active/impaired loans) ─
+  const hasActiveOrImpaired = enriched.some(
+    (l) => l.status === "current" || l.status === "overdue" || l.status === "overdueGraceExpired" || l.status === "impaired"
+  );
+  const now = new Date();
+  await prisma.lendingBorrowerSweep
+    .upsert({
+      where: { borrower },
+      update: { lastObservedAt: now, hasActiveOrImpaired, lastKnownWorstStatus: worst },
+      create: {
+        borrower,
+        firstObservedAt: now,
+        lastObservedAt: now,
+        hasActiveOrImpaired,
+        lastKnownWorstStatus: worst,
+      },
+    })
+    .catch(() => {});
+
   const disposition: ExposureResult["disposition"] =
     enriched.length > 0 ? "active-exposure" : obsSummary.everObservedLoans ? "history-only" : "no-loans-ever";
 
@@ -404,6 +449,88 @@ export async function runExposureQuery(
     vanishedLoans: obsSummary.vanished,
     leafHash,
     disclaimer: LENDING_DISCLAIMER,
+  };
+}
+
+// ── Sweep coverage / observation gaps ────────────────────────────────────────
+
+// We sweep daily, so anything longer than this between two consecutive
+// observations is a window in which a loan could have appeared and been deleted
+// unseen. Honest reporting, not alarm — a gap doesn't mean something WAS missed.
+const OBSERVATION_GAP_THRESHOLD_MS = 2.5 * 24 * 60 * 60 * 1000;
+
+export interface SweepCoverage {
+  inSweepWorklist: boolean;
+  priority: "high" | "normal";
+  firstObservedAt: string | null;
+  lastObservedAt: string | null;
+  lastSweptAt: string | null;
+  lastSweptLedger: number | null;
+  sweepCount: number;
+  currentPass: number | null;
+  sweptThisPass: boolean;
+  observationGaps: Array<{ fromLedger: number; toLedger: number; fromAt: string; toAt: string; days: number }>;
+  trailingGapDays: number | null;
+  note: string;
+}
+
+export async function sweepCoverageFor(prisma: PrismaClient, borrower: string): Promise<SweepCoverage> {
+  const [row, checkpoint, snaps] = await Promise.all([
+    prisma.lendingBorrowerSweep.findUnique({ where: { borrower } }),
+    prisma.indexerCheckpoint.findUnique({ where: { id: "lending-sweep" } }),
+    prisma.lendingExposureSnapshot.findMany({
+      where: { borrower },
+      orderBy: { observedAt: "asc" },
+      select: { ledgerIndex: true, observedAt: true },
+    }),
+  ]);
+
+  const gaps: SweepCoverage["observationGaps"] = [];
+  for (let i = 1; i < snaps.length; i++) {
+    const dt = snaps[i].observedAt.getTime() - snaps[i - 1].observedAt.getTime();
+    if (dt > OBSERVATION_GAP_THRESHOLD_MS) {
+      gaps.push({
+        fromLedger: snaps[i - 1].ledgerIndex,
+        toLedger: snaps[i].ledgerIndex,
+        fromAt: snaps[i - 1].observedAt.toISOString(),
+        toAt: snaps[i].observedAt.toISOString(),
+        days: Math.round((dt / 86_400_000) * 10) / 10,
+      });
+    }
+  }
+  const lastSnap = snaps[snaps.length - 1];
+  const trailingGapDays = lastSnap
+    ? Math.round(((Date.now() - lastSnap.observedAt.getTime()) / 86_400_000) * 10) / 10
+    : null;
+
+  const currentPass = checkpoint?.passNumber ?? null;
+  const sweptThisPass = !!row && currentPass != null && row.lastSweptPass === currentPass;
+
+  let note: string;
+  if (!row) {
+    note = "This borrower is not yet in the daily sweep work-list (no loan observed since Phase 2 began). It is added the first time any loan is seen.";
+  } else if (gaps.length === 0 && (trailingGapDays == null || trailingGapDays < 2.5)) {
+    note = "No gaps: observations are continuous within the daily-sweep cadence since firstObservedAt.";
+  } else {
+    note =
+      `${gaps.length} internal gap(s)` +
+      (trailingGapDays != null && trailingGapDays >= 2.5 ? ` plus a ${trailingGapDays}-day trailing gap since the last observation` : "") +
+      ". A loan could have appeared and been deleted inside a gap without XRPLHub seeing it. History before firstObservedAt is never visible to us.";
+  }
+
+  return {
+    inSweepWorklist: !!row,
+    priority: row?.hasActiveOrImpaired ? "high" : "normal",
+    firstObservedAt: row ? row.firstObservedAt.toISOString() : (snaps[0]?.observedAt.toISOString() ?? null),
+    lastObservedAt: row ? row.lastObservedAt.toISOString() : (lastSnap?.observedAt.toISOString() ?? null),
+    lastSweptAt: row?.lastSweptAt ? row.lastSweptAt.toISOString() : null,
+    lastSweptLedger: row?.lastSweptLedger ?? null,
+    sweepCount: row?.sweepCount ?? 0,
+    currentPass,
+    sweptThisPass,
+    observationGaps: gaps,
+    trailingGapDays,
+    note,
   };
 }
 
