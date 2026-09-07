@@ -13,12 +13,14 @@ import {
 } from "@/lib/paycall";
 import { BUILDABLE_SERVICE_IDS } from "@/app/api/execute/serviceCatalog";
 import { SCREEN_OFAC_OUTPUT_SCHEMA, SCREEN_OFAC_OUTPUT_EXAMPLE } from "@/lib/screen";
+import { LENDING_EXPOSURE_OUTPUT_SCHEMA } from "@/lib/lendingExposure";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const screenOutputSchema = SCREEN_OFAC_OUTPUT_SCHEMA as unknown as object;
 const screenOutputExample = SCREEN_OFAC_OUTPUT_EXAMPLE as unknown as object;
+const exposureOutputSchema = LENDING_EXPOSURE_OUTPUT_SCHEMA as unknown as object;
 const screenAddrParam = {
   name: "address",
   in: "query" as const,
@@ -26,6 +28,14 @@ const screenAddrParam = {
   description: "XRPL classic address (r...) to compare against the OFAC SDN list.",
   schema: { type: "string", pattern: "^r[1-9A-HJ-NP-Za-km-z]{24,34}$" },
   example: "rnXyVQzgxZe7TR1EPzTkGj2jxH4LMJYh66",
+};
+const borrowerParam = {
+  name: "borrower",
+  in: "query" as const,
+  required: true,
+  description: "XRPL classic address (r...) of the borrower to aggregate lending exposure for.",
+  schema: { type: "string", pattern: "^r[1-9A-HJ-NP-Za-km-z]{24,34}$" },
+  example: "rEjXbJh2hwn2SVME1EvdCiH6TnU5TEpvf",
 };
 
 function payment(amount: number, description: string) {
@@ -127,7 +137,7 @@ export async function GET(req: Request) {
     servers: [{ url: origin }],
     "x-service-info": {
       name: "XRPLHub — XRPLScore",
-      categories: ["defi", "risk", "credit-scoring", "xrpl", "data", "compliance", "sanctions-screening"],
+      categories: ["defi", "risk", "credit-scoring", "xrpl", "data", "compliance", "sanctions-screening", "lending", "credit-bureau"],
       network: "xrpl-mainnet",
       asset: {
         symbol: "RLUSD",
@@ -941,6 +951,77 @@ export async function GET(req: Request) {
           responses: {
             "200": { description: "The receipt, its inclusion proof, the anchor tx, and the list snapshot hash." },
             "404": { description: "No receipt with that queryId." },
+          },
+        },
+      },
+
+      "/api/lending/exposure": {
+        get: {
+          operationId: "lendingExposure",
+          summary: "XLS-66 cross-broker lending exposure — aggregate (API key, free tier)",
+          description:
+            "A borrower's total XLS-66 lending exposure across ALL loan brokers in one call: total outstanding " +
+            "by asset, loan count, distinct broker count, defaults/impairments, XRPLScore, and an observation " +
+            "summary. The XRP Ledger has no aggregate borrower-debt object. It reflects the validated ledger " +
+            "NOW — a defaulted loan zeroes its own amounts and either party can delete a paid/defaulted loan, " +
+            "so absence is not proof of no borrowing history. `disposition` distinguishes 'no-loans-ever' " +
+            "(we have never observed one — not proof of none) from 'history-only' (loans seen before, none " +
+            "now). EVERY call persists an immutable, Merkle-anchored snapshot — verify at " +
+            "/api/attest/verify?queryId=. Pre-activation returns 503 with the live XRPLScore; serves " +
+            "automatically when the LendingProtocol amendment enables. Not underwriting or credit advice. " +
+            "Full per-loan detail + per-broker first-loss context: /api/x402/lending/exposure ($0.01 USDC).",
+          tags: ["Lending"],
+          parameters: [borrowerParam],
+          responses: {
+            "200": ok("Aggregate exposure + observation summary.", exposureOutputSchema, {}),
+            "401": { description: "Missing or invalid API key." },
+            "503": { description: "LendingProtocol (XLS-66) not yet enabled on mainnet — body carries the XRPLScore." },
+          },
+        },
+      },
+
+      "/api/lending/history": {
+        get: {
+          operationId: "lendingHistory",
+          summary: "Every loan XRPLHub has ever observed for a borrower (API key, free tier)",
+          description:
+            "The credit file XLS-66 can't keep. Built from append-only exposure snapshots: every loan ever " +
+            "observed for this borrower with first/last observed ledger, last-known status, monotonic " +
+            "everDefaulted / everImpaired / everOverdue flags, and — for loans since deleted from the ledger " +
+            "— the ledger window in which they vanished. A borrower who defaulted and deleted the loan shows " +
+            "nothing on-ledger; here it shows as vanished with everDefaulted true. `observationWindow` states " +
+            "how far back our view goes — loans deleted before firstObservedAt are invisible to us. Free.",
+          tags: ["Lending"],
+          parameters: [borrowerParam],
+          responses: {
+            "200": { description: "Per-loan observation records + summary + observation window." },
+            "401": { description: "Missing or invalid API key." },
+          },
+        },
+      },
+
+      "/api/x402/lending/exposure": {
+        get: {
+          operationId: "x402LendingExposure",
+          summary: "XLS-66 cross-broker lending exposure — full detail (x402, $0.01 USDC on Base)",
+          description:
+            "Everything /api/lending/exposure returns PLUS every loan decoded (rates in bps, days-to-due / " +
+            "days-overdue, flags), the per-broker first-loss context (the counterparty broker's own " +
+            "DebtTotal / CoverAvailable / CoverRateMinimum), the last-known state of every vanished loan, and " +
+            "the Merkle-anchored attestation receipt. $0.01 USDC on Base via the CDP x402 facilitator, no " +
+            "signup. Amendment-gated: 503 until XLS-66 enables, then serves automatically. Attests to " +
+            "OBSERVED STATE, not a complete borrowing history. Not underwriting or credit advice.",
+          tags: ["Lending"],
+          parameters: [borrowerParam],
+          "x-payment-info": {
+            price: { mode: "fixed", currency: "USD", amount: "0.010000" },
+            protocols: [{ x402: {} }],
+            description: "Full cross-broker lending exposure for one borrower, USDC on Base via the CDP x402 facilitator.",
+          },
+          responses: {
+            "200": ok("Full exposure — loans[], brokers[], vanishedLoans[], attestation.", exposureOutputSchema, {}),
+            "402": { description: "Payment Required — x402 challenge. Pay in USDC on Base and retry with the X-PAYMENT header." },
+            "503": { description: "LendingProtocol (XLS-66) not yet enabled on mainnet." },
           },
         },
       },

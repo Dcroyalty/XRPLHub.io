@@ -41,6 +41,7 @@ export const USDC_BASE_ASSET = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" as c
 export const PRICE_PER_SCORE_USDC = 0.01;
 export const PRICE_PER_MPT_USDC = 0.01; // full MPT issuer risk view
 export const PRICE_PER_SCREEN_USDC = 0.01; // one OFAC SDN screening attestation
+export const PRICE_PER_EXPOSURE_USDC = 0.01; // full XLS-66 cross-broker lending exposure
 
 // Display-only mirror of what @coinbase/x402's `facilitator` actually calls —
 // for the .well-known/x402 discovery document, which needs a URL string, not

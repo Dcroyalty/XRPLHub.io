@@ -22,13 +22,18 @@ import {
   TREASURY_ADDRESS,
 } from "@/lib/paycall";
 import { BUILDABLE_SERVICE_IDS } from "@/app/api/execute/serviceCatalog";
-import { BASE_PAY_TO, BASE_NETWORK, USDC_BASE_ASSET, CDP_FACILITATOR_URL, PRICE_PER_SCORE_USDC, PRICE_PER_MPT_USDC, PRICE_PER_SCREEN_USDC } from "@/lib/x402Base";
+import { BASE_PAY_TO, BASE_NETWORK, USDC_BASE_ASSET, CDP_FACILITATOR_URL, PRICE_PER_SCORE_USDC, PRICE_PER_MPT_USDC, PRICE_PER_SCREEN_USDC, PRICE_PER_EXPOSURE_USDC } from "@/lib/x402Base";
 import {
   SCREEN_OFAC_DESCRIPTION,
   SCREEN_OFAC_INPUT_SCHEMA,
   SCREEN_OFAC_OUTPUT_SCHEMA,
   SCREEN_OFAC_OUTPUT_EXAMPLE,
 } from "@/lib/screen";
+import {
+  LENDING_EXPOSURE_DESCRIPTION,
+  LENDING_EXPOSURE_INPUT_SCHEMA,
+  LENDING_EXPOSURE_OUTPUT_SCHEMA,
+} from "@/lib/lendingExposure";
 import { PLANS, type PlanId } from "@/lib/plans";
 import { USDC_PLAN_OUTPUT_SCHEMA, usdcPlanOutputExample } from "@/lib/checkoutUsdc";
 import { walletProp, SCORE_OUTPUT_SCHEMA as scoreOutputSchema, SCORE_OUTPUT_EXAMPLE as scoreOutputExample } from "@/lib/scoreSchema";
@@ -193,6 +198,37 @@ function usdcScreenResource(origin: string) {
   };
 }
 
+// XLS-66 cross-broker lending exposure — paid, full detail. The API-key route at
+// /api/lending/exposure stays free for the aggregate (key holders, free tier ok).
+function usdcExposureResource(origin: string) {
+  return {
+    resource: `${origin}/api/x402/lending/exposure`,
+    method: "GET",
+    name: "XLS-66 cross-broker lending exposure (full) — pay per call in USDC on Base",
+    description: LENDING_EXPOSURE_DESCRIPTION,
+    x402Version: 1,
+    scheme: "exact",
+    network: BASE_NETWORK,
+    asset: USDC_BASE_ASSET,
+    assetSymbol: "USDC",
+    payTo: BASE_PAY_TO,
+    maxTimeoutSeconds: 300,
+    facilitator: CDP_FACILITATOR_URL,
+    noSignup: true,
+    amount: PRICE_PER_EXPOSURE_USDC.toFixed(6),
+    inputSchema: {
+      type: "object",
+      properties: { borrower: LENDING_EXPOSURE_INPUT_SCHEMA.properties.borrower },
+      required: ["borrower"],
+      description: "?borrower=<r-address> query parameter.",
+    },
+    outputSchema: LENDING_EXPOSURE_OUTPUT_SCHEMA,
+    attestsObservedStateNotCompleteHistory: true,
+    amendmentGated: "LendingProtocol (XLS-66) — returns 503 until enabled on mainnet, then serves with no redeploy",
+    verify: `${origin}/api/attest/verify?queryId={queryId}`,
+  };
+}
+
 export async function GET(req: Request) {
   const origin = new URL(req.url).origin;
   const asset = {
@@ -262,6 +298,7 @@ export async function GET(req: Request) {
         usdcScoreResource(origin),
         usdcMptResource(origin),
         usdcScreenResource(origin),
+        usdcExposureResource(origin),
         usdcPlanResource(origin, "starter"),
         usdcPlanResource(origin, "growth"),
         usdcPlanResource(origin, "scale"),
@@ -284,6 +321,9 @@ export async function GET(req: Request) {
         screeningVerify: `${origin}/api/attest/verify?queryId={queryId}`,
         screeningSpec: `${origin}/api/attest/anchor`,
         screeningTerms: `${origin}/legal/screening`,
+        lendingExposureAggregateWithApiKey: `${origin}/api/lending/exposure?borrower={wallet}`,
+        lendingHistoryWithApiKey: `${origin}/api/lending/history?borrower={wallet}`,
+        lendingAttestationVerify: `${origin}/api/attest/verify?queryId={queryId}`,
       },
       // Stable machine-readable error codes returned by the RLUSD/t54 paid
       // routes. `error` is always one of these keys; the value describes it.

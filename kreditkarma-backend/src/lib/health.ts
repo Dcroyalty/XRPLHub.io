@@ -148,6 +148,32 @@ async function checkScreening(): Promise<Check> {
   }
 }
 
+async function checkLendingExposure(): Promise<Check> {
+  // XLS-66 exposure attestation pipeline. The amendment being inactive is
+  // expected (info, not down). What matters: is the anchor healthy once there
+  // are snapshots to anchor.
+  try {
+    const [lastFail, lastOk, unanchored, snapCount] = await Promise.all([
+      prisma.lendingExposureAnchor.findFirst({ where: { status: { in: ["failed", "misconfigured"] } }, orderBy: { createdAt: "desc" } }),
+      prisma.lendingExposureAnchor.findFirst({ where: { status: "anchored" }, orderBy: { createdAt: "desc" } }),
+      prisma.lendingExposureSnapshot.count({ where: { anchorId: null } }),
+      prisma.lendingExposureSnapshot.count(),
+    ]);
+    if (snapCount === 0) {
+      return { name: "lending-exposure", level: "ok", detail: "no exposure snapshots yet (XLS-66 not active on mainnet)" };
+    }
+    const failNewer = lastFail && (!lastOk || lastFail.createdAt > lastOk.createdAt);
+    if (failNewer && lastFail) {
+      const keyed = !!process.env.ANCHOR_WALLET_SEED;
+      const level: Level = lastFail.status === "misconfigured" && !keyed ? "down" : "warn";
+      return { name: "lending-exposure", level, detail: `last lending anchor ${lastFail.status}: ${lastFail.error ?? "no detail"}${unanchored ? ` (${unanchored} snapshot(s) unanchored)` : ""}` };
+    }
+    return { name: "lending-exposure", level: "ok", detail: `${snapCount} snapshot(s), ${unanchored} awaiting the next anchor` };
+  } catch (e) {
+    return { name: "lending-exposure", level: "warn", detail: e instanceof Error ? e.message : "check failed" };
+  }
+}
+
 function checkCredentialSigning(): Check {
   return process.env.CREDENTIAL_SIGNING_SECRET
     ? { name: "credential-signing", level: "ok", detail: "CREDENTIAL_SIGNING_SECRET set — paid off-ledger certificates are cryptographically binding" }
@@ -179,7 +205,7 @@ function checkCron(): Check {
 export async function healthProbe(opts: { deep?: boolean } = {}): Promise<HealthReport> {
   const deep = opts.deep ?? false;
   const checks: Check[] = [];
-  const settled = await Promise.allSettled([checkDb(), checkT54(deep), checkCdp(deep), checkAnchor(), checkScreening()]);
+  const settled = await Promise.allSettled([checkDb(), checkT54(deep), checkCdp(deep), checkAnchor(), checkScreening(), checkLendingExposure()]);
   for (const s of settled) {
     if (s.status === "fulfilled") checks.push(s.value);
     else checks.push({ name: "unknown", level: "warn", detail: String(s.reason) });

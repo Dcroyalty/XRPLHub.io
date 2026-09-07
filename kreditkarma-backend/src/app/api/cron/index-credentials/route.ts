@@ -17,6 +17,7 @@ import { isAdmin } from "@/lib/adminAuth";
 import { notifyError } from "@/lib/notify";
 import { refreshSdnSnapshot } from "@/lib/ofac";
 import { maybeAnchorScreeningReceipts } from "@/lib/screenAnchor";
+import { maybeAnchorLendingReceipts } from "@/lib/lendingAnchor";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -34,10 +35,10 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   try {
-    // Credential census gets the bulk of the budget; the OFAC steps below are a
-    // cheap no-op on the ~360 days/yr the SDN Publish_Date is unchanged at cron
-    // time, and one AccountSet (~10 drops) when there are receipts to anchor.
-    const progress = await runIndexerPass(prisma, { budgetMs: 30_000 });
+    // Credential census gets a bounded slice; the anchor steps below are each a
+    // no-op most runs and one ~10-drop AccountSet when there's a batch to anchor.
+    // Budget kept tight so both anchors + the SDN refresh fit under the 60s ceiling.
+    const progress = await runIndexerPass(prisma, { budgetMs: 20_000 });
 
     const sdn = await refreshSdnSnapshot(prisma).catch((e) => ({
       action: "blocked-error" as const,
@@ -50,7 +51,12 @@ export async function GET(req: Request) {
       return { attempted: false, submitted: false, reason: "anchor threw", leafCount: 0 };
     });
 
-    return NextResponse.json({ ...progress, sdn, screeningAnchor });
+    const lendingAnchor = await maybeAnchorLendingReceipts(prisma).catch((e) => {
+      void notifyError("cron/index-credentials lending-anchor", e);
+      return { attempted: false, submitted: false, reason: "anchor threw", leafCount: 0 };
+    });
+
+    return NextResponse.json({ ...progress, sdn, screeningAnchor, lendingAnchor });
   } catch (err) {
     await notifyError("cron/index-credentials", err);
     console.error("[cron/index-credentials]", err);

@@ -464,3 +464,105 @@ model ScreeningAnchor {
   @@index([status])
   @@index([createdAt])
 }
+
+// ─── XLS-66 cross-broker lending exposure — the credit file the ledger can't keep ──
+// XLS-66 stores CURRENT exposure only. A defaulted Loan zeroes its own amounts
+// (only lsfLoanDefault persists) and either party may LoanDelete a paid/defaulted
+// Loan to reclaim the borrower's reserve — so a borrower can erase the evidence of
+// their own default. Our snapshots ARE the credit history. Every exposure query
+// persists one immutable LendingExposureSnapshot; LendingLoanObservation is a
+// per-(borrower,loan) tracker built from those snapshots that only ever
+// ACCUMULATES (first-observed never changes, ever-flags are monotonic, a
+// disappearance is recorded once). Nothing here is ever pruned or overwritten.
+
+// One row per exposure query. IMMUTABLE — append only.
+model LendingExposureSnapshot {
+  id               String   @id @default(cuid())
+  queryId          String   @unique                 // also the attestation receipt id
+  borrower         String
+  ledgerIndex      Int
+  ledgerCloseAt    DateTime?
+  amendmentActive  Boolean
+  observedAt       DateTime @default(now())          // wall clock at query time
+  loanCount        Int      @default(0)              // loans visible at this ledger
+  brokerCount      Int      @default(0)
+  worstStatus      String   @default("none")
+  exposureByAsset  Json                              // { assetKey: { principalOutstanding, totalValueOutstanding, loanCount } }
+  events           Json                              // { defaulted, impaired, overdue, overdueGraceExpired }
+  visibleLoanIds   Json                              // sorted string[] — exactly which Loan objects were on the ledger
+  loans            Json                              // full per-loan detail array (the raw observation)
+  earliestNextPaymentDueAt DateTime?
+  xrplScore        Int?
+  grade            String?
+  requestedBy      String                            // "key:<prefix>" | "x402:<id>" | "mcp"
+  canonVersion     String   @default("lending-exposure-v1")
+  engineVersion    String   @default("lending-exposure-v1")
+  leafHash         String
+  anchorId         String?
+  anchor           LendingExposureAnchor? @relation(fields: [anchorId], references: [id])
+  createdAt        DateTime @default(now())
+
+  @@index([borrower, observedAt])
+  @@index([anchorId])
+  @@index([createdAt])
+}
+
+// Per-(borrower, loanId) lifecycle tracker. A materialized view over
+// LendingExposureSnapshot — rebuildable from it, and only ever accumulates
+// knowledge. `disappearedAt` is set once, when a previously-seen loan is absent
+// from a fresh query (the borrower or broker deleted it).
+model LendingLoanObservation {
+  id                    String   @id @default(cuid())
+  borrower              String
+  loanId                String                       // the Loan object's ledger index (64-hex)
+  loanBrokerId          String
+  brokerOwner           String?
+  asset                 String?                      // resolved Vault.Asset key
+  firstObservedAt       DateTime                     // IMMUTABLE once set
+  firstObservedLedger   Int
+  lastObservedAt        DateTime
+  lastObservedLedger    Int
+  observationCount      Int      @default(1)
+  lastKnownStatus       String                       // current | overdue | overdueGraceExpired | impaired | defaulted | paid
+  lastKnownPrincipal    String?
+  lastKnownTotalValue   String?
+  everImpaired          Boolean  @default(false)     // monotonic
+  everDefaulted         Boolean  @default(false)     // monotonic
+  everOverdue           Boolean  @default(false)     // monotonic
+  disappearedAt         DateTime?                    // set ONCE — loan no longer on the ledger
+  disappearedAfterLedger  Int?                       // last ledger we saw it
+  disappearedBeforeLedger Int?                       // first ledger we confirmed it gone
+  reappearedAt          DateTime?                    // should never happen post-LoanDelete; recorded if it does
+  createdAt             DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@unique([borrower, loanId])
+  @@index([borrower])
+  @@index([everDefaulted])
+}
+
+// One daily Merkle anchor over a batch of exposure snapshots. Same wallet + hash
+// scheme as ScreeningAnchor / MptAnchor; separate memo type + batch.
+model LendingExposureAnchor {
+  id           String   @id @default(cuid())
+  canonVersion String
+  merkleRoot   String
+  leafCount    Int
+  rangeStart   DateTime?
+  rangeEnd     DateTime?
+  memo         String
+  txHash       String?  @unique
+  ledgerIndex  Int?
+  account      String?
+  feeDrops     String?
+  closeTime    DateTime?
+  status       String   @default("pending")          // pending | anchored | failed | misconfigured | superseded
+  error        String?
+  createdAt    DateTime @default(now())
+  anchoredAt   DateTime?
+
+  snapshots    LendingExposureSnapshot[]
+
+  @@index([status])
+  @@index([createdAt])
+}

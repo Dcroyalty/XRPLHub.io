@@ -92,7 +92,6 @@ export const SCREEN_CANON_SPEC = {
 } as const;
 
 const SHA0 = Buffer.from([0x00]);
-const SHA1 = Buffer.from([0x01]);
 const sha = (b: Buffer) => createHash("sha256").update(b).digest();
 
 export interface ScreenMatch {
@@ -163,57 +162,14 @@ export function screenLeafHash(leaf: ScreenLeaf): string {
   return sha(Buffer.concat([SHA0, Buffer.from(canonScreenJson(leaf), "utf8")])).toString("hex");
 }
 
-/** RFC 6962 Merkle root over an ordered list of 64-hex leaf-hash strings. */
-export function merkleRootFromLeafHashes(leafHashesHex: string[]): string {
-  if (leafHashesHex.length === 0) return createHash("sha256").update("").digest("hex");
-  let level: Buffer[] = leafHashesHex.map((h) => Buffer.from(h, "hex") as Buffer);
-  while (level.length > 1) {
-    const next: Buffer[] = [];
-    for (let i = 0; i < level.length; i += 2) {
-      if (i + 1 < level.length) next.push(sha(Buffer.concat([SHA1, level[i], level[i + 1]])));
-      else next.push(level[i]); // odd node promoted unchanged
-    }
-    level = next;
-  }
-  return level[0].toString("hex");
-}
-
-export interface ProofStep {
-  position: "left" | "right";
-  hash: string;
-}
-
-/** Inclusion proof for leaf index `target` in the ordered leaf-hash list. */
-export function merkleInclusionProof(leafHashesHex: string[], target: number): ProofStep[] {
-  const proof: ProofStep[] = [];
-  let idx = target;
-  let level: Buffer[] = leafHashesHex.map((h) => Buffer.from(h, "hex") as Buffer);
-  while (level.length > 1) {
-    const next: Buffer[] = [];
-    for (let i = 0; i < level.length; i += 2) {
-      if (i + 1 < level.length) {
-        next.push(sha(Buffer.concat([SHA1, level[i], level[i + 1]])));
-        if (i === idx) proof.push({ position: "right", hash: level[i + 1].toString("hex") });
-        else if (i + 1 === idx) proof.push({ position: "left", hash: level[i].toString("hex") });
-      } else {
-        next.push(level[i]); // promoted; no sibling to record
-      }
-    }
-    idx = Math.floor(idx / 2);
-    level = next;
-  }
-  return proof;
-}
-
-/** Fold a leaf hash + inclusion proof back to a root and compare. */
-export function verifyInclusion(leafHashHex: string, proof: ProofStep[], rootHex: string): boolean {
-  let h: Buffer = Buffer.from(leafHashHex, "hex") as Buffer;
-  for (const step of proof) {
-    const sib = Buffer.from(step.hash, "hex");
-    h = step.position === "left" ? sha(Buffer.concat([SHA1, sib, h])) : sha(Buffer.concat([SHA1, h, sib]));
-  }
-  return h.toString("hex") === rootHex;
-}
+// RFC 6962 Merkle helpers live in ./merkle (shared with the lending-exposure
+// attestation). Re-exported here so existing importers of screenCanon are unchanged.
+export {
+  merkleRootFromLeafHashes,
+  merkleInclusionProof,
+  verifyInclusion,
+  type ProofStep,
+} from "./merkle";
 
 /** The one factual sentence a receipt renders — never a conclusion. */
 export function renderStatement(leaf: ScreenLeaf): string {

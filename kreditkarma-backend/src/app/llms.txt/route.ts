@@ -92,6 +92,35 @@ matching, no 1-hop graph analysis). Full terms: ${origin}/legal/screening
 - GET ${origin}/api/attest/anchor — free: the frozen ofac-screen-v1 canonicalisation spec, the sanction-screen-v1 engine rules + version-bump policy, the current SDN snapshot, and the latest on-ledger anchor.
 - engineVersion "sanction-screen-v1" is immutable per receipt — it changes only if the match algorithm changes (normalisation, match rule, extracted idTypes, source lists, snapshot selection). A newer SDN snapshot is a new vintage, not a version bump.
 
+## XLS-66 cross-broker lending exposure (credit bureau)
+
+A borrower's total XLS-66 lending exposure across ALL loan brokers in one call.
+The XRP Ledger has no aggregate borrower-debt object — a loan broker sees only
+its own loans while carrying first-loss capital. This aggregates every Loan
+object in the borrower's owner directory: total outstanding by asset, loan
+count, distinct broker count, defaults / impairments / overdue, and XRPLHub's
+XRPLScore.
+
+Why this matters: XLS-66 keeps CURRENT exposure only. A defaulted loan zeroes
+its own amounts (the lsfLoanDefault flag is the credit event, not the balance),
+and either the borrower or the broker can delete a paid/defaulted loan to
+reclaim the borrower's reserve — a borrower can erase the evidence of their own
+default. So EVERY exposure query here persists an immutable, Merkle-anchored
+snapshot that commits to the exact list of loans observed. Our attested
+snapshots are the credit history the ledger doesn't keep. The disposition
+field distinguishes "no-loans-ever" (we have never observed one — NOT proof of
+none) from "history-only" (loans seen before, none on the ledger now).
+
+XLS-66 is not yet enabled on mainnet (open for validator voting). These
+endpoints return 503 with the live XRPLScore until the LendingProtocol
+amendment activates, then serve automatically — gated on the on-ledger
+Amendments object, no redeploy. Not underwriting or credit advice.
+
+- GET ${origin}/api/lending/exposure?borrower=r... — API key (a free key works): the aggregate + observation summary. Persists a snapshot every call.
+- GET ${origin}/api/lending/history?borrower=r... — API key: every loan ever observed for this borrower, first/last observed, last-known status, ever-defaulted/impaired flags, and the ledger window in which any vanished loan disappeared.
+- GET ${origin}/api/x402/lending/exposure?borrower=r... — $0.01 USDC on Base (x402), no key: adds every loan decoded, per-broker first-loss context (DebtTotal / CoverAvailable), vanished-loan detail, and the attestation receipt.
+- GET ${origin}/api/attest/verify?queryId=<uuid> — free: the exposure snapshot + Merkle inclusion proof + on-ledger anchor tx. The leaf commits to visibleLoanIds, so a loan later deleted is still provably attested to have existed.
+
 ## For AI agents
 
 MCP server (Streamable HTTP, JSON-RPC 2.0, no auth):
@@ -113,7 +142,9 @@ MCP server (Streamable HTTP, JSON-RPC 2.0, no auth):
   - verify_mpt_registry — the latest on-ledger Merkle-root anchor of the registry + tx hash + ledger index + the canonicalisation scheme to reproduce the root. No params. Free.
   - check_service_health — DB / Xaman / both x402 facilitators / anchor config, up or down. Poll before paying. No params. Free.
   - screen_address_ofac — compare one XRPL address against a vintage-pinned OFAC SDN snapshot (exact match only); returns a Merkle-anchored receipt. Attests to PROCESS, not ground truth — a "no match" is NOT "this address is clean". Param: address. Free via MCP.
-  - verify_attestation — given a screening receipt's queryId, return the inclusion proof + on-ledger anchor tx + list hash so it can be verified without trusting XRPLHub. Param: query_id. Free.
+  - verify_attestation — given a screening OR lending-exposure queryId, return the inclusion proof + on-ledger anchor tx + source hash so it can be verified without trusting XRPLHub. Param: query_id. Free.
+  - get_lending_exposure — a borrower's total XLS-66 exposure across ALL loan brokers (outstanding by asset, defaults, impairments) + XRPLScore + observation history. The ledger keeps current exposure only and a borrower can delete their own default record — every call persists a Merkle-anchored snapshot. Param: borrower. Free via MCP. 503 (with XRPLScore) until XLS-66 activates.
+  - get_lending_history — every loan XRPLHub has ever observed for a borrower: first/last seen, last-known status, ever-defaulted/impaired, and the ledger window a vanished loan disappeared in. Param: borrower. Free.
 
 Health: GET ${origin}/api/health  (503 when a money-path component is down; ?deep=1 for live facilitator probes)
 
@@ -134,6 +165,7 @@ x402 pay-per-call (USDC on Base, CDP facilitator, no signup):
 - POST ${origin}/api/x402/usdc/score — 300-850 score, $0.01
 - GET ${origin}/api/x402/usdc/mpt/<48-hex id> — full MPT issuer risk, $0.01
 - GET ${origin}/api/x402/screen/ofac?address=r... — OFAC SDN screening attestation, $0.01 (process not ground truth; see the screening section above)
+- GET ${origin}/api/x402/lending/exposure?borrower=r... — XLS-66 cross-broker lending exposure, full detail + attestation, $0.01 (503 until XLS-66 activates; see the lending section above)
 
 ## B2B API (prepaid key, 30-day term)
 

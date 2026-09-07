@@ -12,7 +12,7 @@
 // Stateless — zero new infrastructure, runs on Vercel as a standard serverless fn.
 // No new npm packages required.
 //
-// SIXTEEN TOOLS:
+// EIGHTEEN TOOLS:
 //   1. check_xrpl_score        — free 300–850 wallet creditworthiness score
 //   2. list_xrpl_services      — the 35 build_xrpl_transaction actions + their params
 //   3. build_xrpl_transaction  — ready-to-sign txjson for any of 35 XRPL actions
@@ -28,7 +28,9 @@
 //  13. verify_mpt_registry     — free: the latest on-ledger Merkle-root anchor of the registry
 //  14. check_service_health    — free: is the money path up before you pay
 //  15. screen_address_ofac     — free: compare an address to a pinned OFAC SDN snapshot (process, not ground truth)
-//  16. verify_attestation      — free: inclusion proof + on-ledger anchor for a screening receipt
+//  16. verify_attestation      — free: inclusion proof + on-ledger anchor for a screening / lending receipt
+//  17. get_lending_exposure    — free: a borrower's total XLS-66 exposure across ALL brokers + observation history
+//  18. get_lending_history     — free: every loan XRPLHub has ever observed for a borrower
 //
 // © 2026 XRPLHub.io · XRPLScore™ · All Rights Reserved
 // ═══════════════════════════════════════════════════════════════════════════
@@ -39,6 +41,7 @@ import { SERVICE_CATALOG, SERVICE_IDS, serviceParamLines } from '@/app/api/execu
 import { prisma } from '@/lib/xrplscore-db';
 import { screenOfac, NoSnapshotError } from '@/lib/screen';
 import { isValidXrplAddress } from '@/lib/engine';
+import { runExposureQuery, priorObservation } from '@/lib/lendingExposure';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://www.xrplhub.io';
 
@@ -55,11 +58,12 @@ const CORS = {
 // JSON-RPC surface (one source of truth for scanners like Smithery).
 export const MCP_SERVER_INFO = {
   name: 'xrplhub',
-  version: '1.9.0',
+  version: '1.10.0',
   description:
     'Free XRPL wallet creditworthiness scores · ready-to-sign txjson for 35 XRPL actions · ' +
     'verifiable score credential · credential + permissioned domain explorer · MPT issuer risk · ' +
-    'OFAC SDN screening attestation (process, not ground truth) · community micro-grants · donations',
+    'OFAC SDN screening attestation (process, not ground truth) · XLS-66 cross-broker lending exposure ' +
+    '(attested — the ledger keeps current exposure only) · community micro-grants · donations',
 };
 
 // ─── TOOL DEFINITIONS (descriptions are the marketing copy to the AI) ────────
@@ -370,21 +374,59 @@ export const TOOLS = [
   {
     name: 'verify_attestation',
     description:
-      "Given a screening receipt's queryId (from screen_address_ofac), return everything needed to verify " +
-      'it WITHOUT trusting XRPLHub: the canonical leaf, its Merkle inclusion proof, the on-ledger anchor ' +
-      'transaction hash + ledger close time, and the SHA-256 of the OFAC SDN snapshot that was screened ' +
-      'against. Rebuild the leaf, fold the proof to the Merkle root, confirm that root is in the anchor ' +
-      "tx's MemoData, and re-hash the cited OFAC publication. Before the daily anchor runs the receipt " +
-      'shows status "pending" with the leaf hash only. Params: query_id (UUID, required). Free, no signup.',
+      "Given a queryId from screen_address_ofac OR get_lending_exposure, return everything needed to verify " +
+      'that receipt WITHOUT trusting XRPLHub: the canonical leaf, its Merkle inclusion proof, the on-ledger ' +
+      'anchor transaction hash + ledger close time, and the SHA-256 of the source data (the OFAC SDN ' +
+      'snapshot, or — for lending — the exact list of Loan ids observed). Rebuild the leaf, fold the proof ' +
+      "to the Merkle root, confirm that root is in the anchor tx's MemoData. Before the daily anchor runs " +
+      'it shows status "pending" with the leaf hash only. Params: query_id (UUID, required). Free, no signup.',
     inputSchema: {
       type: 'object',
       properties: {
-        query_id: {
-          type: 'string',
-          description: 'The screening receipt queryId (UUID) returned by screen_address_ofac',
-        },
+        query_id: { type: 'string', description: 'The queryId (UUID) from screen_address_ofac or get_lending_exposure' },
       },
       required: ['query_id'],
+    },
+  },
+  {
+    name: 'get_lending_exposure',
+    description:
+      "A borrower's TOTAL XLS-66 lending exposure across ALL loan brokers in one call — the XRP Ledger has " +
+      "no aggregate borrower-debt object, so a broker carrying first-loss capital cannot see a borrower's " +
+      "total leverage elsewhere. Returns: outstanding by asset, loan count, distinct broker count, defaults " +
+      "/ impairments / overdue, XRPLHub's XRPLScore, and an observation history summary. " +
+      "IMPORTANT: XLS-66 keeps CURRENT exposure only. A defaulted loan zeroes its own amounts (the flag is " +
+      "the credit event, not the balance), and either the borrower or the broker can delete a paid or " +
+      "defaulted loan to reclaim the borrower's reserve — a borrower can erase evidence of their own " +
+      "default. Every call here persists an immutable Merkle-anchored snapshot. `disposition` = " +
+      "'no-loans-ever' means we have never observed a loan (NOT proof of none); 'history-only' means loans " +
+      "were seen before but none are on the ledger now. XLS-66 is not yet enabled on mainnet — until it is, " +
+      "this returns amendment-not-active with the live XRPLScore. Not underwriting or credit advice. " +
+      "Params: borrower (r..., required). Free via MCP.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        borrower: { type: 'string', description: 'XRPL classic address (r..., 25–35 chars) of the borrower' },
+      },
+      required: ['borrower'],
+    },
+  },
+  {
+    name: 'get_lending_history',
+    description:
+      "Every loan XRPLHub has EVER observed for a borrower, built from append-only exposure snapshots — the " +
+      "credit file the XRP Ledger can't keep. Per loan: first/last observed ledger, last-known status, " +
+      "monotonic everDefaulted / everImpaired / everOverdue flags, and for loans since deleted from the " +
+      "ledger, the ledger window in which they vanished. A borrower who defaulted and then deleted the loan " +
+      "shows nothing on-ledger; here it shows as vanished with everDefaulted true. `observationWindow` says " +
+      "how far back our view goes — loans deleted before we first saw this borrower are invisible to us. " +
+      "Params: borrower (r..., required). Free, no signup.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        borrower: { type: 'string', description: 'XRPL classic address (r...) of the borrower' },
+      },
+      required: ['borrower'],
     },
   },
 ];
@@ -587,7 +629,7 @@ async function toolScreenAddressOfac(args: Record<string, unknown>): Promise<str
 
 async function toolVerifyAttestation(args: Record<string, unknown>): Promise<string> {
   const queryId = String(args.query_id || '').trim();
-  if (!queryId) return JSON.stringify({ error: 'query_id is required (the UUID from screen_address_ofac).' });
+  if (!queryId) return JSON.stringify({ error: 'query_id is required (the UUID from screen_address_ofac or get_lending_exposure).' });
   try {
     const res = await fetch(`${API_URL}/api/attest/verify?queryId=${encodeURIComponent(queryId)}`, {
       signal: AbortSignal.timeout(15000),
@@ -597,6 +639,76 @@ async function toolVerifyAttestation(args: Record<string, unknown>): Promise<str
     return JSON.stringify(d, null, 2);
   } catch (e) {
     return JSON.stringify({ error: `Verify lookup failed: ${e instanceof Error ? e.message : 'unknown'}` });
+  }
+}
+
+async function toolGetLendingExposure(args: Record<string, unknown>): Promise<string> {
+  const borrower = String(args.borrower || '').trim();
+  if (!borrower.startsWith('r') || borrower.length < 25 || borrower.length > 35) {
+    return JSON.stringify({ error: 'Invalid XRPL address. Must start with r and be 25–35 characters.' });
+  }
+  try {
+    // Called directly (MCP has no API key) — persists a snapshot like the HTTP route.
+    const out = await runExposureQuery(prisma, borrower, 'mcp');
+    if (!out.amendmentActive) {
+      return JSON.stringify(
+        {
+          status: 'amendment-not-active',
+          amendment: 'LendingProtocol (XLS-66)',
+          message: 'XLS-66 is not yet enabled on XRPL mainnet. This serves automatically on activation. The XRPLScore below is live.',
+          borrower: out.borrower,
+          xrplScore: out.xrplScore,
+          grade: out.grade,
+          observation: out.observation,
+          disclaimer: out.disclaimer,
+        },
+        null,
+        2
+      );
+    }
+    return JSON.stringify(
+      {
+        borrower: out.borrower,
+        ledgerIndex: out.ledgerIndex,
+        asOf: out.generatedAt,
+        disposition: out.disposition,
+        exposure: out.exposure,
+        events: out.events,
+        worstStatus: out.worstStatus,
+        earliestNextPaymentDue: out.earliestNextPaymentDue,
+        xrplScore: out.xrplScore,
+        grade: out.grade,
+        observation: out.observation,
+        loans: out.loans,
+        brokers: out.brokers,
+        vanishedLoans: out.vanishedLoans,
+        attestation: { queryId: out.queryId, leafHash: out.leafHash, verify: `${API_URL}/api/attest/verify?queryId=${out.queryId}` },
+        disclaimer: out.disclaimer,
+      },
+      null,
+      2
+    );
+  } catch (e) {
+    return JSON.stringify({ error: `Lending exposure query failed: ${e instanceof Error ? e.message : 'unknown'}` });
+  }
+}
+
+async function toolGetLendingHistory(args: Record<string, unknown>): Promise<string> {
+  const borrower = String(args.borrower || '').trim();
+  if (!borrower.startsWith('r') || borrower.length < 25 || borrower.length > 35) {
+    return JSON.stringify({ error: 'Invalid XRPL address. Must start with r and be 25–35 characters.' });
+  }
+  try {
+    const res = await fetch(`${API_URL}/api/lending/history?borrower=${encodeURIComponent(borrower)}`, {
+      // MCP proxy — /api/lending/history needs a key; MCP calls it with no key,
+      // so fall back to the observation summary from the lib directly on 401.
+      signal: AbortSignal.timeout(15000),
+    });
+    if (res.ok) return JSON.stringify(await res.json(), null, 2);
+    const bundle = await priorObservation(prisma, borrower);
+    return JSON.stringify({ borrower, summary: bundle.summary, vanished: bundle.vanished }, null, 2);
+  } catch (e) {
+    return JSON.stringify({ error: `Lending history lookup failed: ${e instanceof Error ? e.message : 'unknown'}` });
   }
 }
 
@@ -1057,6 +1169,10 @@ export async function POST(req: NextRequest) {
         output = await toolScreenAddressOfac(toolArgs);
       } else if (toolName === 'verify_attestation') {
         output = await toolVerifyAttestation(toolArgs);
+      } else if (toolName === 'get_lending_exposure') {
+        output = await toolGetLendingExposure(toolArgs);
+      } else if (toolName === 'get_lending_history') {
+        output = await toolGetLendingHistory(toolArgs);
       } else {
         return rpcError(id, -32601, `Tool not found: ${toolName}`);
       }
