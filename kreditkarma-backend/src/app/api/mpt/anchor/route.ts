@@ -1,6 +1,8 @@
 // src/app/api/mpt/anchor/route.ts
 // GET /api/mpt/anchor — the latest on-ledger anchor of the MPT registry, so a
-// third party can prove the published registry hasn't been altered.
+// third party can check that the registry rows we publish match the Merkle root
+// we anchored on-ledger at a known time. (Proves published-rows-match-anchored-
+// root, not immutability — the index is mutable and re-anchored each pass.)
 //
 // BIS Working Paper 1374 pattern: after a cron pass the registry index is
 // canonicalised, a Merkle root is computed over the issuance records, and that

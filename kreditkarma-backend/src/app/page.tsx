@@ -1355,7 +1355,7 @@ function DonateModal({ show, onClose }: { show:boolean; onClose:()=>void }) {
   );
 }
 
-// ─── GRANT MODAL — submit → AI-assisted triage (Grok + Anthropic) → human admin queue ───
+// ─── GRANT MODAL — submit → persisted to the human review queue (AI triage runs admin-side) ───
 function GrantModal({ show, onClose, connectedWallet, user }: { show:boolean; onClose:()=>void; connectedWallet?:string; user?:{email:string;name:string}|null }) {
   const [step, setStep] = useState<'form'|'reviewing'|'success'>('form');
   const [form, setForm] = useState({ name:'', wallet:'', email:'', phone:'', category:'', need:'', amount:'25' });
@@ -1370,7 +1370,6 @@ function GrantModal({ show, onClose, connectedWallet, user }: { show:boolean; on
     }));
   }, [show, connectedWallet, user]);
   const [errors, setErrors] = useState<Record<string,string>>({});
-  const [aiResult, setAiResult] = useState<{ recommendation?:string; summary?:string }|null>(null);
   const cats = ['Food & Groceries','Rent / Housing','Medical Bills','Utilities','Transportation','Other'];
   const set = (k:string, v:string) => { setForm(f=>({...f,[k]:v})); setErrors(e=>({...e,[k]:'',contact:''})); };
 
@@ -1388,19 +1387,13 @@ function GrantModal({ show, onClose, connectedWallet, user }: { show:boolean; on
     const e = validate();
     if (Object.keys(e).length) { setErrors(e); return; }
     setStep('reviewing');
-    let review:{ recommendation?:string; summary?:string } | null = null;
     try {
-      // 1) persist application (status PENDING)
+      // 1) persist application (status PENDING) — enters the human review queue.
+      //    AI triage is advisory and runs admin-side, not from the browser.
       await fetch(`${API_URL}/api/grants/submit`, {
         method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(form),
       });
-      // 2) AI-assisted triage (Grok + Anthropic) → returns an ADVISORY recommendation + summary for the human reviewer
-      const res = await fetch(`${API_URL}/api/grants/review`, {
-        method:'POST', headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({ name:form.name, wallet:form.wallet, email:form.email, category:form.category, need:form.need, amount:form.amount }),
-      });
-      if (res.ok) review = await res.json().catch(()=>null);
-      // 3) email acknowledgement (best-effort)
+      // 2) email acknowledgement (best-effort)
       if (form.email) {
         await fetch(`${API_URL}/api/send-email`, {
           method:'POST', headers:{'Content-Type':'application/json'},
@@ -1408,18 +1401,17 @@ function GrantModal({ show, onClose, connectedWallet, user }: { show:boolean; on
         });
       }
     } catch {}
-    setAiResult(review);
     setStep('success');
   };
 
-  const handleClose = () => { onClose(); setTimeout(()=>{ setStep('form'); setForm({name:'',wallet:'',email:'',phone:'',category:'',need:'',amount:'25'}); setErrors({}); setAiResult(null); }, 300); };
+  const handleClose = () => { onClose(); setTimeout(()=>{ setStep('form'); setForm({name:'',wallet:'',email:'',phone:'',category:'',need:'',amount:'25'}); setErrors({}); }, 300); };
 
   if (step === 'reviewing') return (
     <Overlay show={show} onClose={()=>{}}>
       <div style={{ textAlign:'center', padding:'44px 0' }}>
-        <div style={{ fontSize:44, animation:'spin 1s linear infinite', display:'inline-block', marginBottom:14 }}>🤖</div>
-        <p style={{ color:'#8b5cf6', fontWeight:700, fontSize:17 }}>Preparing your application for review…</p>
-        <p style={{ fontSize:13, color:'rgba(255,255,255,.38)', marginTop:6 }}>Assessing need · checking treasury · drafting recommendation</p>
+        <div style={{ fontSize:44, animation:'spin 1s linear infinite', display:'inline-block', marginBottom:14 }}>⏳</div>
+        <p style={{ color:'#8b5cf6', fontWeight:700, fontSize:17 }}>Submitting your application…</p>
+        <p style={{ fontSize:13, color:'rgba(255,255,255,.38)', marginTop:6 }}>Adding you to the review queue</p>
       </div>
     </Overlay>
   );
@@ -1429,13 +1421,7 @@ function GrantModal({ show, onClose, connectedWallet, user }: { show:boolean; on
       <div style={{ textAlign:'center', padding:'20px 0' }}>
         <div style={{ fontSize:56, marginBottom:12 }}>❤️</div>
         <h3 style={{ fontSize:24, fontWeight:900, color:'#8b5cf6', marginBottom:10 }}>Application Received</h3>
-        <p style={{ color:'rgba(255,255,255,.55)', fontSize:14, lineHeight:1.75, marginBottom:10 }}>Your ${form.amount} grant request has been received. Our AI has reviewed your application — allow <strong style={{ color:'#fff' }}>24–48 hours</strong> for a final decision. We help as many people as we can based on need, available treasury funds, and urgency.</p>
-        {aiResult?.summary && (
-          <div style={{ background:'rgba(139,92,246,.08)', border:'1px solid rgba(139,92,246,.22)', borderRadius:12, padding:'14px 16px', margin:'0 auto 16px', maxWidth:420, textAlign:'left' }}>
-            <p style={{ fontSize:10, fontWeight:700, color:'#8b5cf6', textTransform:'uppercase', letterSpacing:'.1em', marginBottom:6, fontFamily:"'IBM Plex Mono',monospace" }}>🤖 Reviewed by Our AI Team</p>
-            <p style={{ fontSize:12, color:'rgba(255,255,255,.6)', lineHeight:1.65 }}>{aiResult.summary}</p>
-          </div>
-        )}
+        <p style={{ color:'rgba(255,255,255,.55)', fontSize:14, lineHeight:1.75, marginBottom:10 }}>Your ${form.amount} grant request is in our review queue. A person reviews every application (AI assists with triage) — allow <strong style={{ color:'#fff' }}>24–48 hours</strong> for a decision. We help as many people as we can based on need, available treasury funds, and urgency.</p>
         <p style={{ color:'rgba(255,255,255,.35)', fontSize:13, lineHeight:1.75, marginBottom:24 }}>Approved funds go <strong style={{ color:'#fff' }}>directly to your XRPL wallet</strong>. You&apos;ll get a status update at {form.email}.</p>
         <button onClick={handleClose} style={Btn('color','#8b5cf6')}>Done</button>
       </div>
@@ -1446,7 +1432,7 @@ function GrantModal({ show, onClose, connectedWallet, user }: { show:boolean; on
     <Overlay show={show} onClose={handleClose} wide>
       <div style={{ fontSize:10, fontWeight:700, color:'#8b5cf6', letterSpacing:'.12em', textTransform:'uppercase', marginBottom:5 }}>Community Grant Application</div>
       <h3 style={{ fontSize:22, fontWeight:900, marginBottom:4 }}>Apply for Emergency Funds</h3>
-      <p style={{ color:'rgba(255,255,255,.4)', fontSize:13, marginBottom:22 }}>$25–$100 · AI-reviewed · Direct to your XRPL wallet · No middlemen</p>
+      <p style={{ color:'rgba(255,255,255,.4)', fontSize:13, marginBottom:22 }}>$25–$100 · Human-reviewed (AI assists) · Direct to your XRPL wallet · No middlemen</p>
 
       <label style={LBL}>Category *</label>
       <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(110px,1fr))', gap:8, marginBottom:4 }}>
@@ -1471,8 +1457,8 @@ function GrantModal({ show, onClose, connectedWallet, user }: { show:boolean; on
       </div>
       {errors.contact && <p style={{ fontSize:12, color:'#f87171', marginTop:4 }}>{errors.contact}</p>}
 
-      <button onClick={handleSubmit} style={{ ...Btn('color','#8b5cf6',{width:'100%',marginTop:22,padding:'15px',fontSize:16}) }}>Submit for AI Review →</button>
-      <p style={{ textAlign:'center', fontSize:11, color:'rgba(255,255,255,.22)', marginTop:10 }}>AI-reviewed · Final human approval before payout · Wallet-to-wallet</p>
+      <button onClick={handleSubmit} style={{ ...Btn('color','#8b5cf6',{width:'100%',marginTop:22,padding:'15px',fontSize:16}) }}>Submit Application →</button>
+      <p style={{ textAlign:'center', fontSize:11, color:'rgba(255,255,255,.22)', marginTop:10 }}>A person reviews every application · AI assists triage · Wallet-to-wallet</p>
     </Overlay>
   );
 }
@@ -1633,14 +1619,18 @@ function deriveBreakdown(d?: PersonalData['details']): SignalRow[] {
 }
 
 function pctLabel(score: number): { percentile:number; label:string } {
-  // Lightweight percentile model so the experience feels real even without server-side analytics
-  if (score >= 820) return { percentile: 98, label: 'Top 2% of all XRPL wallets' };
-  if (score >= 780) return { percentile: 92, label: 'Top 8% of all XRPL wallets' };
-  if (score >= 720) return { percentile: 84, label: 'Top 16% of all XRPL wallets' };
-  if (score >= 660) return { percentile: 70, label: 'Top 30% of all XRPL wallets' };
-  if (score >= 600) return { percentile: 55, label: 'Top 45% of all XRPL wallets' };
-  if (score >= 500) return { percentile: 35, label: 'Building reputation' };
-  return { percentile: 15, label: 'Early on-chain footprint' };
+  // Fallback for when the API response carries no percentile. MUST mirror
+  // peerPercentile() in src/lib/xrplscore.ts exactly (same thresholds, same
+  // bands) so the same score never shows two different percentiles. "scanned
+  // wallets" — the calibration sample over-represents active wallets, so this
+  // is not a share of ALL XRPL wallets (see docs/XRPLSCORE-CALIBRATION.md).
+  const percentile =
+    score >= 800 ? 98 :
+    score >= 740 ? 92 :
+    score >= 670 ? 78 :
+    score >= 580 ? 55 :
+    score >= 450 ? 30 : 15;
+  return { percentile, label: `Higher than ${percentile}% of scanned XRPL wallets` };
 }
 
 function PersonalCreditReport({ wallet, data, history, loading }: {
@@ -2122,7 +2112,7 @@ export default function XRPLHubHome() {
             <div style={{ maxWidth:560,margin:'0 auto' }}>
                 <div style={{ display:'inline-flex',alignItems:'center',gap:6,marginBottom:14 }}>
                   <span style={{ width:5,height:5,borderRadius:'50%',background:'#10b981',boxShadow:'0 0 8px #10b981',animation:'pulse 2s infinite' }} />
-                  <span style={{ fontSize:11,fontWeight:700,color:'#10b981',letterSpacing:'.14em',textTransform:'uppercase' }}>XRPLScore™ · First of its kind on XRPL</span>
+                  <span style={{ fontSize:11,fontWeight:700,color:'#10b981',letterSpacing:'.14em',textTransform:'uppercase' }}>XRPLScore™ · Native XRPL wallet reputation</span>
                 </div>
                 <h2 style={{ fontSize:'clamp(22px,3.3vw,36px)',fontWeight:900,letterSpacing:'-2px',marginBottom:14 }}>Our own on-chain score.<br />No FICO. No bureau. No SSN.</h2>
                 <p style={{ fontSize:13,color:'rgba(255,255,255,.5)',lineHeight:1.8,marginBottom:20 }}>

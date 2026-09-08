@@ -1,8 +1,7 @@
 // src/app/api/donate/route.ts
-// Donor self-report: after a donor sends XRP/RLUSD to the treasury they (or an
-// integrator via src/lib/api-client.ts recordDonation) POST the tx hash here so
-// we can attach a message and keep a donor record alongside the on-chain
-// TreasuryStatsBar count.
+// Donor self-report: after a donor sends XRP/RLUSD to the treasury they POST the
+// tx hash here so we can attach a message and keep a donor record alongside the
+// on-chain TreasuryStatsBar count.
 //
 // GET  -> { treasuryAddress, network }
 // POST -> { fromAddress, txHash, amount, currency, message? } -> Donation row

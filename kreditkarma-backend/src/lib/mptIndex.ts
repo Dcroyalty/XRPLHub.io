@@ -217,7 +217,9 @@ export interface CoverageInfo {
  * behind is "complete-per-known-issuer": every issuance of every issuer we
  * know about is indexed, from Bithomp's per-issuer feed which returns an
  * issuer's full set in one free call (unless they have >100 — flagged as
- * `cappedIssuers`), sample-verified against the validated ledger.
+ * `cappedIssuers`). NOTE: the daily cron does not cross-check rows against the
+ * validated ledger — that is done only by the hand-run
+ * scripts/verify-mpt-coverage.cjs — so this block does not claim it.
  */
 export async function mptCoverage(prisma: PrismaClient): Promise<CoverageInfo> {
   const [cp, issuanceCount, issuerRows] = await Promise.all([
@@ -243,8 +245,8 @@ export async function mptCoverage(prisma: PrismaClient): Promise<CoverageInfo> {
     guarantees:
       coverage === "complete-per-known-issuer"
         ? `Every MPTokenIssuance of all ${knownIssuers} issuers we know about is in this index, pulled from ` +
-          `Bithomp's per-issuer feed (complete per issuer in one call) and sample-verified against the ` +
-          `validated ledger. Oldest per-issuer refresh: ${floor ? floor.toISOString() : "n/a"}.`
+          `Bithomp's per-issuer feed (which returns an issuer's full set in one call). ` +
+          `Oldest per-issuer refresh: ${floor ? floor.toISOString() : "n/a"}.`
         : cappedIssuers > 0
         ? `${cappedIssuers} known issuer(s) have more than 100 issuances, which Bithomp's free tier can't ` +
           `page past — their counts here are a floor until the ledger_data walk reaches them.`

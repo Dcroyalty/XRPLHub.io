@@ -1,9 +1,24 @@
 # XRPLScore v1.1 — model redesign & calibration
 
-Calibrated Sep 2026 against **333 real mainnet accounts** (non-curated: recent
-transactors, active DEX traders, long-lived accounts, and named exchange/issuer
-wallets). Raw data: `scratchpad/calib-raw-333.jsonl`. Prototype:
-`scratchpad/xrplscore-v1.1-model.mjs`.
+Calibrated Sep 2026 against a **333-account sample** of real mainnet accounts,
+composed by design of: recent transactors, active DEX traders, long-lived
+accounts (2 yr+), and named exchange/issuer wallets. The sample deliberately
+over-represents *active* wallets (see the tier-table footnote).
+
+**Reproducibility.** The per-account raw rows were a working artifact and were
+not archived. What is committed and runnable:
+
+- The engine itself — `src/lib/xrplscore.ts` (there is no separate prototype;
+  the "v1.1 model" and the production scorer are the same code).
+- `scripts/xrplscore-calibration.mjs` — scores any newline-delimited address
+  list with the live engine and recomputes every number in this doc (median,
+  p90/p95, the tier-qualification %s, the named-wallet column).
+- `docs/calibration-anchors.json` — fixed reference accounts whose v1.1 scores
+  appear in the "Named wallets" table below; `node scripts/xrplscore-calibration.mjs`
+  with no arguments scores exactly this set, so that column is directly checkable.
+
+Running the script against a fresh comparable sample reproduces the distribution
+within sampling noise; it will not reproduce the exact original 333 rows.
 
 ## Why v1 was broken
 
@@ -70,6 +85,11 @@ Causes:
 
 **By account type (median):** long-lived (2 yr+) **681** · DEX trader **667** ·
 recent active sender **569** · recent recipient **552**.
+
+The three accounts in `docs/calibration-anchors.json` are live-checkable now
+(`node scripts/xrplscore-calibration.mjs`): the RLUSD issuer still scores 721
+exactly; Treasury and Sologenic have each drifted up a few points as they kept
+transacting since Sep — expected, the scale is absolute and activity accrues.
 
 ## Tier qualification (min600 / 650 / 700 / 750 kept)
 

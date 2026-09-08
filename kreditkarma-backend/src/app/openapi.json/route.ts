@@ -709,7 +709,7 @@ export async function GET(req: Request) {
                 cappedIssuers: 0,
                 freshnessFloorAt: "2026-09-05T18:00:00.000Z",
                 lastCompletedStateWalkPassAt: null,
-                guarantees: "Every MPTokenIssuance of all 34 issuers we know about is in this index…",
+                guarantees: "Every MPTokenIssuance of all <knownIssuers> issuers we know about is in this index, pulled from Bithomp's per-issuer feed. Oldest per-issuer refresh: <freshnessFloorAt>. (Live values are computed per request — this example is illustrative.)",
                 doesNotGuarantee: "That no MPT issuer exists outside this set…",
                 count: 10,
                 truncated: false,
@@ -796,11 +796,13 @@ export async function GET(req: Request) {
           description:
             "The BIS Working Paper 1374 pattern: after each cron pass the registry index is canonicalised, a " +
             "Merkle root is computed over the issuance records, and that root is committed in a Memo on an " +
-            "AccountSet transaction from the issuer wallet " +
-            "(rmWjCGeLtuLGerEuvHDkrsr46ej2Ni13f). Returns the latest root, its tx hash, ledger index, " +
+            "AccountSet transaction from a dedicated anchor wallet " +
+            "(r9dQS1oGms3B7SdY6nyU24Dy7dWyWXuJXb — NOT the credential issuer). Returns the latest root, its tx hash, ledger index, " +
             "issuance/issuer counts, coverage label, and the exact canonicalisation + Merkle scheme so a " +
-            "third party can reproduce the root from /api/mpt/search + /api/mpt/issuer and confirm the " +
-            "registry has not been altered. Free, no signup.",
+            "third party can reproduce the root from /api/mpt/search + /api/mpt/issuer and check that the " +
+            "registry rows we publish match the root we anchored on-ledger at a known time. (The index is " +
+            "mutable and can be re-anchored; this proves published-rows-match-anchored-root, not immutability.) " +
+            "Free, no signup.",
           security: [],
           tags: ["Tokens"],
           responses: {

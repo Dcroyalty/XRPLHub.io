@@ -54,7 +54,7 @@ async function reviewWithGrok(app: AppInput): Promise<{ verdict: Partial<Verdict
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${XAI_API_KEY}` },
       body: JSON.stringify({
-        model: 'grok-4.3',
+        model: 'grok-4.5',
         temperature: 0.2,
         messages: [{ role: 'user', content: buildPrompt(app) }],
       }),
@@ -85,7 +85,7 @@ async function reviewWithAnthropic(app: AppInput): Promise<{ verdict: Partial<Ve
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
+        model: 'claude-sonnet-5',
         max_tokens: 400,
         messages: [{ role: 'user', content: buildPrompt(app) }],
       }),

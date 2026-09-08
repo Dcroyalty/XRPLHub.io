@@ -1,7 +1,10 @@
 // src/lib/mptAnchor.ts
 // On-ledger anchoring of the MPT registry — BIS Working Paper 1374 pattern:
 // commit a Merkle root of the canonicalised index in a Memo on a transaction
-// so anyone can later prove the published registry wasn't altered after.
+// so anyone can check that the registry rows we publish match the root we
+// anchored on-ledger at a known time. (The index is mutable and gets
+// re-anchored each pass — this proves published-rows-match-anchored-root, NOT
+// that the registry is immutable and roots do not form a hash chain.)
 //
 // SIGNING KEY: a DEDICATED anchor wallet (ANCHOR_WALLET_SEED), NOT the
 // credential issuer. The anchor key can only publish memos; if the serverless

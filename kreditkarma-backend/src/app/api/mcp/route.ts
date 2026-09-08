@@ -215,10 +215,11 @@ export const TOOLS = [
     name: 'verify_mpt_registry',
     description:
       'Get the latest on-ledger anchor of the MPT registry (BIS Working Paper 1374 pattern): a Merkle root ' +
-      'over the canonicalised index, committed in a Memo on a transaction from the issuer wallet. Returns ' +
-      'the root, its tx hash, ledger index, issuance/issuer counts, coverage, and the exact canonicalisation ' +
-      '+ Merkle scheme so you can reproduce the root from the published /api/mpt/search + /api/mpt/issuer ' +
-      'data and confirm the registry has not been altered. No params. Free, no signup.',
+      'over the canonicalised index, committed in a Memo on a transaction from a dedicated anchor wallet ' +
+      '(not the credential issuer). Returns the root, its tx hash, ledger index, issuance/issuer counts, ' +
+      'coverage, and the exact canonicalisation + Merkle scheme so you can reproduce the root from the ' +
+      'published /api/mpt/search + /api/mpt/issuer data and check that those rows match the root we anchored ' +
+      'on-ledger at a known time (proves published-rows-match-anchored-root, not immutability). No params. Free, no signup.',
     inputSchema: { type: 'object', properties: {} },
   },
   {

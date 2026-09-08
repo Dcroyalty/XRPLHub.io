@@ -68,7 +68,7 @@ and "partial" must be read as a floor, not the whole population.
 
 - GET ${origin}/api/mpt/search?q=<issuer r... | MPTokenIssuanceID or hex prefix | token name> — free, indexed
 - GET ${origin}/api/mpt/issuer?address=r... — free, indexed: every MPT this issuer has out + the issuer's XRPLScore
-- GET ${origin}/api/mpt/anchor — free: the latest on-ledger Merkle-root anchor of the registry (BIS WP 1374 pattern) + the canonicalisation scheme, so anyone can prove the registry hasn't been altered
+- GET ${origin}/api/mpt/anchor — free: the latest on-ledger Merkle-root anchor of the registry (BIS WP 1374 pattern) + the canonicalisation scheme, so anyone can check the registry rows we publish against the root we anchored on-ledger (proves published rows match the anchored root at a known time, not immutability — the index is mutable and re-anchored)
 - GET ${origin}/api/mpt/<48-hex MPTokenIssuanceID> — free, live: issuance facts + issuer powers + issuer score/grade
 - GET ${origin}/api/x402/usdc/mpt/<48-hex id> — $0.01 USDC on Base (x402): full issuer risk — account age, xrp-ledger.toml-verified domain, credentials held, Bithomp cross-check
 

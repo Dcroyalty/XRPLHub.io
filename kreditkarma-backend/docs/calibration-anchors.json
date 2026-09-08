@@ -1,0 +1,20 @@
+[
+  {
+    "address": "rs59g3amo5iT6T64Cg96XXMAWuw3WPQcLF",
+    "label": "XRPLHub Treasury (multi-sig)",
+    "note": "In the calibration doc as Treasury: v1 358 -> v1.1 462. A deliberately low reference point — young-ish multi-sig, modest lifetime activity.",
+    "docScoreV11": 462
+  },
+  {
+    "address": "rMxCKbEDwqr76QuheSUMdEGf4B9xJ8m5De",
+    "label": "Ripple RLUSD issuer",
+    "note": "In the calibration doc: v1 641 -> v1.1 721. Funded, engaged, multi-year issuer.",
+    "docScoreV11": 721
+  },
+  {
+    "address": "rsoLo2S1kiGeCcn6hCUXVrCpGMWLrRrLZz",
+    "label": "Sologenic (SOLO) issuer",
+    "note": "In the calibration doc: v1 687 -> v1.1 765. Institutional-grade fundamentals.",
+    "docScoreV11": 765
+  }
+]
