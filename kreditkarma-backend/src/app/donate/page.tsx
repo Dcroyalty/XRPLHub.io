@@ -33,15 +33,15 @@ export default function DonatePage() {
       <div className="container">
         <div className="stats-grid">
           <div className="stat">
-            <div className="stat-value">{stats?.totalDonations ?? 0}</div>
-            <div className="stat-label">Donors</div>
+            <div className="stat-value">{stats ? `${stats.totalXRP ?? 0} XRP` : '—'}</div>
+            <div className="stat-label">Treasury Total</div>
           </div>
           <div className="stat">
-            <div className="stat-value">${stats?.totalRaised ?? 0}</div>
-            <div className="stat-label">Raised</div>
+            <div className="stat-value">{stats ? `${stats.xrpContributed ?? 0} XRP` : '—'}</div>
+            <div className="stat-label">Contributed</div>
           </div>
           <div className="stat">
-            <div className="stat-value">{stats?.grantsApproved ?? 0}</div>
+            <div className="stat-value">{stats?.grantsFunded ?? 0}</div>
             <div className="stat-label">Grants Funded</div>
           </div>
         </div>
@@ -70,7 +70,7 @@ export default function DonatePage() {
         <div className="cta" style={{ paddingTop: 64 }}>
           <div className="cta-card">
             <h2>Need a Grant?</h2>
-            <p>Apply for a $25–$100 micro-grant for rent, utilities, groceries, or medical expenses. Every application is reviewed by a human; AI assists with triage.</p>
+            <p>Apply for a $25–$100 micro-grant for rent, utilities, groceries, or medical expenses. A person reviews every application.</p>
             <a href="/#grants" className="btn btn-primary">Apply Now</a>
           </div>
         </div>

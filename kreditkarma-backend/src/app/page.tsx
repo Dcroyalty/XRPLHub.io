@@ -490,10 +490,10 @@ function Overlay({ show, onClose, children, wide=false }: { show:boolean; onClos
 }
 
 // ─── TREASURY STATS LIVE COUNTER ───
-// Polls /api/treasury-stats every 30s. Field names match the route exactly:
-// treasuryXRP (number) · treasuryUSD (preformatted string) · donorCount · grantCount.
+// Reads /api/treasury-stats once per page view. Field names match the route:
+// totalXRP · spendableXRP · reservedXRP · totalUSD · xrpContributed · grantsFunded.
 function TreasuryStatsBar() {
-  const [stats, setStats] = useState<{ treasuryXRP:number; treasuryUSD:string; donorCount:number; grantCount:number }|null>(null);
+  const [stats, setStats] = useState<{ totalXRP:number; spendableXRP:number; reservedXRP:number; totalUSD:string; xrpContributed:number; grantsFunded:number }|null>(null);
   const [statsError, setStatsError] = useState(false);
   useEffect(() => {
     let stop = false;
@@ -504,27 +504,26 @@ function TreasuryStatsBar() {
         const d = await res.json();
         if (!stop) {
           setStats({
-            treasuryXRP: Number(d.treasuryXRP || 0),
-            treasuryUSD: String(d.treasuryUSD || '$0'),
-            donorCount:  Number(d.donorCount  || 0),
-            grantCount:  Number(d.grantCount  || 0),
+            totalXRP:       Number(d.totalXRP || 0),
+            spendableXRP:   Number(d.spendableXRP || 0),
+            reservedXRP:    Number(d.reservedXRP || 0),
+            totalUSD:       String(d.totalUSD || '$0'),
+            xrpContributed: Number(d.xrpContributed || 0),
+            grantsFunded:   Number(d.grantsFunded || 0),
           });
           setStatsError(d.source === 'error');
         }
       } catch (e) { console.error('[TreasuryStatsBar] fetch failed', e); if (!stop) setStatsError(true); }
     };
     load();
-    // Load once per page view. No polling: a repeating fetch here kept the Neon
-    // compute from ever scaling to zero. Treasury figures change slowly and the
-    // page re-fetches on every fresh visit, which is plenty.
     return () => { stop = true; };
   }, []);
   const fmt = (n:number) => n >= 1000 ? n.toLocaleString('en-US', { maximumFractionDigits:0 }) : n.toLocaleString('en-US', { minimumFractionDigits:2, maximumFractionDigits:2 });
   const fmtCount = (n:number) => n.toLocaleString('en-US', { maximumFractionDigits:0 });
   const Cell = ({ label, value, suffix, color }: { label:string; value:string; suffix?:string; color:string }) => (
-    <div style={{ flex:1, minWidth:140, textAlign:'center', padding:'14px 12px' }}>
-      <div style={{ fontSize:11,fontWeight:700,color:'rgba(255,255,255,.36)',letterSpacing:'.13em',textTransform:'uppercase',marginBottom:6 }}>{label}</div>
-      <div style={{ fontSize:'clamp(20px,2.4vw,26px)',fontWeight:900,color,fontFamily:"'IBM Plex Mono',monospace" }}>
+    <div style={{ flex:1, minWidth:130, textAlign:'center', padding:'14px 10px' }}>
+      <div style={{ fontSize:11,fontWeight:700,color:'rgba(255,255,255,.36)',letterSpacing:'.11em',textTransform:'uppercase',marginBottom:6 }}>{label}</div>
+      <div style={{ fontSize:'clamp(18px,2.2vw,24px)',fontWeight:900,color,fontFamily:"'IBM Plex Mono',monospace" }}>
         {value}{suffix && <span style={{ fontSize:11,fontWeight:600,color:'rgba(255,255,255,.4)',marginLeft:5 }}>{suffix}</span>}
       </div>
     </div>
@@ -532,11 +531,17 @@ function TreasuryStatsBar() {
   return (
     <div style={{ background:'linear-gradient(135deg,rgba(139,92,246,.07),rgba(16,185,129,.06),rgba(6,6,22,.85))',border:'1px solid rgba(139,92,246,.22)',borderRadius:18,padding:'4px 10px',marginBottom:24,backdropFilter:'blur(20px)' }}>
       <div style={{ display:'flex',flexWrap:'wrap',alignItems:'center',justifyContent:'center',gap:0 }}>
-        <Cell label="Treasury Balance" value={stats ? fmt(stats.treasuryXRP) : '—'} suffix="XRP" color="#10b981" />
-        <Cell label="≈ USD Value"      value={stats ? stats.treasuryUSD : '—'}                    color="#34d399" />
-        <Cell label="Donors"           value={stats ? fmtCount(stats.donorCount) : '—'}           color="#38bdf8" />
-        <Cell label="Grants Funded"    value={stats ? fmtCount(stats.grantCount) : '—'}           color="#8b5cf6" />
+        <Cell label="Treasury Total"  value={stats ? fmt(stats.totalXRP) : '—'}       suffix="XRP" color="#10b981" />
+        <Cell label="Spendable"       value={stats ? fmt(stats.spendableXRP) : '—'}   suffix="XRP" color="#34d399" />
+        <Cell label="Reserved"        value={stats ? fmt(stats.reservedXRP) : '—'}    suffix="XRP" color="rgba(255,255,255,.5)" />
+        <Cell label="XRP Contributed" value={stats ? fmt(stats.xrpContributed) : '—'} suffix="XRP" color="#38bdf8" />
+        <Cell label="Grants Funded"   value={stats ? fmtCount(stats.grantsFunded) : '—'}           color="#8b5cf6" />
       </div>
+      {stats && (
+        <div style={{ textAlign:'center', fontSize:10, color:'rgba(255,255,255,.28)', paddingBottom:4 }}>
+          Total {stats.totalUSD} · {fmt(stats.reservedXRP)} XRP locked as the XRPL account reserve
+        </div>
+      )}
       {(statsError || !stats) && (
         <div style={{ textAlign:'center', fontSize:10, color:'rgba(255,255,255,.3)', paddingBottom:6 }}>
           {stats ? 'Live figures may be delayed — retrying…' : 'Loading live figures…'}
@@ -1355,7 +1360,7 @@ function DonateModal({ show, onClose }: { show:boolean; onClose:()=>void }) {
   );
 }
 
-// ─── GRANT MODAL — submit → persisted to the human review queue (AI triage runs admin-side) ───
+// ─── GRANT MODAL — submit → persisted to the human review queue ───
 function GrantModal({ show, onClose, connectedWallet, user }: { show:boolean; onClose:()=>void; connectedWallet?:string; user?:{email:string;name:string}|null }) {
   const [step, setStep] = useState<'form'|'reviewing'|'success'>('form');
   const [form, setForm] = useState({ name:'', wallet:'', email:'', phone:'', category:'', need:'', amount:'25' });
@@ -1389,7 +1394,6 @@ function GrantModal({ show, onClose, connectedWallet, user }: { show:boolean; on
     setStep('reviewing');
     try {
       // 1) persist application (status PENDING) — enters the human review queue.
-      //    AI triage is advisory and runs admin-side, not from the browser.
       await fetch(`${API_URL}/api/grants/submit`, {
         method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(form),
       });
@@ -1421,7 +1425,7 @@ function GrantModal({ show, onClose, connectedWallet, user }: { show:boolean; on
       <div style={{ textAlign:'center', padding:'20px 0' }}>
         <div style={{ fontSize:56, marginBottom:12 }}>❤️</div>
         <h3 style={{ fontSize:24, fontWeight:900, color:'#8b5cf6', marginBottom:10 }}>Application Received</h3>
-        <p style={{ color:'rgba(255,255,255,.55)', fontSize:14, lineHeight:1.75, marginBottom:10 }}>Your ${form.amount} grant request is in our review queue. A person reviews every application (AI assists with triage) — allow <strong style={{ color:'#fff' }}>24–48 hours</strong> for a decision. We help as many people as we can based on need, available treasury funds, and urgency.</p>
+        <p style={{ color:'rgba(255,255,255,.55)', fontSize:14, lineHeight:1.75, marginBottom:10 }}>Your ${form.amount} grant request is in our review queue. A person reviews every application — allow <strong style={{ color:'#fff' }}>24–48 hours</strong> for a decision. We help as many people as we can based on need, available treasury funds, and urgency.</p>
         <p style={{ color:'rgba(255,255,255,.35)', fontSize:13, lineHeight:1.75, marginBottom:24 }}>Approved funds go <strong style={{ color:'#fff' }}>directly to your XRPL wallet</strong>. You&apos;ll get a status update at {form.email}.</p>
         <button onClick={handleClose} style={Btn('color','#8b5cf6')}>Done</button>
       </div>
@@ -1432,7 +1436,7 @@ function GrantModal({ show, onClose, connectedWallet, user }: { show:boolean; on
     <Overlay show={show} onClose={handleClose} wide>
       <div style={{ fontSize:10, fontWeight:700, color:'#8b5cf6', letterSpacing:'.12em', textTransform:'uppercase', marginBottom:5 }}>Community Grant Application</div>
       <h3 style={{ fontSize:22, fontWeight:900, marginBottom:4 }}>Apply for Emergency Funds</h3>
-      <p style={{ color:'rgba(255,255,255,.4)', fontSize:13, marginBottom:22 }}>$25–$100 · Human-reviewed (AI assists) · Direct to your XRPL wallet · No middlemen</p>
+      <p style={{ color:'rgba(255,255,255,.4)', fontSize:13, marginBottom:22 }}>$25–$100 · A person reviews every application · Direct to your XRPL wallet · No middlemen</p>
 
       <label style={LBL}>Category *</label>
       <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(110px,1fr))', gap:8, marginBottom:4 }}>
@@ -1458,7 +1462,7 @@ function GrantModal({ show, onClose, connectedWallet, user }: { show:boolean; on
       {errors.contact && <p style={{ fontSize:12, color:'#f87171', marginTop:4 }}>{errors.contact}</p>}
 
       <button onClick={handleSubmit} style={{ ...Btn('color','#8b5cf6',{width:'100%',marginTop:22,padding:'15px',fontSize:16}) }}>Submit Application →</button>
-      <p style={{ textAlign:'center', fontSize:11, color:'rgba(255,255,255,.22)', marginTop:10 }}>A person reviews every application · AI assists triage · Wallet-to-wallet</p>
+      <p style={{ textAlign:'center', fontSize:11, color:'rgba(255,255,255,.22)', marginTop:10 }}>A person reviews every application · Wallet-to-wallet</p>
     </Overlay>
   );
 }
@@ -1468,13 +1472,13 @@ function AboutModal({ show, onClose }: { show:boolean; onClose:()=>void }) {
   return (
     <Overlay show={show} onClose={onClose} wide>
       <div style={{ fontSize:10,fontWeight:700,color:'#10b981',letterSpacing:'.12em',textTransform:'uppercase',marginBottom:8 }}>About XRPLHub</div>
-      <h2 style={{ fontSize:24,fontWeight:900,marginBottom:18 }}>A fully autonomous financial ecosystem on the XRP Ledger.</h2>
+      <h2 style={{ fontSize:24,fontWeight:900,marginBottom:18 }}>Consumer and B2B financial tools on the XRP Ledger.</h2>
       <div style={{ fontSize:14,color:'rgba(255,255,255,.65)',lineHeight:1.9,display:'flex',flexDirection:'column',gap:14 }}>
         <p>XRPLHub was built for the people legacy finance was designed to exclude. No bank account. No credit history. No gatekeepers. Just an XRPL wallet and access to real services.</p>
         <p>We build entirely on the <strong style={{ color:'#fff' }}>XRP Ledger</strong> — fast, low-cost, and energy-efficient. Three pillars power the platform: XRPL Services, Community Grants, and XRPLScore.</p>
         <p><strong style={{ color:'#10b981' }}>XRPLScore™</strong> is our proprietary on-chain rating, 300–850, computed live from your wallet. No FICO. No bureau. No SSN. The Builder lets you grow it over time through verifiable on-chain history.</p>
         <p>Our <strong style={{ color:'#fff' }}>XRPL Services</strong> are AI-delivered on-chain tools covering major XRPL transaction types — pay in Xaman, AI verifies on mainnet, the service activates in seconds.</p>
-        <p><strong style={{ color:'#10b981' }}>Community Grants</strong>: donors fund a public XRPL treasury. AI helps sort and summarize applications; every decision is made by a human reviewer. Approved grants go wallet-to-wallet. No NGO. No middlemen. Permanently verifiable on-chain.</p>
+        <p><strong style={{ color:'#10b981' }}>Community Grants</strong>: donors fund a public XRPL treasury. A person reviews every application and makes every decision. Approved grants go wallet-to-wallet. No NGO. No middlemen. Permanently verifiable on-chain.</p>
         <p style={{ fontSize:12,color:'rgba(255,255,255,.4)',fontStyle:'italic' }}>XRPLScore™ methodology is proprietary and licensable to financial institutions, DeFi platforms, and on-chain data partners. Partnership inquiries: <a href="mailto:partners@xrplhub.io" style={{ color:'#10b981' }}>partners@xrplhub.io</a></p>
       </div>
       <button onClick={onClose} style={{ ...Btn('green',undefined,{marginTop:24}) }}>Close</button>
@@ -1488,7 +1492,7 @@ function FAQModal({ show, onClose }: { show:boolean; onClose:()=>void }) {
   const faqs:[string,string][] = [
     ['What is XRPLScore™?',"XRPLScore™ is XRPLHub's proprietary on-chain rating — 300 to 850, computed live from your XRPL wallet. No SSN, no credit bureau, no FICO affiliation. It's your verifiable on-chain reputation."],
     ['How do the XRPL Services work?','You pay in Xaman and get a TX hash. Our AI verifies the transaction on XRPL mainnet, confirms the amount and destination, and activates your service within one ledger close (~4 seconds).'],
-    ['How does the grant system work?',"Donate XRP/RLUSD to the public treasury (viewable on XRPScan). Anyone in need can apply for $25–$100. AI assists by summarizing and flagging each application for the human reviewer; a person makes every approval decision. Approved funds then go directly to the recipient's XRPL wallet."],
+    ['How does the grant system work?',"Donate XRP/RLUSD to the public treasury (viewable on XRPScan). Anyone in need can apply for $25–$100. A person reviews every application and makes every decision. Approved funds then go directly to the recipient's XRPL wallet."],
     ['Do I need a Xaman wallet?','Yes — Xaman is the XRPL wallet, free on iOS and Android at xaman.app. Payments are a single QR scan and swipe.'],
     ['Is XRPLHub a bank?','No. Not a bank, broker, insurer, or FDIC institution. XRPLHub is a financial technology platform on the XRP Ledger. All services are on-chain operational tools.'],
   ];
@@ -1530,7 +1534,7 @@ function TermsModal({ show, onClose }: { show:boolean; onClose:()=>void }) {
         <span style={H}>4. XRPLScore™</span>
         <p style={P}>XRPLScore™ is our proprietary on-chain assessment derived from public XRPL wallet data. It is not a FICO score, consumer credit report, or NRSRO rating, and has no affiliation with any credit bureau. The XRPLScore™ name, methodology, signal weighting, and underlying framework are intellectual property of XRPLHub and are available for commercial licensing.</p>
         <span style={H}>5. Community Grant Program</span>
-        <p style={P}>Donations are voluntary and irrevocable. Applications are triaged with AI assistance to help our reviewer prioritize; all approval and denial decisions are made by a human. AI is advisory only and never automatically approves or denies an application. Submission does not guarantee disbursement. Grants range $25–$100 subject to treasury availability.</p>
+        <p style={P}>Donations are voluntary and irrevocable. Every grant application is reviewed by a person; there are no automated approvals or denials. Submission does not guarantee disbursement. Grants range $25–$100 subject to treasury availability.</p>
         <span style={H}>6. Your Wallet — Your Responsibility</span>
         <p style={P}>You are solely responsible for your XRPL wallet, private keys, and seed phrases. XRPLHub never has access to your private keys. Lost keys result in permanent, unrecoverable loss.</p>
         <span style={H}>7. Prohibited Uses</span>
@@ -2136,7 +2140,7 @@ export default function XRPLHubHome() {
           <div style={{ textAlign:'center',marginBottom:34 }}>
             <div style={{ display:'inline-flex',alignItems:'center',gap:6,marginBottom:12 }}><span style={{ width:5,height:5,borderRadius:'50%',background:'#8b5cf6',boxShadow:'0 0 8px #8b5cf6' }} /><span style={{ fontSize:11,fontWeight:700,color:'#8b5cf6',letterSpacing:'.14em',textTransform:'uppercase' }}>Community Grants</span></div>
             <h2 style={{ fontSize:'clamp(22px,3.5vw,34px)',fontWeight:900,letterSpacing:'-2px',marginBottom:12 }}>Real people. Real money. Wallet to wallet.</h2>
-            <p style={{ fontSize:13,color:'rgba(255,255,255,.48)',lineHeight:1.8,maxWidth:580,margin:'0 auto' }}>Donors fund a public XRPL treasury. AI assists review; a human decides every application. Approved grants go directly to recipients&apos; wallets — 100% verifiable on the XRP Ledger.</p>
+            <p style={{ fontSize:13,color:'rgba(255,255,255,.48)',lineHeight:1.8,maxWidth:580,margin:'0 auto' }}>Donors fund a public XRPL treasury. A person reviews and decides every application. Approved grants go directly to recipients&apos; wallets — 100% verifiable on the XRP Ledger.</p>
           </div>
           <TreasuryStatsBar />
           <div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(300px,1fr))',gap:20 }}>
@@ -2162,9 +2166,9 @@ export default function XRPLHubHome() {
             <div style={{ background:'linear-gradient(135deg,rgba(139,92,246,.08),rgba(6,6,22,.8))',border:'1px solid rgba(139,92,246,.2)',borderRadius:22,padding:'30px 26px',backdropFilter:'blur(20px)' }}>
               <div style={{ fontSize:40,marginBottom:14,animation:'float 4s ease-in-out infinite',animationDelay:'1s' }}>❤️</div>
               <h3 style={{ fontSize:21,fontWeight:900,marginBottom:10 }}>Apply for a Grant</h3>
-              <p style={{ fontSize:13,color:'rgba(255,255,255,.48)',lineHeight:1.8,marginBottom:18 }}>Need help? Apply for $25–$100. AI helps our reviewer sort applications; a human makes the decision, then funds are released to your XRPL wallet.</p>
+              <p style={{ fontSize:13,color:'rgba(255,255,255,.48)',lineHeight:1.8,marginBottom:18 }}>Need help? Apply for $25–$100. A person reviews every application and makes the decision, then funds are released to your XRPL wallet.</p>
               <div style={{ display:'flex',flexDirection:'column',gap:7,marginBottom:20 }}>
-                {['Submit a short application','AI-assisted review — a human decides','Approved funds go direct to your wallet','No bank account, no ID required'].map(f=>(
+                {['Submit a short application','A person reviews and decides','Approved funds go direct to your wallet','No bank account, no ID required'].map(f=>(
                   <div key={f} style={{ display:'flex',alignItems:'center',gap:8,fontSize:12,color:'rgba(255,255,255,.52)' }}>
                     <span style={{ color:'#8b5cf6',fontSize:11 }}>✓</span>{f}
                   </div>

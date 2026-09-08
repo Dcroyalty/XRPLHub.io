@@ -125,14 +125,6 @@ model Donation {
   createdAt   DateTime @default(now())
 }
 
-model DailyLimit {
-  id          String   @id @default(cuid())
-  date        String   @unique   // YYYY-MM-DD
-  totalPaid   Float    @default(0)
-  grantCount  Int      @default(0)
-  updatedAt   DateTime @updatedAt
-}
-
 model AdminLog {
   id        String   @id @default(cuid())
   action    String

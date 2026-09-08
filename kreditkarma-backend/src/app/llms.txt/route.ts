@@ -133,7 +133,7 @@ MCP server (Streamable HTTP, JSON-RPC 2.0, no auth):
   - list_xrpl_services — the 35 build_xrpl_transaction actions, each with its params + examples. No params.
   - build_xrpl_transaction — ready-to-sign txjson for one of 35 XRPL actions. Params: product_id, wallet_address, params. Free. NOTE: mptissue (MPT issuance) has a full form — name, ticker, supply cap, decimals, 6 permanent capability flags (canTransfer/canTrade/canEscrow/canLock/requireAuth/canClawback — clawback = you can take the token back from any holder), an optional transfer fee, and a backing declaration (backingType, backingStatement, verifiedBy, redeemable). Free preview at POST /api/execute/preview shows the decoded tx + everything that is permanent + the flag guide + the backing hard line (XRPLHub publishes the declaration, never verifies it).
   - issue_score_credential — paid (1 XRP or 1 RLUSD) signed, verifiable score certificate, 90 days. Params: wallet_address, currency, uuid (2nd call).
-  - submit_grant_application — apply for a 1-100 RLUSD community micro-grant. Params: wallet_address, category, amount, description.
+  - submit_grant_application — apply for a $25-$100 community micro-grant (a person reviews every application). Params: wallet_address, category, amount, description.
   - donate_to_community_fund — donate XRP or RLUSD to the grant treasury. Params: amount, currency, donor_wallet, message.
   - get_account_credentials — every XLS-70 credential an account holds, live. Param: wallet_address. Free.
   - get_issuer_credentials — everything an issuer has issued (types, subject count, acceptance rate), from the census. Param: issuer_address. Free.

@@ -283,11 +283,11 @@ export const TOOLS = [
   {
     name: 'submit_grant_application',
     description:
-      'Apply for a community micro-grant (1–100 RLUSD) paid wallet-to-wallet from the XRPLHub on-chain ' +
+      'Apply for a community micro-grant ($25–$100) paid wallet-to-wallet from the XRPLHub on-chain ' +
       'treasury for rent, utilities, groceries, medical, transport, or childcare. Returns a grant id ' +
-      'and status; AI triages, a human approves, approved RLUSD goes to the wallet, no middleman. ' +
+      'and status. A person reviews every application and makes every decision — no automated triage, no middleman. ' +
       'Params: wallet_address (r..., required), category (RENT|UTILITIES|GROCERIES|MEDICAL|TRANSPORT|CHILDCARE|OTHER, required), ' +
-      'amount (1–100, required), description (2–4 sentences, required). No signup.',
+      'amount (25–100, required), description (2–4 sentences, required). No signup.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -892,7 +892,7 @@ async function toolSubmitGrantApplication(
         amount,
         currency,
         need: desc,
-        name: 'AI-assisted application via XRPLHub MCP',
+        name: 'Application via XRPLHub MCP',
       }),
       signal: AbortSignal.timeout(12_000),
     });
@@ -910,9 +910,8 @@ async function toolSubmitGrantApplication(
       amountRequested: `${amount} ${currency}`,
       category,
       nextSteps:
-        'Application submitted. AI-assisted triage begins immediately and is advisory only. A human approver will ' +
-        'review within 24 hours. If approved, funds are sent directly to the wallet ' +
-        'address — no further action required from the applicant.',
+        'Application submitted. A person reviews every application and makes every decision — allow 24–48 hours. ' +
+        'If approved, funds are sent directly to the wallet address — no further action required from the applicant.',
       poweredBy: 'XRPLHub.io Community Grants — wallet-to-wallet, no middleman © 2026',
     }, null, 2);
   } catch (e) {

@@ -56,7 +56,7 @@ export default function SupportPage() {
             ['How do I connect my wallet?', 'Tap "Connect Wallet" on the homepage, then approve the sign-in request in your wallet. No transaction is sent and no funds leave your wallet. Your wallet address is stored locally in your browser.'],
             ['My payment went through but the service didn\'t activate — what do I do?', 'Email support@xrplhub.io with your transaction hash (from your wallet\'s history). We\'ll verify it on-chain and activate your service, typically within 24 hours.'],
             ['Is XRPLHub a bank?', 'No. XRPLHub.io is a financial technology platform on the XRP Ledger. We are not a bank, broker-dealer, investment advisor, credit bureau, insurer, or FDIC-insured institution.'],
-            ['I need emergency help — how do I apply for a grant?', 'Click "Apply for Grant" on the homepage. Fill out the form with your XRPL wallet address and describe your need. AI assists our reviewer by summarizing and flagging each application; a human makes every decision. Allow 24–48 hours. Approved funds go directly to your wallet.'],
+            ['I need emergency help — how do I apply for a grant?', 'Click "Apply for Grant" on the homepage. Fill out the form with your XRPL wallet address and describe your need. A person reviews every application and makes every decision. Allow 24–48 hours. Approved funds go directly to your wallet.'],
           ].map(([q, a]) => (
             <div key={q} style={{ background:'rgba(255,255,255,.03)', border:'1px solid rgba(255,255,255,.07)', borderRadius:14, padding:'18px 20px' }}>
               <div style={{ fontWeight:700, fontSize:14, marginBottom:8 }}>{q}</div>

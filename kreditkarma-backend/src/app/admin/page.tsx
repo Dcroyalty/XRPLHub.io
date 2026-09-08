@@ -67,15 +67,11 @@ function GrantActions({ grant, token, onUpdate }: { grant: Grant; token: string;
   const act = async (action: string, body: object) => {
     setLoading(action);
     try {
-      // 'review' uses the review route; approve/reject/pay use the approve route.
-      const isReview = action === 'review';
-      const url = isReview ? `${API_URL}/api/grants/review` : `${API_URL}/api/grants/approve`;
-      // Map UI action → route action verb
+      // approve / reject / pay — all go through the approve route. A person
+      // decides every application; there is no automated triage step.
       const verbMap: Record<string,string> = { approve:'APPROVE', reject:'REJECT', pay:'PAID' };
-      const payload = isReview
-        ? { wallet: grant.walletAddress }
-        : { id: grant.id, action: verbMap[action] || action.toUpperCase(), ...body };
-      const res = await fetch(url, {
+      const payload = { id: grant.id, action: verbMap[action] || action.toUpperCase(), ...body };
+      const res = await fetch(`${API_URL}/api/grants/approve`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify(payload),
@@ -108,12 +104,6 @@ function GrantActions({ grant, token, onUpdate }: { grant: Grant; token: string;
           style={{ ...INP, flex:1, padding:'7px 10px', fontSize:12 }} placeholder="Note (optional)" />
       </div>
       <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
-        {grant.status === 'PENDING' && (
-          <button onClick={()=>act('review',{})} disabled={!!loading}
-            style={{ padding:'6px 12px', borderRadius:8, border:'1px solid rgba(96,165,250,.4)', background:'rgba(96,165,250,.12)', color:'#60a5fa', fontSize:11, fontWeight:700, cursor:'pointer', fontFamily:'inherit' }}>
-            {loading==='review' ? '…' : '🔍 Review'}
-          </button>
-        )}
         {['PENDING','REVIEWING'].includes(grant.status) && (
           <>
             <button onClick={()=>act('approve',{approvedAmount:parseFloat(amount),note})} disabled={!!loading}
@@ -416,9 +406,8 @@ export default function AdminPage() {
                           👛 {copiedAddr===g.id ? 'Copied full address ✓' : `${trunc(g.walletAddress, 10)} — Copy`}
                         </button>
                         {g.scoreSnapshot && <span style={{ fontSize:11, color:'#34d399' }}>📊 XRPLScore: {g.scoreSnapshot}</span>}
-                        {g.aiScore != null && <span style={{ fontSize:11, color:'#a78bfa' }} title="Advisory triage signal only — not a decision. A human reviews and decides every application.">🤖 AI triage (advisory): {g.aiScore.toFixed(0)}/100</span>}
                       </div>
-                      {g.aiReasoning && <p style={{ fontSize:11, color:'rgba(255,255,255,.35)', marginTop:6, fontStyle:'italic' }}>🤖 {g.aiReasoning} <span style={{ color:'rgba(255,255,255,.25)', fontStyle:'normal' }}>— advisory only; your decision governs.</span></p>}
+                      {g.aiReasoning && <p style={{ fontSize:11, color:'rgba(255,255,255,.28)', marginTop:6, fontStyle:'italic' }}>Historical note ({fmt(g.createdAt)}, from the discontinued AI triage): {g.aiReasoning}</p>}
                     </div>
                     <div style={{ textAlign:'right', flexShrink:0 }}>
                       <div style={{ fontSize:22, fontWeight:900, color:'#10b981' }}>${g.amountRequested}</div>
