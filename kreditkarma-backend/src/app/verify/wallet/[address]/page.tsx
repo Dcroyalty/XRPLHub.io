@@ -12,7 +12,9 @@
 // attestation. The live score is shown so a reader can see how the wallet is
 // scoring today vs the tier the credential guarantees.
 
-import { scoreWallet, AccountNotFoundError, isValidXrplAddress, METHODOLOGY } from "@/lib/xrplscore";
+import { AccountNotFoundError, isValidXrplAddress, METHODOLOGY } from "@/lib/xrplscore";
+import { prisma } from "@/lib/xrplscore-db";
+import { getScoreCached } from "@/lib/scoreCache";
 import {
   readCredential,
   eligibleTier,
@@ -53,16 +55,18 @@ export default async function VerifyWalletPage({ params }: { params: Promise<{ a
     );
   }
 
-  // Live score
+  // Current score (display cache, up to 15 min old — this page is not an
+  // attestation; the on-ledger credential is the authoritative record).
   let score: number | null = null;
   let grade = "";
   let breakdown: { label: string; score: number; weight: string; desc: string }[] = [];
   let scannedAt = new Date().toISOString();
   try {
-    const s = await scoreWallet(address);
-    score = s.ledgerScore;
-    grade = s.grade;
-    breakdown = s.breakdown;
+    const s = await getScoreCached(prisma, address);
+    score = s.result.ledgerScore;
+    grade = s.result.grade;
+    breakdown = s.result.breakdown;
+    scannedAt = s.computedAt;
   } catch (e) {
     if (!(e instanceof AccountNotFoundError)) throw e;
   }

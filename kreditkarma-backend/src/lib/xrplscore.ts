@@ -54,52 +54,18 @@ const W = {
 const clamp = (v: number) => Math.max(0, Math.min(100, v));
 
 // ─── XRPL FETCHERS ───────────────────────────────────────────────────────────
-// Robust against rate-limiting (plain-text "Rate limit"), HTML error pages, and
-// timeouts. Tries primary node, falls back to secondaries.
-//
-// CRITICAL: a call that could not be read from ANY node returns { ok: false }.
-// The scorer refuses to emit a score when that happens (see XrplUnavailableError
-// and the guard in scoreWallet) — a transient RPC failure must never be silently
-// folded into a signal as a zero. "Could not read" is not "not found" and is not
-// "the wallet has no activity".
-export const XRPL_NODES = [
-  "https://xrplcluster.com",
-  "https://s1.ripple.com:51234",
-  "https://s2.ripple.com:51234",
-];
+// Node rotation + per-node cooldown lives in ./xrplNodes. A call that could not
+// be read from ANY node returns { ok: false }, and the scorer then refuses to
+// emit a score (XrplUnavailableError) — a transient RPC failure must never be
+// silently folded into a signal as a zero. "Could not read" is not "not found"
+// and is not "the wallet has no activity".
+export { XRPL_NODES } from "./xrplNodes"; // re-export: lendingLedger / screen import it from here
+import { xrplRpc, type XrplRpcResult } from "./xrplNodes";
+import { resolveFirstTx } from "./xrplFacts";
 
-type XrplCallResult =
-  | { ok: true; body: Record<string, unknown> }
-  | { ok: false };
+type XrplCallResult = XrplRpcResult;
 
-async function xrplCallOne(
-  url: string,
-  method: string,
-  params: object
-): Promise<Record<string, unknown> | null> {
-  try {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ method, params: [params] }),
-      signal: AbortSignal.timeout(9_000),
-    });
-    const contentType = res.headers.get("content-type") || "";
-    if (!contentType.includes("application/json")) return null;
-    if (!res.ok) return null;
-    return await res.json();
-  } catch {
-    return null;
-  }
-}
-
-async function xrplCall(method: string, params: object): Promise<XrplCallResult> {
-  for (const url of XRPL_NODES) {
-    const result = await xrplCallOne(url, method, params);
-    if (result) return { ok: true, body: result };
-  }
-  return { ok: false };
-}
+const xrplCall = (method: string, params: object): Promise<XrplCallResult> => xrplRpc(method, params);
 
 // ─── SCORE COMPUTATION ───────────────────────────────────────────────────────
 function computeRawScore(signals: Record<string, number>): number {
@@ -247,17 +213,22 @@ export class XrplUnavailableError extends Error {
 // ─── THE SCORER ──────────────────────────────────────────────────────────────
 
 export async function scoreWallet(address: string): Promise<XrplScoreResult> {
-  const [infoRes, linesRes, txRes, offersRes, nftsRes, escrowRes, firstTxRes] = await Promise.all([
+  // account_lines trimmed 400 -> 100: verified against 20 wallets across the
+  // range (scripts/verify-trimmed-limits.mjs) — 0/20 score change, because the
+  // tokenEngagement signal saturates at 8 trust lines and 100 still covers the
+  // RLUSD-line check. account_tx STAYS at 400: the same run showed trimming it
+  // to 200 shifts high-activity wallets up to 13 points (the lifetime-tx floor
+  // and the receive-count window both narrow) — an accuracy trade we did NOT take.
+  const [infoRes, linesRes, txRes, offersRes, nftsRes, escrowRes, firstTx] = await Promise.all([
     xrplCall("account_info",    { account: address, ledger_index: "validated" }),
-    xrplCall("account_lines",   { account: address, limit: 400 }),
+    xrplCall("account_lines",   { account: address, limit: 100 }),
     xrplCall("account_tx",      { account: address, limit: 400, ledger_index_min: -1, ledger_index_max: -1 }),
     xrplCall("account_offers",  { account: address }),
     xrplCall("account_nfts",    { account: address }),
     xrplCall("account_objects", { account: address, type: "escrow" }),
-    // The genuine FIRST transaction (oldest). account_tx caps at `limit`, so the
-    // oldest of the 400 above is NOT the account's first tx for any wallet with
-    // >400 lifetime txs — hence a dedicated forward:true, limit:1 lookup.
-    xrplCall("account_tx", { account: address, limit: 1, forward: true, ledger_index_min: -1, ledger_index_max: -1 }),
+    // The account's FIRST transaction — immutable, so served from the permanent
+    // XrplFactCache after the first time we see an address (0 RPC on a repeat).
+    resolveFirstTx(address),
   ]);
 
   // GATE 1 — could not read. Every call feeds a signal (accountAge alone is 28%
@@ -265,16 +236,16 @@ export async function scoreWallet(address: string): Promise<XrplScoreResult> {
   // score, name what failed, let the caller retry. Never anchor degraded data.
   if (
     !infoRes.ok || !linesRes.ok || !txRes.ok || !offersRes.ok ||
-    !nftsRes.ok || !escrowRes.ok || !firstTxRes.ok
+    !nftsRes.ok || !escrowRes.ok || !firstTx.ok
   ) {
-    const entries: Array<[XrplCallResult, string]> = [
+    const entries: Array<[{ ok: boolean }, string]> = [
       [infoRes,    "account_info"],
       [linesRes,   "account_lines"],
       [txRes,      "account_tx"],
       [offersRes,  "account_offers"],
       [nftsRes,    "account_nfts"],
       [escrowRes,  "account_objects (escrow)"],
-      [firstTxRes, "account_tx (first-tx / account age)"],
+      [firstTx,    "account_tx (first-tx / account age)"],
     ];
     const unread = entries.filter(([r]) => !r.ok).map(([, label]) => label);
     throw new XrplUnavailableError(unread);
@@ -303,7 +274,8 @@ export async function scoreWallet(address: string): Promise<XrplScoreResult> {
     [offersRes,  "account_offers"],
     [nftsRes,    "account_nfts"],
     [escrowRes,  "account_objects (escrow)"],
-    [firstTxRes, "account_tx (first-tx / account age)"],
+    // firstTx is resolved by resolveFirstTx(), which already returns { ok:false }
+    // on a node-level error — GATE 1 above covers it.
   ];
   const errored = secondary
     .filter(([r]) => {
@@ -323,15 +295,13 @@ export async function scoreWallet(address: string): Promise<XrplScoreResult> {
   // ── PARSE ──────────────────────────────────────────────────────────────────
   const balanceXRP = Number(accountInfo.Balance) / 1_000_000;
   const txListLen  = transactions.length;
-  const txCapped   = txListLen >= 400;
+  const txCapped   = txListLen >= 400; // account_tx page size
   const sequence   = (accountInfo.Sequence as number) || 0;
 
   // Account age from the FIRST tx's on-ledger close time (Ripple-epoch seconds).
-  const firstEntry = ((firstTxRes.body as { result?: { transactions?: Array<{ tx?: Record<string, unknown>; tx_json?: Record<string, unknown> }> } })
-    ?.result?.transactions ?? [])[0];
-  const firstTx = firstEntry ? (firstEntry.tx ?? firstEntry.tx_json ?? {}) : {};
-  const firstTxDate = firstTx.date as number | undefined;
-  const firstTxLedger = (firstTx.ledger_index ?? firstTx.LedgerIndex) as number | undefined;
+  // firstTx is from resolveFirstTx() (permanent cache or one cheap RPC).
+  const firstTxDate = firstTx.firstTxDate ?? undefined;
+  const firstTxLedger = firstTx.firstTxLedger ?? undefined;
   const nowSec = Math.floor(Date.now() / 1000);
   const accountAgeDays =
     typeof firstTxDate === "number"
@@ -426,7 +396,7 @@ export async function scoreWallet(address: string): Promise<XrplScoreResult> {
     dataCompleteness: {
       complete: true,
       unread: [],
-      source: "xrpl-mainnet-jsonrpc (xrplcluster → s1 → s2)",
+      source: "xrpl-mainnet-jsonrpc (rotated node pool — see src/lib/xrplNodes.ts)",
     },
   };
 }

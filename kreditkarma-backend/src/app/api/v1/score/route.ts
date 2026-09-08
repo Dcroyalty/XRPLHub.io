@@ -4,9 +4,11 @@
 // site returns (both call computeScore from lib/engine.ts).
 
 import { NextResponse } from "next/server";
+import { prisma } from "@/lib/xrplscore-db";
 import { extractKey, resolveApiKey } from "@/lib/keys";
 import { guard } from "@/lib/guard";
-import { computeScore, isValidXrplAddress, AccountNotFoundError, XrplUnavailableError } from "@/lib/engine";
+import { toScoreResult, isValidXrplAddress, AccountNotFoundError, XrplUnavailableError } from "@/lib/engine";
+import { getScoreCached } from "@/lib/scoreCache";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic"; // never cache the auth'd response itself
@@ -64,15 +66,18 @@ async function handle(wallet: string | null, req: Request) {
     );
   }
 
-  // 4) Score
+  // 4) Score — server-side display cache, TTL = the caller's own plan cache
+    //    policy (a real-time plan with cacheTtlSeconds 0 always gets a fresh score).
   try {
-    const result = await computeScore(wallet);
+    const cached = await getScoreCached(prisma, wallet, key.plan.cacheTtlSeconds * 1000);
+    const result = toScoreResult(cached.result, cached.computedAt);
     const expiresSoon =
       !!key.expiresAt && new Date(key.expiresAt).getTime() - Date.now() < 72 * 3600_000;
     const headers: Record<string, string> = {
       // Cache TTL varies by tier (decision from the plan table).
       "Cache-Control": `private, max-age=${key.plan.cacheTtlSeconds}`,
       "X-RateLimit-Remaining": String(g.remaining ?? ""),
+      "X-Score-Cache": cached.fromCache ? `hit;age=${Math.round(cached.ageMs / 1000)}` : "miss",
     };
     if (key.expiresAt) headers["X-Key-Expires"] = key.expiresAt;
     if (expiresSoon) headers["X-Key-Expires-Soon"] = "true";

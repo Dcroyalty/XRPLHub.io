@@ -12,15 +12,39 @@ model LedgerScore {
   id            String         @id @default(cuid())
   address       String         @unique
   score         Int            // 300–850
-  tier          String         // POOR / FAIR / GOOD / EXCELLENT
-  breakdown     String         // JSON: { accountAge, txVolume, ammLp, ... }
-  rawData       String         // JSON: full on-chain snapshot
+  tier          String         // Building / Fair / Good / Excellent / Exceptional
+  breakdown     String         // JSON: the 8 signal scores
+  rawData       String         // JSON: XrplScoreDetails snapshot
+  resultJson    String?        // JSON: the FULL XrplScoreResult — the 15-min display cache payload
+  scoredAt      DateTime?      // when resultJson's RPC data was fetched (the cache freshness clock)
   calculatedAt  DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
 
   grants        GrantRequest[]
 
   @@index([address])
+}
+
+// Immutable per-address facts. An account's first transaction is its funding
+// tx — it can never change — so this row NEVER expires. Removes the
+// account_tx{limit:1,forward:true} call on every re-score of a known address.
+model XrplFactCache {
+  address       String   @id
+  firstTxLedger Int?
+  firstTxDate   Int?     // Ripple-epoch seconds
+  firstSeenAt   DateTime @default(now())
+}
+
+// Lightweight call counters — one row per (UTC day, method). `method` is an
+// XRPL method (account_info, account_tx, ...) or a pseudo-metric
+// (cache:hit, cache:miss, node:<host>). Enough to see if we approach a quota.
+model XrplCallStat {
+  id     String @id @default(cuid())
+  day    String // YYYY-MM-DD (UTC)
+  method String
+  calls  Int    @default(0)
+
+  @@unique([day, method])
 }
 
 // ─── NEW: every individual score check, for progress-over-time tracking ──────

@@ -20,6 +20,7 @@ import { maybeAnchorScreeningReceipts } from "@/lib/screenAnchor";
 import { maybeAnchorLendingReceipts } from "@/lib/lendingAnchor";
 import { maybeAnchorUnderwriteReceipts } from "@/lib/underwriteAnchor";
 import { runLendingSweep } from "@/lib/lendingSweep";
+import { forceFlushXrplCounters } from "@/lib/xrplCounters";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -71,6 +72,7 @@ export async function GET(req: Request) {
       return { attempted: false, submitted: false, reason: "anchor threw", leafCount: 0 };
     });
 
+    forceFlushXrplCounters(prisma); // catch-all for any counters this pass accrued
     return NextResponse.json({ ...progress, sdn, lendingSweep, screeningAnchor, lendingAnchor, underwriteAnchor });
   } catch (err) {
     await notifyError("cron/index-credentials", err);

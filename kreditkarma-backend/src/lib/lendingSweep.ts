@@ -21,9 +21,6 @@ import { lendingProtocolActive } from "./lendingLedger";
 import { notifyError } from "./notify";
 
 const CHECKPOINT_ID = "lending-sweep";
-// Reuse a cached XRPLScore up to this age during a sweep (paid queries always
-// recompute). The snapshot shape is identical either way.
-const SWEEP_SCORE_REUSE_MS = 72 * 60 * 60 * 1000;
 const PER_BORROWER_SOFT_MS = 9_000; // stop starting new borrowers if less than this remains
 
 export interface SweepResult {
@@ -112,7 +109,7 @@ export async function runLendingSweep(
     if (!next) break; // everyone done this pass
 
     try {
-      const out = await runExposureQuery(prisma, next.borrower, "sweep", { reuseScoreWithinMs: SWEEP_SCORE_REUSE_MS });
+      const out = await runExposureQuery(prisma, next.borrower, "sweep");
       await prisma.lendingBorrowerSweep.update({
         where: { borrower: next.borrower },
         data: {

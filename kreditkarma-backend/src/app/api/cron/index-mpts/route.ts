@@ -13,6 +13,7 @@ import { runMptIndexerPass, maybeAnchor } from "@/lib/mptIndexer";
 import { isAdmin } from "@/lib/adminAuth";
 import { healthProbe } from "@/lib/health";
 import { notifyError } from "@/lib/notify";
+import { forceFlushXrplCounters } from "@/lib/xrplCounters";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -44,6 +45,7 @@ export async function GET(req: Request) {
       );
     }
 
+    forceFlushXrplCounters(prisma); // catch-all: land any counters this pass accrued
     return NextResponse.json({ ...progress, anchor, health: { overall: health.overall, reds: health.reds, ambers: health.ambers } });
   } catch (err) {
     await notifyError("cron/index-mpts", err);

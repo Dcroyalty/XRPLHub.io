@@ -173,48 +173,31 @@ export interface ExposureResult {
  * full result. `requestedBy` is "key:<prefix>" | "x402:<id>" | "mcp" | "sweep".
  *
  * A "sweep" observation is byte-identical in the attested record to a paid one —
- * `requestedBy` is stored on the row but is NOT part of the canonical leaf, so
- * the leaf hash and the daily anchor treat both the same. `reuseScoreWithinMs`
- * lets the daily sweep reuse a recent cached XRPLScore instead of recomputing it
- * for every borrower (the snapshot shape is unchanged either way).
+ * `requestedBy` is stored on the row but is NOT part of the canonical leaf.
+ *
+ * The XRPLScore is ALWAYS computed fresh here (computeScore -> scoreWallet). It
+ * is anchored inside the canonical leaf, so a cached value would be a stale
+ * number signed on-chain as current — the same class of bug as the degradation
+ * failure. Never wire the display cache (src/lib/scoreCache.ts) into this path;
+ * scripts/check-attestation-freshness.mjs fails the build if you do.
  */
 export async function runExposureQuery(
   prisma: PrismaClient,
   borrower: string,
-  requestedBy: string,
-  opts: { reuseScoreWithinMs?: number } = {}
+  requestedBy: string
 ): Promise<ExposureResult> {
   const queryId = randomUUID();
   const generatedAt = new Date().toISOString();
 
-  // XRPLScore: fresh by default; a sweep may reuse a recent cached value.
+  // XRPLScore — always fresh (goes into the anchored leaf).
   let xrplScore: number | null = null;
   let grade: string | null = null;
-  let scoreFromCache = false;
-  if (opts.reuseScoreWithinMs) {
-    const cached = await prisma.ledgerScore.findUnique({ where: { address: borrower } });
-    if (cached && Date.now() - cached.updatedAt.getTime() < opts.reuseScoreWithinMs) {
-      xrplScore = cached.score;
-      grade = cached.tier;
-      scoreFromCache = true;
-    }
-  }
-  if (!scoreFromCache) {
-    try {
-      const s = await computeScore(borrower);
-      xrplScore = s.score;
-      grade = s.grade;
-      // Keep the shared score cache warm for the next sweep / public lookup.
-      await prisma.ledgerScore
-        .upsert({
-          where: { address: borrower },
-          update: { score: s.score, tier: s.grade },
-          create: { address: borrower, score: s.score, tier: s.grade, breakdown: "{}", rawData: "{}" },
-        })
-        .catch(() => {});
-    } catch (e) {
-      if (!(e instanceof AccountNotFoundError)) throw e;
-    }
+  try {
+    const s = await computeScore(borrower);
+    xrplScore = s.score;
+    grade = s.grade;
+  } catch (e) {
+    if (!(e instanceof AccountNotFoundError)) throw e;
   }
 
   const active = await lendingProtocolActive();

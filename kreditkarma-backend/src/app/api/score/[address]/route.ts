@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
-import { scoreWallet, AccountNotFoundError, XrplUnavailableError, COPYRIGHT } from '@/lib/xrplscore';
+import { AccountNotFoundError, XrplUnavailableError, COPYRIGHT } from '@/lib/xrplscore';
+import { getScoreCached, SCORE_CACHE_TTL_MS } from '@/lib/scoreCache';
 
 const prisma = new PrismaClient();
 
@@ -20,22 +21,19 @@ export async function GET(
   }
 
   try {
-    const r = await scoreWallet(address);
+    // Display cache: serves a stored score up to 15 min old; on a miss it
+    // computes fresh and stores it. NOT for attestations — this route is the
+    // public site + free lookups.
+    const { result: r, computedAt, fromCache, ageMs } = await getScoreCached(prisma, address, SCORE_CACHE_TTL_MS);
 
-    // ── SAVE TO DB (history + current snapshot) — fire and forget ───────────
-    const breakdownJSON = JSON.stringify(r.signals);
-    Promise.allSettled([
+    // Score-history row only on a genuine fresh compute (don't spam it on hits).
+    if (!fromCache) {
       prisma.scoreHistory.create({
-        data: { address, score: r.ledgerScore, tier: r.grade, percentile: r.percentile, breakdown: breakdownJSON },
-      }),
-      prisma.ledgerScore.upsert({
-        where:  { address },
-        update: { score: r.ledgerScore, tier: r.grade, breakdown: breakdownJSON, rawData: JSON.stringify(r.details) },
-        create: { address, score: r.ledgerScore, tier: r.grade, breakdown: breakdownJSON, rawData: JSON.stringify(r.details) },
-      }),
-    ]).catch(() => { /* DB write failure shouldn't break the score response */ });
+        data: { address, score: r.ledgerScore, tier: r.grade, percentile: r.percentile, breakdown: JSON.stringify(r.signals) },
+      }).catch(() => { /* history write failure shouldn't break the response */ });
+    }
 
-    // ── RESPONSE (unchanged shape) ────────────────────────────────────────────
+    // ── RESPONSE ─────────────────────────────────────────────────────────────
     return NextResponse.json({
       ledgerScore: r.ledgerScore,
       xrplScore: r.ledgerScore,
@@ -47,7 +45,10 @@ export async function GET(
       percentileLabel: r.percentileLabel,
       details: r.details,
       address,
-      scannedAt: new Date().toISOString(),
+      scannedAt: computedAt,
+      computedAt,
+      fromCache,
+      cacheAgeSeconds: Math.round(ageMs / 1000),
       methodology: r.methodology,
       disclaimer: r.disclaimer,
       dataCompleteness: r.dataCompleteness,

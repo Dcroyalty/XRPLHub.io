@@ -8,6 +8,7 @@
 import {
   scoreWallet,
   isValidXrplAddress,
+  type XrplScoreResult,
   type ScoreBreakdownRow,
   type ScoreRecommendation,
   type XrplScoreDetails,
@@ -42,13 +43,9 @@ export interface ScoreResult {
   dataCompleteness: DataCompleteness;  // every input read? (always true on a 200 — see xrplscore.ts)
 }
 
-/**
- * Score a single XRPL wallet using the production scoring engine.
- * Throws AccountNotFoundError if the address is not an activated mainnet
- * account; the API route turns that into a clean 404.
- */
-export async function computeScore(wallet: string): Promise<ScoreResult> {
-  const r = await scoreWallet(wallet);
+/** Reshape a raw XrplScoreResult into the B2B ScoreResult. `computedAt` is when
+ *  the underlying RPC data was fetched — pass the cache's timestamp, or now(). */
+export function toScoreResult(r: XrplScoreResult, computedAt: string): ScoreResult {
   return {
     wallet: r.address,
     score: r.ledgerScore,
@@ -61,7 +58,16 @@ export async function computeScore(wallet: string): Promise<ScoreResult> {
     details: r.details,
     methodology: r.methodology,
     disclaimer: r.disclaimer,
-    computedAt: new Date().toISOString(),
+    computedAt,
     dataCompleteness: r.dataCompleteness,
   };
+}
+
+/**
+ * Score a single XRPL wallet using the production scoring engine — ALWAYS FRESH,
+ * no cache. Throws AccountNotFoundError if the address is not an activated
+ * mainnet account. This is the entry point for attestation paths.
+ */
+export async function computeScore(wallet: string): Promise<ScoreResult> {
+  return toScoreResult(await scoreWallet(wallet), new Date().toISOString());
 }
