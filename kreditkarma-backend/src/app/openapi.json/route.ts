@@ -79,9 +79,26 @@ const scoreSchema = {
       properties: Object.fromEntries(SIGNALS.map((k) => [k, { type: "number" }])),
     },
     methodology: { type: "string" },
+    disclaimer: {
+      type: "string",
+      description:
+        "Always present. XRPLScore is informational only — NOT a FICO score, consumer report, or NRSRO " +
+        "rating, and not permissible for FCRA- or ECOA-governed decisions.",
+    },
+    dataCompleteness: {
+      type: "object",
+      description:
+        "`complete` is always true on a 200. If any XRPL call cannot be read the endpoint returns 503 " +
+        "(error \"xrpl_unavailable\", with failedCalls) and NO score — a failed read is never folded into a signal.",
+      properties: {
+        complete: { type: "boolean" },
+        unread: { type: "array", items: { type: "string" } },
+        source: { type: "string" },
+      },
+    },
     computedAt: { type: "string", format: "date-time" },
   },
-  required: ["wallet", "score", "grade", "signals"],
+  required: ["wallet", "score", "grade", "signals", "disclaimer", "dataCompleteness"],
 };
 
 const scoreExample = {
@@ -94,6 +111,11 @@ const scoreExample = {
     dexActivity: 40, ammActivity: 12, securityConfig: 30, nftActivity: 0,
   },
   methodology: "XRPLHub XRPLScore v1.1 — 8-signal native on-chain behavioral scoring, absolute scale",
+  disclaimer:
+    "XRPLScore is an informational analytics signal computed only from public XRP Ledger data. It is NOT a " +
+    "FICO score, a consumer credit score, a consumer report, or an NRSRO rating, and must not be used for any " +
+    "purpose governed by the U.S. Fair Credit Reporting Act or the Equal Credit Opportunity Act.",
+  dataCompleteness: { complete: true, unread: [], source: "xrpl-mainnet-jsonrpc (xrplcluster → s1 → s2)" },
   computedAt: "2026-09-04T00:00:00.000Z",
 };
 

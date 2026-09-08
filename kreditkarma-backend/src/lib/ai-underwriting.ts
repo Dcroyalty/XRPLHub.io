@@ -42,7 +42,7 @@ function runHardRules(app: GrantApplication): { rejected: boolean; reason: strin
   const flags: string[] = [];
 
   // Amount limits
-  const maxAmount = Number(process.env.GRANT_MAX_AMOUNT_RLUSD ?? 50);
+  const maxAmount = Number(process.env.GRANT_MAX_AMOUNT_RLUSD ?? 100);
   if (app.amountRequested > maxAmount * 2) {
     return {
       rejected: true,
@@ -102,12 +102,12 @@ async function runAIEvaluation(
   hardRuleFlags: string[]
 ): Promise<{ aiScore: number; reasoning: string; suggestedAmount: number; additionalFlags: string[] }> {
   const scoreContext = app.ledgerScore
-    ? `LedgerScore: ${app.ledgerScore.total}/850 (${app.ledgerScore.tier})
+    ? `XRPLScore: ${app.ledgerScore.total}/850 (${app.ledgerScore.tier})
 Positives: ${app.ledgerScore.positives.slice(0, 3).join("; ")}
 Concerns: ${app.ledgerScore.negatives.slice(0, 3).join("; ")}`
-    : "LedgerScore: Not available";
+    : "XRPLScore: Not available";
 
-  const prompt = `You are an AI underwriter for KreditKarma.us, a non-profit XRPL-based micro-grants platform that helps people in genuine financial hardship with small emergency grants (max $50 RLUSD or 100 XRP).
+  const prompt = `You are an AI underwriter for XRPLHub, a community mutual-aid fund on the XRP Ledger that helps people in genuine financial hardship with small emergency grants ($25 to $100, or the equivalent in XRP).
 
 Review this grant application and provide a legitimacy assessment:
 
@@ -203,7 +203,7 @@ export async function underwriteGrant(app: GrantApplication): Promise<Underwriti
 
   // 3. Final decision logic
   const allFlags = [...hardResult.flags, ...aiResult.additionalFlags];
-  const maxAmount = Number(process.env.GRANT_MAX_AMOUNT_RLUSD ?? 50);
+  const maxAmount = Number(process.env.GRANT_MAX_AMOUNT_RLUSD ?? 100);
 
   // Clamp approved amount
   const approvedAmount = Math.min(
@@ -223,7 +223,7 @@ export async function underwriteGrant(app: GrantApplication): Promise<Underwriti
     decision = "MANUAL_REVIEW";
   }
 
-  // LedgerScore modifier: high score can bump borderline approvals
+  // XRPLScore modifier: high score can bump borderline approvals
   if (decision === "MANUAL_REVIEW" && app.ledgerScore && app.ledgerScore.total >= 700) {
     decision = "APPROVED";
   }

@@ -11,6 +11,7 @@ import { scoreWallet } from "@/lib/xrplscore";
 
 export interface WalletReport {
   score: ScoreResult;
+  disclaimer: string;
   riskFlags: string[];
   weightedSignals: Array<{
     key: string;
@@ -48,7 +49,9 @@ export async function buildWalletReport(wallet: string): Promise<WalletReport> {
     recommendations: raw.recommendations,
     details: raw.details,
     methodology: raw.methodology,
+    disclaimer: raw.disclaimer,
     computedAt: new Date().toISOString(),
+    dataCompleteness: raw.dataCompleteness,
   };
 
   const d = raw.details;
@@ -72,6 +75,7 @@ export async function buildWalletReport(wallet: string): Promise<WalletReport> {
       weight: b.weight,
       desc: b.desc,
     })),
+    disclaimer: raw.disclaimer,
     snapshot: {
       xrpBalance: d.balanceXRP,
       trustLineCount: d.trustLineCount,

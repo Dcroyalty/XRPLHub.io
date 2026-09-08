@@ -7,7 +7,7 @@
 // instead of paying again. A caller can never pay twice or pay for nothing.
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/xrplscore-db";
-import { computeScore, isValidXrplAddress, AccountNotFoundError } from "@/lib/engine";
+import { computeScore, isValidXrplAddress, AccountNotFoundError, XrplUnavailableError } from "@/lib/engine";
 import { PRICE_PER_SCORE_RLUSD, TREASURY_ADDRESS } from "@/lib/paycall";
 import { rlusdRequirements, serveX402Paid, type HandlerResult } from "@/lib/x402";
 import { SCORE_SCHEMA } from "@/lib/x402Schemas";
@@ -46,6 +46,10 @@ export async function GET(req: Request) {
       } catch (err) {
         if (err instanceof AccountNotFoundError) {
           return { ok: false, code: "account_not_found", status: 404, message: "That wallet is not an activated account on XRPL mainnet." };
+        }
+        if (err instanceof XrplUnavailableError) {
+          // Not scored, not charged, retryable — err.message names the calls that failed.
+          return { ok: false, code: "xrpl_unavailable", status: 503, message: err.message };
         }
         throw err; // serveX402Paid turns this into handler_failed (not charged, retryable)
       }

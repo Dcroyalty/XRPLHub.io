@@ -10,7 +10,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { withX402 } from "x402-next";
 import { BASE_PAY_TO, BASE_NETWORK, PRICE_PER_SCORE_USDC, cdpFacilitator } from "@/lib/x402Base";
-import { computeScore, isValidXrplAddress } from "@/lib/engine";
+import { computeScore, isValidXrplAddress, AccountNotFoundError, XrplUnavailableError } from "@/lib/engine";
 import { walletProp, SCORE_OUTPUT_SCHEMA } from "@/lib/scoreSchema";
 
 export const runtime = "nodejs";
@@ -29,6 +29,19 @@ const handler = async (req: NextRequest): Promise<NextResponse<unknown>> => {
     const result = await computeScore(wallet);
     return NextResponse.json({ data: result });
   } catch (err) {
+    if (err instanceof AccountNotFoundError) {
+      return NextResponse.json(
+        { error: "account_not_found", message: "That wallet is not an activated account on XRPL mainnet." },
+        { status: 404 }
+      );
+    }
+    if (err instanceof XrplUnavailableError) {
+      // Not scored — one or more XRPL calls could not be read. Retryable.
+      return NextResponse.json(
+        { error: "xrpl_unavailable", message: err.message, failedCalls: err.failedCalls, retryable: true },
+        { status: 503, headers: { "Retry-After": "15" } }
+      );
+    }
     return NextResponse.json(
       { error: "scoring_failed", message: err instanceof Error ? err.message : "scoring failed" },
       { status: 500 }

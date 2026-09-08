@@ -126,7 +126,7 @@ export async function sendXrpFromTreasury(
   const currentLedger = (ledger.result as any).ledger_index;
 
   const memo = memoText
-    ? [{ Memo: { MemoData: convertStringToHex(memoText), MemoType: convertStringToHex("KreditKarma/Grant") } }]
+    ? [{ Memo: { MemoData: convertStringToHex(memoText), MemoType: convertStringToHex("XRPLHub/Grant") } }]
     : [];
 
   const tx: Payment = {
@@ -187,7 +187,7 @@ export async function sendRlusdFromTreasury(
   const currentLedger = (ledger.result as any).ledger_index;
 
   const memo = memoText
-    ? [{ Memo: { MemoData: convertStringToHex(memoText), MemoType: convertStringToHex("KreditKarma/Grant") } }]
+    ? [{ Memo: { MemoData: convertStringToHex(memoText), MemoType: convertStringToHex("XRPLHub/Grant") } }]
     : [];
 
   const tx: Payment = {

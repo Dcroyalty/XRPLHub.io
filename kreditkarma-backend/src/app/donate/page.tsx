@@ -59,7 +59,7 @@ export default function DonatePage() {
           <div style={{ marginTop: 32, padding: 24, background: 'var(--bg)', borderRadius: 8 }}>
             <h3 style={{ marginBottom: 12, fontSize: 18 }}>How to Donate</h3>
             <ol style={{ paddingLeft: 20, color: 'var(--text-muted)', lineHeight: 2 }}>
-              <li>Open your XRPL wallet (Xumm, XRPL Wallet, etc.)</li>
+              <li>Open your XRPL wallet (Xaman, or any XRPL wallet)</li>
               <li>Send XRP or RLUSD to the treasury address above</li>
               <li>Donations are recorded on-chain and visible in our admin panel</li>
               <li>Funds are deployed as micro-grants to verified applicants</li>
@@ -70,8 +70,8 @@ export default function DonatePage() {
         <div className="cta" style={{ paddingTop: 64 }}>
           <div className="cta-card">
             <h2>Need a Grant?</h2>
-            <p>Apply for up to $1,000 in micro-grants for rent, utilities, groceries, or medical expenses.</p>
-            <a href="mailto:grants@kreditkarma.us" className="btn btn-primary">Apply Now</a>
+            <p>Apply for a $25–$100 micro-grant for rent, utilities, groceries, or medical expenses. Every application is reviewed by a human; AI assists with triage.</p>
+            <a href="/#grants" className="btn btn-primary">Apply Now</a>
           </div>
         </div>
       </div>

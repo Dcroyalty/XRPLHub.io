@@ -5,7 +5,7 @@
 // buildWalletReport() succeeds; idempotent replay on retry.
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/xrplscore-db";
-import { isValidXrplAddress, AccountNotFoundError } from "@/lib/engine";
+import { isValidXrplAddress, AccountNotFoundError, XrplUnavailableError } from "@/lib/engine";
 import { buildWalletReport } from "@/lib/report";
 import { PRICE_PER_PRODUCT_RLUSD, TREASURY_ADDRESS } from "@/lib/paycall";
 import { rlusdRequirements, serveX402Paid, type HandlerResult } from "@/lib/x402";
@@ -45,6 +45,9 @@ export async function GET(req: Request) {
       } catch (err) {
         if (err instanceof AccountNotFoundError) {
           return { ok: false, code: "account_not_found", status: 404, message: "That wallet is not an activated account on XRPL mainnet." };
+        }
+        if (err instanceof XrplUnavailableError) {
+          return { ok: false, code: "xrpl_unavailable", status: 503, message: err.message };
         }
         throw err;
       }

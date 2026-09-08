@@ -19,6 +19,19 @@ export const METHODOLOGY =
 export const COPYRIGHT =
   "© 2026 XRPLHub.io · XRPLScore™ · All Rights Reserved";
 
+// Carried in EVERY score-bearing response (plain score, x402 score, wallet
+// report, credential planning). Same standard the screening and lending
+// products already meet: state what the number is and is not, in the response
+// itself — an API consumer never sees the Terms page.
+export const SCORE_DISCLAIMER =
+  "XRPLScore is an informational analytics signal computed only from public XRP Ledger data at the stated " +
+  "ledger state. It is NOT a FICO score, a consumer credit score, a consumer report, or an NRSRO rating, and " +
+  "it has no affiliation with any credit bureau. It must not be used, alone or combined with other data, to " +
+  "make or communicate any decision about a person's eligibility for credit, insurance, employment, or " +
+  "housing, or for any other purpose governed by the U.S. Fair Credit Reporting Act (FCRA) or the Equal " +
+  "Credit Opportunity Act. XRPLHub does not warrant that the score reflects creditworthiness. The value can " +
+  "change as ledger state changes and may be recomputed at any time.";
+
 const RLUSD_HEX = "524C555344000000000000000000000000000000";
 const RIPPLE_EPOCH_OFFSET = 946_684_800;
 
@@ -42,13 +55,22 @@ const clamp = (v: number) => Math.max(0, Math.min(100, v));
 
 // ─── XRPL FETCHERS ───────────────────────────────────────────────────────────
 // Robust against rate-limiting (plain-text "Rate limit"), HTML error pages, and
-// timeouts. Tries primary node, falls back to secondaries, returns {} as a last
-// resort so individual signal failures don't kill the whole score.
+// timeouts. Tries primary node, falls back to secondaries.
+//
+// CRITICAL: a call that could not be read from ANY node returns { ok: false }.
+// The scorer refuses to emit a score when that happens (see XrplUnavailableError
+// and the guard in scoreWallet) — a transient RPC failure must never be silently
+// folded into a signal as a zero. "Could not read" is not "not found" and is not
+// "the wallet has no activity".
 export const XRPL_NODES = [
   "https://xrplcluster.com",
   "https://s1.ripple.com:51234",
   "https://s2.ripple.com:51234",
 ];
+
+type XrplCallResult =
+  | { ok: true; body: Record<string, unknown> }
+  | { ok: false };
 
 async function xrplCallOne(
   url: string,
@@ -71,12 +93,12 @@ async function xrplCallOne(
   }
 }
 
-async function xrplCall(method: string, params: object): Promise<Record<string, unknown>> {
+async function xrplCall(method: string, params: object): Promise<XrplCallResult> {
   for (const url of XRPL_NODES) {
     const result = await xrplCallOne(url, method, params);
-    if (result) return result;
+    if (result) return { ok: true, body: result };
   }
-  return {};
+  return { ok: false };
 }
 
 // ─── SCORE COMPUTATION ───────────────────────────────────────────────────────
@@ -172,6 +194,12 @@ export interface XrplScoreDetails {
   sequence: number;
 }
 
+export interface DataCompleteness {
+  complete: boolean;          // true iff every input the score depends on was read
+  unread: string[];           // XRPL calls that could not be read (empty on a 200)
+  source: string;             // where the data came from
+}
+
 export interface XrplScoreResult {
   address: string;
   ledgerScore: number;                 // 300–850
@@ -184,6 +212,8 @@ export interface XrplScoreResult {
   details: XrplScoreDetails;
   hasRlusdTrustLine: boolean;          // convenience for report.ts / risk flags
   methodology: string;
+  disclaimer: string;                  // SCORE_DISCLAIMER — what the number is / is not
+  dataCompleteness: DataCompleteness;  // always { complete: true, unread: [] } — see below
 }
 
 /** Thrown when the address is not an activated account on XRPL mainnet. */
@@ -194,33 +224,100 @@ export class AccountNotFoundError extends Error {
   }
 }
 
+/**
+ * Thrown when one or more XRPL calls could not be read from any node
+ * (rate-limit, timeout, upstream error) — as opposed to the wallet genuinely
+ * not existing. The scorer NEVER produces a number in this case: a degraded
+ * score is worse than no score, because it looks identical to a real low score
+ * and can be signed / anchored. API routes turn this into a 503 that names the
+ * calls that failed, and it is retryable.
+ */
+export class XrplUnavailableError extends Error {
+  readonly failedCalls: string[];
+  constructor(failedCalls: string[]) {
+    super(
+      `XRPL data temporarily unavailable — could not read: ${failedCalls.join(", ")}. ` +
+        `No score was computed. Retry shortly.`
+    );
+    this.name = "XrplUnavailableError";
+    this.failedCalls = failedCalls;
+  }
+}
+
 // ─── THE SCORER ──────────────────────────────────────────────────────────────
 
 export async function scoreWallet(address: string): Promise<XrplScoreResult> {
   const [infoRes, linesRes, txRes, offersRes, nftsRes, escrowRes, firstTxRes] = await Promise.all([
     xrplCall("account_info",    { account: address, ledger_index: "validated" }),
-    xrplCall("account_lines",   { account: address, limit: 400 }).catch(() => ({})),
-    xrplCall("account_tx",      { account: address, limit: 400, ledger_index_min: -1, ledger_index_max: -1 }).catch(() => ({})),
-    xrplCall("account_offers",  { account: address }).catch(() => ({})),
-    xrplCall("account_nfts",    { account: address }).catch(() => ({})),
-    xrplCall("account_objects", { account: address, type: "escrow" }).catch(() => ({})),
+    xrplCall("account_lines",   { account: address, limit: 400 }),
+    xrplCall("account_tx",      { account: address, limit: 400, ledger_index_min: -1, ledger_index_max: -1 }),
+    xrplCall("account_offers",  { account: address }),
+    xrplCall("account_nfts",    { account: address }),
+    xrplCall("account_objects", { account: address, type: "escrow" }),
     // The genuine FIRST transaction (oldest). account_tx caps at `limit`, so the
     // oldest of the 400 above is NOT the account's first tx for any wallet with
     // >400 lifetime txs — hence a dedicated forward:true, limit:1 lookup.
-    xrplCall("account_tx", { account: address, limit: 1, forward: true, ledger_index_min: -1, ledger_index_max: -1 }).catch(() => ({})),
+    xrplCall("account_tx", { account: address, limit: 1, forward: true, ledger_index_min: -1, ledger_index_max: -1 }),
   ]);
 
-  const info = infoRes as { result?: { account_data?: Record<string, unknown>; error?: string } };
-  const accountInfo = info?.result?.account_data;
-  if (!accountInfo || info?.result?.error) {
-    throw new AccountNotFoundError(address);
+  // GATE 1 — could not read. Every call feeds a signal (accountAge alone is 28%
+  // of the score); a call that failed on every node is NOT a zero. Refuse to
+  // score, name what failed, let the caller retry. Never anchor degraded data.
+  if (
+    !infoRes.ok || !linesRes.ok || !txRes.ok || !offersRes.ok ||
+    !nftsRes.ok || !escrowRes.ok || !firstTxRes.ok
+  ) {
+    const entries: Array<[XrplCallResult, string]> = [
+      [infoRes,    "account_info"],
+      [linesRes,   "account_lines"],
+      [txRes,      "account_tx"],
+      [offersRes,  "account_offers"],
+      [nftsRes,    "account_nfts"],
+      [escrowRes,  "account_objects (escrow)"],
+      [firstTxRes, "account_tx (first-tx / account age)"],
+    ];
+    const unread = entries.filter(([r]) => !r.ok).map(([, label]) => label);
+    throw new XrplUnavailableError(unread);
   }
 
-  const trustLines   = ((linesRes as { result?: { lines?: unknown[] } })?.result?.lines || []) as Array<Record<string, unknown>>;
-  const transactions = ((txRes as { result?: { transactions?: unknown[] } })?.result?.transactions || []) as Array<{ tx?: Record<string, unknown>; tx_json?: Record<string, unknown> }>;
-  const offers       = ((offersRes as { result?: { offers?: unknown[] } })?.result?.offers || []) as unknown[];
-  const nfts         = ((nftsRes as { result?: { account_nfts?: unknown[] } })?.result?.account_nfts || []) as unknown[];
-  const escrows      = ((escrowRes as { result?: { account_objects?: unknown[] } })?.result?.account_objects || []) as unknown[];
+  // GATE 2 — genuinely not an activated account (a real, read answer).
+  const infoResult = (infoRes.body as {
+    result?: { account_data?: Record<string, unknown>; error?: string };
+  }).result;
+  const accountInfo = infoResult?.account_data;
+  if (!accountInfo) {
+    if (infoResult?.error === "actNotFound") throw new AccountNotFoundError(address);
+    // A 200 with neither account_data nor "actNotFound" (e.g. "tooBusy",
+    // "noNetwork", a malformed body) is a read failure, not a missing wallet.
+    throw new XrplUnavailableError([`account_info (${infoResult?.error ?? "unrecognized response"})`]);
+  }
+
+  // GATE 3 — the wallet exists, but a secondary call came back as a node-level
+  // error ("noCurrent", "noNetwork", "tooBusy", an unsynced fallback node). That
+  // is a read failure, NOT an empty result — an existing account that returns
+  // `error` on account_lines has not "got zero trust lines". Do not let it
+  // become a zero signal; refuse to score.
+  const secondary: Array<[{ body: Record<string, unknown> }, string]> = [
+    [linesRes,   "account_lines"],
+    [txRes,      "account_tx"],
+    [offersRes,  "account_offers"],
+    [nftsRes,    "account_nfts"],
+    [escrowRes,  "account_objects (escrow)"],
+    [firstTxRes, "account_tx (first-tx / account age)"],
+  ];
+  const errored = secondary
+    .filter(([r]) => {
+      const res = (r.body as { result?: { error?: unknown; status?: unknown } }).result;
+      return !res || res.error != null || res.status === "error";
+    })
+    .map(([, label]) => label);
+  if (errored.length) throw new XrplUnavailableError(errored);
+
+  const trustLines   = ((linesRes.body as { result?: { lines?: unknown[] } })?.result?.lines || []) as Array<Record<string, unknown>>;
+  const transactions = ((txRes.body as { result?: { transactions?: unknown[] } })?.result?.transactions || []) as Array<{ tx?: Record<string, unknown>; tx_json?: Record<string, unknown> }>;
+  const offers       = ((offersRes.body as { result?: { offers?: unknown[] } })?.result?.offers || []) as unknown[];
+  const nfts         = ((nftsRes.body as { result?: { account_nfts?: unknown[] } })?.result?.account_nfts || []) as unknown[];
+  const escrows      = ((escrowRes.body as { result?: { account_objects?: unknown[] } })?.result?.account_objects || []) as unknown[];
   const txOf = (t: { tx?: Record<string, unknown>; tx_json?: Record<string, unknown> }) => t.tx ?? t.tx_json ?? {};
 
   // ── PARSE ──────────────────────────────────────────────────────────────────
@@ -230,7 +327,7 @@ export async function scoreWallet(address: string): Promise<XrplScoreResult> {
   const sequence   = (accountInfo.Sequence as number) || 0;
 
   // Account age from the FIRST tx's on-ledger close time (Ripple-epoch seconds).
-  const firstEntry = ((firstTxRes as { result?: { transactions?: Array<{ tx?: Record<string, unknown>; tx_json?: Record<string, unknown> }> } })
+  const firstEntry = ((firstTxRes.body as { result?: { transactions?: Array<{ tx?: Record<string, unknown>; tx_json?: Record<string, unknown> }> } })
     ?.result?.transactions ?? [])[0];
   const firstTx = firstEntry ? (firstEntry.tx ?? firstEntry.tx_json ?? {}) : {};
   const firstTxDate = firstTx.date as number | undefined;
@@ -256,7 +353,7 @@ export async function scoreWallet(address: string): Promise<XrplScoreResult> {
   const hasAMM     = ammTxCount > 0;
   const nftCount   = nfts.length;
 
-  const hasMultiSig  = !!((accountInfo.SignerLists as unknown[])?.length) || !!((info?.result as { signer_lists?: unknown[] })?.signer_lists?.length);
+  const hasMultiSig  = !!((accountInfo.SignerLists as unknown[])?.length) || !!((infoRes.body as { result?: { signer_lists?: unknown[] } })?.result?.signer_lists?.length);
   const hasRegKey    = !!accountInfo.RegularKey;
   const hasDomain    = !!accountInfo.Domain;
   const hasEmailHash = !!accountInfo.EmailHash;
@@ -321,6 +418,16 @@ export async function scoreWallet(address: string): Promise<XrplScoreResult> {
     details,
     hasRlusdTrustLine,
     methodology: METHODOLOGY,
+    disclaimer: SCORE_DISCLAIMER,
+    // Every score-bearing response carries this. It can only ever report
+    // `complete: true` here — scoreWallet throws XrplUnavailableError above
+    // rather than return with any input unread — but downstream consumers
+    // (credential, lending, underwrite bundle) assert on it before signing.
+    dataCompleteness: {
+      complete: true,
+      unread: [],
+      source: "xrpl-mainnet-jsonrpc (xrplcluster → s1 → s2)",
+    },
   };
 }
 

@@ -114,6 +114,7 @@ export const X402_ERROR_CODES = {
   payment_verification_failed: "The facilitator rejected the payment at /verify. You were NOT charged. See `facilitator`.",
   handler_failed: "The paid work failed AFTER verification but BEFORE settlement. You were NOT charged. Retry with the same PAYMENT-SIGNATURE within maxTimeoutSeconds, or fetch a new challenge.",
   account_not_found: "The wallet is not an activated account on XRPL mainnet. You were NOT charged.",
+  xrpl_unavailable: "One or more XRPL calls could not be read (rate-limit / timeout / upstream error). No result was produced and you were NOT charged. Retry shortly — see `message` for which calls failed.",
   settlement_pending: "The result is delivered and correct; on-ledger settlement is still being retried. You were NOT double-charged.",
   idempotent_replay: "This Idempotency-Key (or invoiceId) was already processed — the original response is returned unchanged.",
   request_in_progress: "A request with this Idempotency-Key (or invoiceId) is still being processed. Retry shortly.",

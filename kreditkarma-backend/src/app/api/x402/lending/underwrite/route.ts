@@ -17,6 +17,7 @@ import { BASE_PAY_TO, BASE_NETWORK, PRICE_PER_UNDERWRITE_USDC, cdpFacilitator } 
 import { prisma } from "@/lib/xrplscore-db";
 import { runUnderwriteBundle, isValidXrplAddress } from "@/lib/underwriteBundle";
 import { UNDERWRITE_DISCLAIMER } from "@/lib/underwriteCanon";
+import { XrplUnavailableError } from "@/lib/engine";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -109,6 +110,14 @@ const handler = async (req: NextRequest): Promise<NextResponse<unknown>> => {
     }
     return NextResponse.json(out);
   } catch (err) {
+    if (err instanceof XrplUnavailableError) {
+      // The bundle's XRPLScore input could not be read — no bundle, no
+      // attestation, nothing anchored, not settled (non-2xx). Retryable.
+      return NextResponse.json(
+        { error: "xrpl_unavailable", message: err.message, failedCalls: err.failedCalls, retryable: true, disclaimer: UNDERWRITE_DISCLAIMER },
+        { status: 503, headers: { "Retry-After": "15" } }
+      );
+    }
     return NextResponse.json(
       { error: "underwrite_failed", message: err instanceof Error ? err.message : "bundle failed", disclaimer: UNDERWRITE_DISCLAIMER },
       { status: 502 }

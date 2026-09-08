@@ -67,7 +67,7 @@ export const REPORT_SCHEMA: X402ResourceSchema = {
         },
       },
     },
-    required: ["wallet", "score", "grade", "signals"],
+    required: ["wallet", "score", "grade", "signals", "disclaimer", "dataCompleteness"],
   },
   outputExample: {
     ...SCORE_OUTPUT_EXAMPLE,

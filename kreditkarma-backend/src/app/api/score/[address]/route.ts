@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
-import { scoreWallet, AccountNotFoundError, COPYRIGHT } from '@/lib/xrplscore';
+import { scoreWallet, AccountNotFoundError, XrplUnavailableError, COPYRIGHT } from '@/lib/xrplscore';
 
 const prisma = new PrismaClient();
 
@@ -49,6 +49,8 @@ export async function GET(
       address,
       scannedAt: new Date().toISOString(),
       methodology: r.methodology,
+      disclaimer: r.disclaimer,
+      dataCompleteness: r.dataCompleteness,
       copyright: COPYRIGHT,
     }, {
       headers: {
@@ -61,6 +63,13 @@ export async function GET(
   } catch (err: unknown) {
     if (err instanceof AccountNotFoundError) {
       return NextResponse.json({ error: 'Account not found on XRPL mainnet' }, { status: 404 });
+    }
+    if (err instanceof XrplUnavailableError) {
+      // Could not read one or more XRPL calls — NOT scored. Retryable.
+      return NextResponse.json(
+        { error: 'xrpl_unavailable', message: err.message, failedCalls: err.failedCalls, retryable: true },
+        { status: 503, headers: { 'Retry-After': '15', 'Cache-Control': 'no-store' } }
+      );
     }
     const message = err instanceof Error ? err.message : 'Score computation failed';
     return NextResponse.json({ error: message }, { status: 500 });

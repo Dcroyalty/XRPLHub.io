@@ -6,7 +6,7 @@
 import { NextResponse } from "next/server";
 import { extractKey, resolveApiKey } from "@/lib/keys";
 import { guard } from "@/lib/guard";
-import { computeScore, isValidXrplAddress, AccountNotFoundError } from "@/lib/engine";
+import { computeScore, isValidXrplAddress, AccountNotFoundError, XrplUnavailableError } from "@/lib/engine";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic"; // never cache the auth'd response itself
@@ -92,6 +92,13 @@ async function handle(wallet: string | null, req: Request) {
       return NextResponse.json(
         { error: "not_found", message: "That wallet is not an activated account on XRPL mainnet." },
         { status: 404 }
+      );
+    }
+    if (err instanceof XrplUnavailableError) {
+      // One or more XRPL calls could not be read — NOT scored. Retryable.
+      return NextResponse.json(
+        { error: "xrpl_unavailable", message: err.message, failedCalls: err.failedCalls, retryable: true },
+        { status: 503, headers: { "Retry-After": "15" } }
       );
     }
     const message = err instanceof Error ? err.message : "scoring failed";

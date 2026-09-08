@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
+import { SCORE_DISCLAIMER } from '@/lib/xrplscore';
 
 const prisma = new PrismaClient();
 
@@ -51,6 +52,7 @@ export async function GET(
       change,
       firstScore: history[0]?.score ?? null,
       latestScore: history[history.length - 1]?.score ?? null,
+      disclaimer: SCORE_DISCLAIMER,
     }, {
       headers: { 'Cache-Control': 'no-store' }
     });

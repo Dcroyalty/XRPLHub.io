@@ -1,6 +1,6 @@
 // lib/api-client.ts
 // ─────────────────────────────────────────────────────────────────────────────
-// Drop this file into your existing Next.js frontend (kreditkarma.us)
+// Drop this file into your existing Next.js frontend (xrplhub.io)
 // Set NEXT_PUBLIC_API_URL in your frontend .env to point to the backend
 // ─────────────────────────────────────────────────────────────────────────────
 

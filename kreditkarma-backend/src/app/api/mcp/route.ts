@@ -497,6 +497,8 @@ async function toolCheckXrplScore(
         spendableXRP:     d.details?.spendableXRP,
       },
       methodology: d.methodology,
+      disclaimer:  d.disclaimer,
+      dataCompleteness: d.dataCompleteness,
       scannedAt:   d.scannedAt,
       poweredBy:   'XRPLHub.io — XRPLScore™ © 2026',
     }, null, 2);

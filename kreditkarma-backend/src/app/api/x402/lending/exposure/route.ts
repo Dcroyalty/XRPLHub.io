@@ -23,6 +23,7 @@ import {
   LENDING_EXPOSURE_OUTPUT_SCHEMA,
 } from "@/lib/lendingExposure";
 import { LENDING_PROTOCOL_AMENDMENT_ID } from "@/lib/lendingLedger";
+import { XrplUnavailableError } from "@/lib/engine";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -85,6 +86,13 @@ const handler = async (req: NextRequest): Promise<NextResponse<unknown>> => {
       disclaimer: out.disclaimer,
     });
   } catch (err) {
+    if (err instanceof XrplUnavailableError) {
+      // Not scored, nothing persisted or attested, not settled (non-2xx). Retryable.
+      return NextResponse.json(
+        { error: "xrpl_unavailable", message: err.message, failedCalls: err.failedCalls, retryable: true },
+        { status: 503, headers: { "Retry-After": "15" } }
+      );
+    }
     return NextResponse.json(
       { error: "exposure_failed", message: err instanceof Error ? err.message : "exposure query failed" },
       { status: 502 }

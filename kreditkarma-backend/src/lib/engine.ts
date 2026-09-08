@@ -11,10 +11,11 @@ import {
   type ScoreBreakdownRow,
   type ScoreRecommendation,
   type XrplScoreDetails,
+  type DataCompleteness,
 } from "@/lib/xrplscore";
 
 export { isValidXrplAddress };
-export { AccountNotFoundError } from "@/lib/xrplscore";
+export { AccountNotFoundError, XrplUnavailableError } from "@/lib/xrplscore";
 
 export interface ScoreResult {
   wallet: string;          // the address that was scored
@@ -36,7 +37,9 @@ export interface ScoreResult {
   recommendations: ScoreRecommendation[];
   details: XrplScoreDetails;
   methodology: string;
+  disclaimer: string;      // SCORE_DISCLAIMER — not a FICO score / not FCRA-permissible
   computedAt: string;      // ISO timestamp
+  dataCompleteness: DataCompleteness;  // every input read? (always true on a 200 — see xrplscore.ts)
 }
 
 /**
@@ -57,6 +60,8 @@ export async function computeScore(wallet: string): Promise<ScoreResult> {
     recommendations: r.recommendations,
     details: r.details,
     methodology: r.methodology,
+    disclaimer: r.disclaimer,
     computedAt: new Date().toISOString(),
+    dataCompleteness: r.dataCompleteness,
   };
 }

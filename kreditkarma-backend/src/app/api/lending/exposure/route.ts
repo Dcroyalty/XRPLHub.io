@@ -16,6 +16,7 @@ import { prisma } from "@/lib/xrplscore-db";
 import { extractKey, resolveApiKey } from "@/lib/keys";
 import { guard } from "@/lib/guard";
 import { runExposureQuery, isValidXrplAddress } from "@/lib/lendingExposure";
+import { XrplUnavailableError } from "@/lib/engine";
 import { LENDING_PROTOCOL_AMENDMENT_ID } from "@/lib/lendingLedger";
 
 export const runtime = "nodejs";
@@ -108,6 +109,14 @@ async function handle(borrower: string | null, req: Request) {
       { headers: { "X-Attestation-Id": out.queryId, "Cache-Control": "no-store" } }
     );
   } catch (err) {
+    if (err instanceof XrplUnavailableError) {
+      // Could not read the borrower's XRPLScore inputs — nothing was persisted or
+      // attested. Retryable; the amendment gate is unrelated to this failure.
+      return NextResponse.json(
+        { error: "xrpl_unavailable", message: err.message, failedCalls: err.failedCalls, retryable: true },
+        { status: 503, headers: { "Retry-After": "15", "Cache-Control": "no-store" } }
+      );
+    }
     const message = err instanceof Error ? err.message : "exposure query failed";
     return NextResponse.json({ error: "exposure_failed", message }, { status: 502 });
   }

@@ -92,7 +92,7 @@ matching, no 1-hop graph analysis). Full terms: ${origin}/legal/screening
 - GET ${origin}/api/attest/anchor — free: the frozen ofac-screen-v1 canonicalisation spec, the sanction-screen-v1 engine rules + version-bump policy, the current SDN snapshot, and the latest on-ledger anchor.
 - engineVersion "sanction-screen-v1" is immutable per receipt — it changes only if the match algorithm changes (normalisation, match rule, extracted idTypes, source lists, snapshot selection). A newer SDN snapshot is a new vintage, not a version bump.
 
-## XLS-66 cross-broker lending exposure (credit bureau)
+## XLS-66 cross-broker lending exposure (debt aggregation)
 
 A borrower's total XLS-66 lending exposure across ALL loan brokers in one call.
 The XRP Ledger has no aggregate borrower-debt object — a loan broker sees only
