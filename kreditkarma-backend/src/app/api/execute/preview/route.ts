@@ -19,7 +19,6 @@ import {
   formHelp,
   lockGuide,
   mptRegimeFor,
-  regimeHeadline,
 } from "@/lib/mptPermanence";
 import { BACKING_HARD_LINE, BACKING_TYPES, REDEEMABLE_VALUES, DEFAULT_BACKING } from "@/lib/mptBacking";
 
@@ -109,14 +108,10 @@ export async function POST(req: Request) {
         declared: manifest.backingDeclaration,
         hardLine: BACKING_HARD_LINE,
       },
-      disclaimer:
-        "MPTokenIssuanceCreate is the only chance to set the flags, supply, scale, fee, metadata — and, once DynamicMPT " +
-        "is active, the locks that make them permanent. " +
-        regimeHeadline(view).join(" ") +
-        " " +
-        copy.warning +
-        " " +
-        BACKING_HARD_LINE,
+      // copy.warning is regime-specific and already opens with "MPTokenIssuanceCreate is the ONLY
+      // chance…" — don't also prepend an intro or the regime headline, which repeat the same claims.
+      // The dated ledger read stays available in `permanence.amendment`.
+      disclaimer: copy.warning + " " + BACKING_HARD_LINE,
     });
   }
 
