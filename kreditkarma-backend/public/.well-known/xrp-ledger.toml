@@ -9,7 +9,7 @@
 #   anchor   -> ANCHOR_ACCOUNT in src/lib/mptAnchor.ts
 
 [METADATA]
-modified = 2026-09-19T23:19:11.000Z
+modified = 2026-09-19T23:48:54.000Z
 
 [[ACCOUNTS]]
 address = "rs59g3amo5iT6T64Cg96XXMAWuw3WPQcLF"
@@ -29,4 +29,3 @@ desc = "XRPLHub.io anchor wallet: signs Merkle-root memo anchors only (MPT regis
 [[PRINCIPALS]]
 name = "XRPLHub.io"
 email = "support@xrplhub.io"
-social_1 = "https://github.com/Dcroyalty/XRPLHub.io"
