@@ -130,6 +130,10 @@ export const CONFIDENTIAL_LOCK: LockItem = {
 export interface BuildContext {
   dynamicMpt?: AmendmentState;
   confidentialTransfer?: AmendmentState;
+  /** multi-step services: the step ids fixed at step 1, so later steps are built by id */
+  planIds?: string[];
+  /** multi-step services: the 1-based step being built (lets a builder run step-specific pre-checks) */
+  step?: number;
 }
 
 /** Build context from an already-read regime view, so copy and builder agree within a request. */

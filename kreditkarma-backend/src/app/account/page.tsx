@@ -168,8 +168,8 @@ function PurchaseRow({ p, fmtDate, statusColor }: { p:Purchase; fmtDate:(s?:stri
         <div style={{ fontSize:13,fontWeight:700,color:'#fff' }}>{p.productName || p.productId}</div>
         <div style={{ fontSize:11,color:'rgba(255,255,255,.4)',marginTop:2 }}>{fmtDate(p.verifiedAt || p.deliveredAt)} · {p.amount} {p.currency}</div>
       </div>
-      <span style={{ fontSize:10,fontWeight:800,color:statusColor(p.status),background:statusColor(p.status)+'18',border:`1px solid ${statusColor(p.status)}40`,borderRadius:99,padding:'3px 10px',textTransform:'uppercase',letterSpacing:'.1em' }}>{p.status || 'Verified'}</span>
-      {p.serviceTxHash && <a href={`https://xrpscan.com/tx/${p.serviceTxHash}`} target="_blank" rel="noopener noreferrer" style={{ fontSize:11,color:'#10b981',textDecoration:'none' }}>TX ↗</a>}
+      <span style={{ fontSize:10,fontWeight:800,color:statusColor(p.status?.startsWith('ACTIVE') ? 'REVIEWING' : p.status),background:statusColor(p.status?.startsWith('ACTIVE') ? 'REVIEWING' : p.status)+'18',border:`1px solid ${statusColor(p.status?.startsWith('ACTIVE') ? 'REVIEWING' : p.status)}40`,borderRadius:99,padding:'3px 10px',textTransform:'uppercase',letterSpacing:'.1em' }}>{p.status?.startsWith('ACTIVE') ? 'In progress' : (p.status || 'Verified')}</span>
+      {p.serviceTxHash && p.serviceTxHash.split(',').filter(Boolean).map((h,i,all)=>(<a key={h} href={`https://xrpscan.com/tx/${h}`} target="_blank" rel="noopener noreferrer" style={{ fontSize:11,color:'#10b981',textDecoration:'none',marginRight:8 }}>{all.length>1?`TX ${i+1} ↗`:'TX ↗'}</a>))}
     </div>
   );
 }

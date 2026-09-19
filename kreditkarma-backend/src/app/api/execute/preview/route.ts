@@ -10,6 +10,8 @@
 
 import { NextResponse } from "next/server";
 import { buildServiceTx } from "../txBuilder";
+import { priceUsd } from "@/lib/pricing";
+import { cautionCopyFor } from "@/lib/serviceCaution";
 import { describeMptIssuanceCreate } from "@/lib/mptMeta";
 import { MPT_FLAGS, flagPermanence, lockFlagName } from "@/lib/mptFlags";
 import {
@@ -44,7 +46,7 @@ export async function POST(req: Request) {
   // use it, so what we say and what we build can't disagree. Unknown => hedged copy,
   // and no ImmutableFlags.
   const view = await mptRegimeFor(productId);
-  const built = buildServiceTx(
+  const built = await buildServiceTx(
     productId,
     account,
     (body.params ?? {}) as Record<string, string | number | boolean | undefined>,
@@ -67,8 +69,14 @@ export async function POST(req: Request) {
     productId,
     label: built.label,
     tier: built.tier,
-    txjson: built.txjson, // the decoded, unsigned transaction — review this before signing
-    priced: "Free preview. Pay to build and sign — see /api/create-payment then /api/execute.",
+    txjson: built.txjson, // the decoded, unsigned transaction — review this before signing (first step)
+    // Multi-transaction services: every step, in signing order. You sign one at a time.
+    totalSteps: built.steps?.length ?? 1,
+    steps: (built.steps ?? []).map((s) => ({ id: s.id, label: s.label, txjson: s.txjson })),
+    priceUsd: priceUsd(productId),
+    // Services with specific, serious consequences show them here — free, before you pay.
+    confirmation: cautionCopyFor(productId, (body.params ?? {}) as Record<string, unknown>),
+    priced: "Free preview. Pay to build and sign — see /api/create-payment then /api/execute. The price is set by the server, not the client.",
   };
 
   if (productId === "mptissue" && view) {

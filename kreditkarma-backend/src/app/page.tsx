@@ -80,9 +80,9 @@ const PRODUCTS = [
   // WALLET SECURITY
   { id:'multisig', cat:'Wallet Security', emoji:'🏰', name:'Multi-Sig Fortress', featured:false, tag:'HOT', comingSoon:false, color:'#10b981', priceRLUSD:60, priceXRP:195,
     amendment:'SignerListSet', tagline:'Require multiple signatures for every transaction',
-    desc:'You tell us the signers and quorum. AI builds the exact SignerListSet transaction parameters. You sign once in Xaman. Your wallet then requires M-of-N signatures for every outgoing transaction.',
-    aiDetail:'AI assembles a SignerListSet transaction with your quorum and signer list. After you sign in Xaman it is permanent on XRPL mainnet (~4s). No single key can move funds alone.',
-    features:['SignerListSet built to your spec','M-of-N signature requirement','Works with Xaman multi-sign','You sign once — permanent on-chain','TX hash receipt'] },
+    desc:'You tell us the signers and quorum. AI builds the exact SignerListSet transaction. Tick the lockdown option and it becomes a 3-step flow (signer list, remove any regular key, disable your master key) after which multi-signing is the only way to move funds. That is irreversible without your quorum, so you confirm before you sign.',
+    aiDetail:'AI assembles a SignerListSet with your quorum and signer list. On its own that leaves your master key working. With the lockdown option no single key can move funds, and if your quorum is ever unreachable the account is locked for good.',
+    features:['SignerListSet built to your spec','M-of-N signature requirement','Optional master-key lockdown (3 steps)','Lock-out warning before you sign','TX hash receipts'] },
   { id:'regkey', cat:'Wallet Security', emoji:'🔑', name:'Regular Key Rotator', featured:false, comingSoon:false, color:'#34d399', priceRLUSD:30, priceXRP:95,
     amendment:'SetRegularKey', tagline:'Assign a backup signing key without exposing your master key',
     desc:'You provide the regular key. AI builds the SetRegularKey transaction. You sign once in Xaman.',
@@ -102,8 +102,8 @@ const PRODUCTS = [
   { id:'issuerdecl', cat:'Token Issuer', emoji:'📜', name:'Issuer Trustless Declaration', featured:false, tag:'POPULAR', comingSoon:false, color:'#f59e0b', priceRLUSD:40, priceXRP:130,
     amendment:'AccountSet · asfNoFreeze', tagline:'As an issuer, permanently give up freeze authority',
     desc:'For token issuers: AI builds AccountSet (asfNoFreeze), permanently surrendering your ability to freeze holders\u2019 trust lines — a credible trustless signal. You sign once in Xaman.',
-    aiDetail:'AI assembles AccountSet with asfNoFreeze on YOUR issuing account. This permanently removes your freeze authority over tokens you issue. It does not affect tokens others issue to you.',
-    features:['asfNoFreeze on issuing account','Permanent — cannot be undone','Trustless signal to holders','You sign once in Xaman','TX hash receipt'] },
+    aiDetail:'AI assembles AccountSet with asfNoFreeze on YOUR issuing account. It permanently removes your ability to freeze individual trust lines and makes Global Freeze a one-way switch (once on, never off). It needs your master key. It does not affect tokens others issue to you.',
+    features:['asfNoFreeze on issuing account','Permanent — cannot be undone','Confirmation step before you sign','You sign once in Xaman','TX hash receipt'] },
   { id:'tokenfee', cat:'Token Issuer', emoji:'💱', name:'Token Transfer Fee', featured:false, comingSoon:false, color:'#fbbf24', priceRLUSD:25, priceXRP:80,
     amendment:'AccountSet · TransferRate', tagline:'Set a transfer fee on the token you issue',
     desc:'AI builds AccountSet with your TransferRate. You sign once.',
@@ -111,9 +111,9 @@ const PRODUCTS = [
     features:['TransferRate set to your spec','Up to protocol max','You sign once in Xaman','Permanent until changed','TX hash receipt'] },
   { id:'issuercfg', cat:'Token Issuer', emoji:'🏭', name:'Full Issuer Config', featured:false, comingSoon:false, color:'#f59e0b', priceRLUSD:80, priceXRP:260,
     amendment:'AccountSet · Multi-flag', tagline:'Complete issuer setup in one guided flow',
-    desc:'Domain, transfer fee, tick size, and issuer flags configured together. AI builds the transaction set; you sign in Xaman.',
-    aiDetail:'AI assembles the full AccountSet configuration for a production token issuer — domain, TransferRate, TickSize, and flags.',
-    features:['Full issuer AccountSet','Domain + fee + tick size','Issuer flags configured','You sign in Xaman','TX hash receipt'] },
+    desc:'Default Ripple, domain, transfer fee and tick size configured together in one AccountSet. AI builds the transaction; you sign in Xaman.',
+    aiDetail:'AI assembles one AccountSet for a production token issuer — Default Ripple, plus your domain, TransferRate and TickSize.',
+    features:['One AccountSet, built to spec','Domain + fee + tick size','Default Ripple enabled','You sign in Xaman','TX hash receipt'] },
   { id:'trustline', cat:'Token Issuer', emoji:'🔗', name:'Trust Line Configurator', featured:false, tag:'SALE', comingSoon:false, color:'#fbbf24', priceRLUSD:20, priceXRP:65,
     amendment:'TrustSet', tagline:'Create or adjust a trust line with precise limits',
     desc:'AI builds a TrustSet transaction with your currency, issuer, and limit. You sign once.',
@@ -168,10 +168,10 @@ const PRODUCTS = [
     features:['NFTokenCreateOffer built','Buy or sell side','You sign once in Xaman','On-chain offer','TX hash receipt'] },
   // IDENTITY
   { id:'identity', cat:'Identity', emoji:'🪪', name:'On-Chain Identity', featured:false, comingSoon:false, color:'#06b6d4', priceRLUSD:20, priceXRP:65,
-    amendment:'AccountSet · Domain + Email Hash', tagline:'Link your verified domain and email to your wallet',
-    desc:'AI builds AccountSet encoding your domain and email hash. You sign once — explorers show your verified identity.',
-    aiDetail:'AI assembles AccountSet with your domain (hex) and SHA-256 email hash into your account root.',
-    features:['AccountSet built to spec','Domain + email hash','Recognized by explorers','You sign once in Xaman','TX hash receipt'] },
+    amendment:'AccountSet · Domain + Email Hash', tagline:'Link your domain and email hash to your wallet',
+    desc:'AI builds AccountSet encoding your domain and, if you give one, your email hash. You sign once — they are written to your account for explorers and wallets to read.',
+    aiDetail:'AI assembles AccountSet with your domain (hex) and an MD5 email hash (the XRPL EmailHash convention) into your account root.',
+    features:['AccountSet built to spec','Domain + email hash','Readable by explorers and wallets','You sign once in Xaman','TX hash receipt'] },
   { id:'did', cat:'Identity', emoji:'🆔', name:'DID Creator', featured:false, comingSoon:false, color:'#22d3ee', priceRLUSD:35, priceXRP:115,
     amendment:'DIDSet', tagline:'Create a decentralized identifier on the XRP Ledger',
     desc:'AI builds a DIDSet transaction with your DID document reference. You sign once.',
@@ -179,7 +179,7 @@ const PRODUCTS = [
     features:['DIDSet built to spec','On-ledger DID anchor','You sign once in Xaman','Document URI reference','TX hash receipt'] },
   { id:'compliance', cat:'Identity', emoji:'✅', name:'Compliance Bundle', featured:false, comingSoon:false, color:'#06b6d4', priceRLUSD:55, priceXRP:180,
     amendment:'AccountSet + Domain + DID', tagline:'Identity + domain + DID configured together',
-    desc:'A guided bundle: on-chain identity, domain verification, and a DID in one flow. You sign the set in Xaman.',
+    desc:'A guided bundle: on-chain identity, domain, and a DID, built as two transactions you sign in order in Xaman.',
     aiDetail:'AI assembles the combined identity transactions (AccountSet domain/email + DIDSet) for a complete verifiable profile.',
     features:['Identity + domain + DID','One guided flow','You sign in Xaman','Explorer-recognized','TX hash receipts'] },
   // ESCROW
@@ -280,10 +280,23 @@ const EXEC_FIELDS: Record<string, ExecField[]> = {
   multisig: [
     { key:'signers', label:'Signer wallet addresses', placeholder:'rAAA…, rBBB…, rCCC…', help:'Comma-separated XRPL addresses allowed to co-sign', required:true },
     { key:'quorum', label:'Required signatures (quorum)', type:'number', default:'2', help:'How many signers must approve each transaction', required:true },
+    { key:'disableMaster', label:'Also disable my master key (3-step lockdown)', type:'select', options:['off','on'], default:'off', help:'OFF: sets the signer list only — your master key can STILL sign alone. ON: also removes any regular key and disables your master key, so ONLY your signers can move funds. Irreversible unless your quorum can be reached.' },
   ],
   regkey: [{ key:'regularKey', label:'Regular key address', placeholder:'rXXX…', help:'A backup signing key. Your master key keeps working.', required:true }],
   // Token issuer
   tokenfee: [{ key:'transferFee', label:'Transfer fee %', type:'number', default:'0.5', help:'0–50%. Requires "holders can transfer" ON. May be changeable later — see the notice above.', required:true }],
+  issuercfg: [
+    { key:'domain', label:'Domain (optional)', placeholder:'example.com', help:'Lowercase hostname, no https://. Provide at least one of domain, transfer fee or tick size — Default Ripple is always enabled.' },
+    { key:'transferFee', label:'Transfer fee % (optional)', type:'number', placeholder:'0.5', help:'0–100%. Charged on holder-to-holder transfers of your token.' },
+    { key:'tickSize', label:'Tick size (optional)', type:'number', placeholder:'5', help:'0 (off) or 3–15 significant digits of order-book price precision.' },
+    { key:'disallowXRP', label:'Set the DisallowXRP flag', type:'select', options:['off','on'], default:'off', help:'Advisory flag signalling this account does not want XRP.' },
+  ],
+  rippling: [
+    { key:'mode', label:'Mode', type:'select', options:['issuer','holder'], default:'issuer', help:'issuer: account-wide Default Ripple. holder: NoRipple on ONE of your trust lines.' },
+    { key:'enable', label:'Allow rippling?', type:'select', options:['on','off'], default:'on', help:'on = allow rippling, off = block it.' },
+    { key:'currency', label:'Currency (holder mode)', placeholder:'USD', help:'Holder mode only: the trust line to change.' },
+    { key:'issuer', label:'Issuer (holder mode)', placeholder:'rXXX…', help:'Holder mode only: the counterparty of that trust line. Your current limit is kept.' },
+  ],
   trustline: [
     { key:'currency', label:'Currency code', placeholder:'USD', help:'3-letter code or 40-char hex', required:true },
     { key:'issuer', label:'Issuer address', placeholder:'rXXX…', required:true },
@@ -313,9 +326,11 @@ const EXEC_FIELDS: Record<string, ExecField[]> = {
     { key:'amount', label:'Amount', type:'number', required:true },
   ],
   trustsend: [
-    { key:'currency', label:'Currency code', placeholder:'USD', required:true },
+    { key:'currency', label:'Currency code', placeholder:'USD', required:true, help:'3 characters, or a longer code such as RLUSD (we encode it for you).' },
     { key:'issuer', label:'Issuer address', placeholder:'rXXX…', required:true },
-    { key:'limit', label:'Trust limit', type:'number', default:'1000000000' },
+    { key:'destination', label:'Send to wallet', placeholder:'rXXX…', required:true },
+    { key:'amount', label:'Amount to send', type:'number', required:true, help:'Step 2 needs you to already hold this much of the token, and the destination to trust the issuer.' },
+    { key:'limit', label:'Your trust limit', type:'number', default:'1000000000', help:'At least the amount you are sending.' },
   ],
   freezeline: [
     { key:'holder', label:'Holder address to freeze', placeholder:'rXXX…', required:true },
@@ -351,15 +366,18 @@ const EXEC_FIELDS: Record<string, ExecField[]> = {
     { key:'assetValue', label:'Asset 1 amount', type:'number', required:true },
     { key:'assetCurrency', label:'Asset 1 currency', placeholder:'XRP', default:'XRP' },
     { key:'assetIssuer', label:'…issuer (if not XRP)', placeholder:'rXXX…' },
-    { key:'asset2Value', label:'Asset 2 amount', type:'number', required:true },
-    { key:'asset2Currency', label:'Asset 2 currency', placeholder:'USD' },
+    { key:'asset2Currency', label:'Asset 2 currency', placeholder:'USD', required:true, help:'Identifies the pool — it must already exist.' },
     { key:'asset2Issuer', label:'…issuer (if not XRP)', placeholder:'rXXX…' },
+    { key:'asset2Value', label:'Asset 2 amount (optional)', type:'number', help:'Leave blank for a single-sided deposit of asset 1.' },
   ],
   smartswap: [
-    { key:'takerPaysValue', label:'You want (amount)', type:'number', required:true },
-    { key:'takerPaysCurrency', label:'You want (currency)', placeholder:'XRP or USD', default:'XRP' },
-    { key:'takerGetsValue', label:'You give (amount)', type:'number', required:true },
-    { key:'takerGetsCurrency', label:'You give (currency)', placeholder:'XRP or USD', default:'XRP' },
+    { key:'receiveValue', label:'You want to receive (amount)', type:'number', required:true },
+    { key:'receiveCurrency', label:'You want to receive (currency)', placeholder:'RLUSD', required:true },
+    { key:'receiveIssuer', label:'…issuer (if not XRP)', placeholder:'rXXX…' },
+    { key:'sendCurrency', label:'You pay with (currency)', placeholder:'XRP', default:'XRP' },
+    { key:'sendIssuer', label:'…issuer (if not XRP)', placeholder:'rXXX…' },
+    { key:'slippagePct', label:'Max slippage %', type:'number', default:'1', help:'The most you accept paying over the live quote (0–10%). You receive exactly the amount above or the swap fails.' },
+    { key:'destination', label:'Deliver to (blank = you)', placeholder:'rXXX…' },
   ],
   paychannel: [
     { key:'destination', label:'Destination wallet', placeholder:'rXXX…', required:true },
@@ -395,7 +413,15 @@ const EXEC_FIELDS: Record<string, ExecField[]> = {
     { key:'finishAfter', label:'Release after (Ripple time, seconds)', type:'number', help:'Seconds since 2000-01-01; we can help compute this', required:true },
   ],
   // Identity / compliance
-  identity: [{ key:'data', label:'Your domain', placeholder:'xrplhub.io', required:true }],
+  identity: [
+    { key:'domain', label:'Your domain', placeholder:'xrplhub.io', required:true, help:'Lowercase hostname. Written to your account Domain field.' },
+    { key:'email', label:'Email (optional)', placeholder:'you@example.com', help:'Stored only as an MD5 hash — the XRPL EmailHash (Gravatar) convention.' },
+  ],
+  compliance: [
+    { key:'domain', label:'Your domain', placeholder:'xrplhub.io', required:true },
+    { key:'email', label:'Email (optional)', placeholder:'you@example.com', help:'Stored only as an MD5 hash (XRPL EmailHash).' },
+    { key:'didUri', label:'DID document URI', placeholder:'https://… or ipfs://…', required:true, help:'Step 2 creates your DID pointing at this document (256 bytes max).' },
+  ],
   did: [{ key:'uri', label:'DID document URI', placeholder:'ipfs://… or https://…', required:true }],
   credentialissue: [
     { key:'subject', label:'Subject wallet', placeholder:'rXXX…', required:true },
@@ -680,7 +706,10 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
   const [exHash, setExHash]         = useState('');       // injected-wallet service tx
   // execution (service fulfillment) state
   const [exForm, setExForm]     = useState<Record<string,string>>({});
-  const [exStatus, setExStatus] = useState<'form'|'building'|'signing'|'delivered'|'failed'|'caution'>('form');
+  const [exStatus, setExStatus] = useState<'form'|'building'|'signing'|'delivered'|'failed'|'caution'|'nextstep'>('form');
+  // multi-transaction services are signed one step at a time
+  const [exPlan, setExPlan] = useState<{ step:number; total:number; label:string; list:{ id:string; label:string }[] }|null>(null);
+  const [exNextStep, setExNextStep] = useState<number|null>(null);
   const [exUuid, setExUuid]     = useState('');
   const [exQr, setExQr]         = useState('');
   const [exLink, setExLink]     = useState('');
@@ -742,6 +771,7 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
         const data = await res.json();
         if (stop) return;
         if (data.status === 'delivered') { setExTx(data.txHash||''); setExStatus('delivered'); }
+        else if (data.status === 'step_delivered') { setExTx(data.txHash||''); setExNextStep(data.nextStep?.step ?? null); setExStatus('nextstep'); }
         else if (data.status === 'rejected') { setExError('You declined the signature.'); setExStatus('form'); }
         else if (data.status === 'expired') { setExError('Sign request expired. Try again.'); setExStatus('form'); }
         else if (data.status === 'failed') { setExError(`Ledger rejected it: ${data.result||'failed'}`); setExStatus('failed'); }
@@ -794,6 +824,7 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
         const data = await res.json();
         if (stop) return;
         if (data.status === 'delivered') { setExTx(data.txHash || exHash); setExStatus('delivered'); }
+        else if (data.status === 'step_delivered') { setExTx(data.txHash || exHash); setExNextStep(data.nextStep?.step ?? null); setExStatus('nextstep'); }
         else if (data.status === 'failed') { setExError(`Ledger rejected it: ${data.result || 'failed'}`); setExStatus('failed'); }
         else { setTimeout(poll, 3000); }
       } catch { if (!stop) setTimeout(poll, 5000); }
@@ -818,7 +849,8 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
       const cd = await cr.json();
       if (!cr.ok || !cd.treasury) throw new Error(cd.error || 'Could not start payment');
       const handle = provider.submitPayment({
-        productId: product.id, to: cd.treasury, amount: String(price), currency,
+        // the SERVER decides what to charge (pricing.ts); an injected wallet must send exactly that
+        productId: product.id, to: cd.treasury, amount: String(cd.amount ?? price), currency: (cd.currency ?? currency) as Currency,
         issuer: (cd.txjson?.Amount as { issuer?: string })?.issuer ?? null,
         currencyHex: (cd.txjson?.Amount as { currency?: string })?.currency ?? null,
       });
@@ -836,7 +868,7 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
     cancelRef.current = true; if (pollRef.current) clearTimeout(pollRef.current); if (exPollRef.current) clearTimeout(exPollRef.current);
     onClose();
     setTimeout(() => { setStep('info'); setEmail(''); setPayStatus('idle'); setUuid(''); setQrUrl(''); setDeepLnk(''); setCountdown(900); setVerifiedTx(''); setPayError(''); cancelRef.current = false;
-      setExForm({}); setExStatus('form'); setExUuid(''); setExQr(''); setExLink(''); setExTx(''); setExError(''); setExLabel(''); setCautionOk(false); setExManifest(null);
+      setExForm({}); setExStatus('form'); setExUuid(''); setExQr(''); setExLink(''); setExTx(''); setExError(''); setExLabel(''); setCautionOk(false); setExManifest(null); setExPlan(null); setExNextStep(null);
       setPayHash(''); setExHash(''); setWalletSel('xaman'); }, 300);
   };
 
@@ -851,13 +883,13 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
   };
 
   // Build + sign the actual service transaction (autonomous execution engine)
-  const handleExecute = async (confirmCaution = false) => {
+  const handleExecute = async (confirmCaution = false, stepNo?: number) => {
     if (!product) return;
     setExStatus('building'); setExError('');
     try {
       const res = await fetch(`${API_URL}/api/execute`, {
         method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ productId:product.id, account:connectedWallet, params:exForm, payTxHash:verifiedTx, confirmedCaution:confirmCaution }),
+        body: JSON.stringify({ productId:product.id, account:connectedWallet, params:exForm, payTxHash:verifiedTx, confirmedCaution:confirmCaution, ...(stepNo ? { step:stepNo } : {}) }),
       });
       const data = await res.json();
       if (res.status === 409 && data.requiresConfirmation) {
@@ -868,6 +900,7 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
       if (res.status === 422 && data.needsParams) { setExError('Please fill: ' + data.needsParams.join(', ')); setExStatus('form'); return; }
       if (!res.ok || (!data.uuid && !data.txjson)) throw new Error(data.error || 'Could not build your service transaction');
       setExLabel(data.label||'');
+      setExPlan({ step:data.step??1, total:data.totalSteps??1, label:data.stepLabel??'', list:Array.isArray(data.steps)?data.steps:[] });
 
       if (walletSel !== 'xaman' && data.txjson) {
         // injected wallet signs + submits the service tx itself
@@ -981,7 +1014,7 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
           <>
             <div style={{ display:'flex',alignItems:'center',gap:8,background:'rgba(16,185,129,.08)',border:'1px solid rgba(16,185,129,.25)',borderRadius:12,padding:'10px 16px',marginBottom:14 }}>
               <span style={{ width:8,height:8,borderRadius:'50%',background:'#10b981',boxShadow:'0 0 12px #10b981',animation:'pulse 1.4s infinite' }} />
-              <span style={{ fontSize:13,fontWeight:700,color:'#10b981' }}>{exUuid ? 'Sign in Xaman to execute…' : 'Sign in your wallet to execute…'}</span>
+              <span style={{ fontSize:13,fontWeight:700,color:'#10b981' }}>{exPlan && exPlan.total > 1 ? `Step ${exPlan.step} of ${exPlan.total}${exPlan.label ? ' — ' + exPlan.label : ''} · ` : ''}{exUuid ? 'Sign in Xaman to execute…' : 'Sign in your wallet to execute…'}</span>
             </div>
             {exUuid ? (
               <div style={{ marginBottom:14 }}>
@@ -992,6 +1025,18 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
             )}
             <p style={{ textAlign:'center',fontSize:11,color:'rgba(255,255,255,.28)' }}>We confirm your service transaction on XRPL mainnet before marking it delivered.</p>
           </>
+        )}
+
+        {exStatus === 'nextstep' && exPlan && exNextStep && (
+          <div style={{ textAlign:'center', padding:'14px 0' }}>
+            <div style={{ width:64,height:64,borderRadius:'50%',background:'rgba(16,185,129,.15)',border:'2px solid rgba(16,185,129,.5)',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 14px',fontSize:28 }}>✅</div>
+            <h3 style={{ fontSize:19,fontWeight:900,color:'#10b981',marginBottom:6 }}>Step {exNextStep - 1} of {exPlan.total} confirmed</h3>
+            <p style={{ fontSize:13,color:'rgba(255,255,255,.55)',lineHeight:1.7,marginBottom:6 }}>{exPlan.list[exNextStep - 2]?.label || 'Done'} is on XRPL mainnet.</p>
+            <p style={{ fontSize:13,color:'#fff',lineHeight:1.7,marginBottom:14 }}>Next: <strong>{exPlan.list[exNextStep - 1]?.label || `step ${exNextStep}`}</strong></p>
+            {exTx && <p style={{ fontSize:11,color:'rgba(255,255,255,.28)',fontFamily:"'IBM Plex Mono',monospace",marginBottom:14,wordBreak:'break-all' }}>TX: {exTx.slice(0,22)}…{exTx.slice(-8)}</p>}
+            <button onClick={()=>{ const n = exNextStep; setExNextStep(null); handleExecute(true, n); }} style={{ ...Btn('color',product.color,{width:'100%',padding:'14px',fontSize:15}) }}>Continue — sign step {exNextStep} of {exPlan.total} →</button>
+            <p style={{ fontSize:11,color:'rgba(255,255,255,.28)',marginTop:10 }}>Your payment covers every step. Do not close this window until the last one is confirmed.</p>
+          </div>
         )}
 
         {exStatus === 'delivered' && (

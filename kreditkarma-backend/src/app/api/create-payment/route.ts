@@ -1,26 +1,16 @@
 // src/app/api/create-payment/route.ts
 // Creates a real Xaman payment request (payload) to the XRPLHub treasury.
 // Requires env vars: XUMM_API_KEY, XUMM_API_SECRET
+//
+// THE SERVER DECIDES THE PRICE. The client sends a productId and a currency; any
+// `amount` it also sends is ignored for services (pricing.ts is the only source of truth).
+// Donations are the one open-amount product: the amount is the donor's choice, validated here.
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createPayload, xummConfigured, XummRateLimitError } from '@/lib/xumm'
-
-const TREASURY     = 'rs59g3amo5iT6T64Cg96XXMAWuw3WPQcLF'
-const RLUSD_ISSUER = process.env.RLUSD_ISSUER || 'rMxCKbEDwqr76QuheSUMdEGf4B9xJ8m5De'
-
-// XRPL currency-code rule: 3 ASCII chars OR 40-char hex. "RLUSD" is 5 chars
-// so it MUST be hex-encoded. This is the canonical encoding for RLUSD.
-const RLUSD_HEX = '524C555344000000000000000000000000000000'
-
-function toCurrencyCode(code: string): string {
-  if (!code) return ''
-  if (code.length === 3) return code.toUpperCase()
-  if (code.length === 40 && /^[0-9A-Fa-f]+$/.test(code)) return code.toUpperCase()
-  if (code.toUpperCase() === 'RLUSD') return RLUSD_HEX
-  // Generic ASCII → 40-char hex pad
-  const hex = Buffer.from(code, 'ascii').toString('hex').toUpperCase()
-  return hex.padEnd(40, '0')
-}
+import {
+  OPEN_AMOUNT_PRODUCTS, PricingError, RLUSD_HEX, RLUSD_ISSUER, TREASURY, quote, type PayCurrency,
+} from '@/lib/pricing'
 
 const NAMES: Record<string, string> = {
   multisig:'Multi-Sig Fortress', regkey:'Regular Key Rotator', depositauth:'Deposit Auth Guard',
@@ -37,25 +27,53 @@ const NAMES: Record<string, string> = {
   desttagreq:'Require Destination Tags', dextrade:'DEX Trade Execution', tickets:'Ticket Batch Setup',
   credentialissue:'Issue a Credential', permdomain:'Permissioned Domain',
   credential:'XRPLScore Verified Credential (90 days)',
+  donate:'Community Grant treasury donation',
 }
+
+const MAX_DONATION = 1_000_000
+
+const hex = (s: string) => Buffer.from(s, 'utf8').toString('hex').toUpperCase()
 
 export async function POST(req: NextRequest) {
   try {
     const { productId, currency, amount, email } = await req.json()
+    const product = String(productId ?? '').trim()
+    const cur = String(currency ?? 'RLUSD').toUpperCase()
 
-    const amtNum = parseFloat(amount)
-    if (!amtNum || amtNum <= 0) {
-      return NextResponse.json({ error: 'Invalid amount' }, { status: 400 })
+    if (!/^[a-z0-9]{2,32}$/.test(product)) {
+      return NextResponse.json({ error: 'Invalid product.' }, { status: 400 })
     }
 
-    // Canonical fee Payment to the treasury. Same object for Xaman and for an
-    // injected wallet that submits it itself.
+    // ── the amount to charge — from OUR table, never from the request ──
+    let payCurrency: PayCurrency
+    let payAmount: string
+    let priceUsd: number | null = null
+    let xrpUsdRate: number | null = null
+    if (OPEN_AMOUNT_PRODUCTS.has(product)) {
+      if (cur !== 'XRP' && cur !== 'RLUSD') return NextResponse.json({ error: 'currency must be XRP or RLUSD' }, { status: 400 })
+      const n = Number(amount)
+      if (!Number.isFinite(n) || n <= 0 || n > MAX_DONATION) {
+        return NextResponse.json({ error: 'Invalid amount' }, { status: 400 })
+      }
+      payCurrency = cur
+      payAmount = String(n)
+    } else {
+      const q = await quote(product, cur)
+      payCurrency = q.currency
+      payAmount = q.amount
+      priceUsd = q.priceUsd
+      xrpUsdRate = q.xrpUsd
+    }
+
+    // Canonical fee Payment to the treasury. Same object for Xaman and for an injected
+    // wallet that submits it itself. The memo records which product it is for (audit trail).
     const txjson: Record<string, unknown> = {
       TransactionType: 'Payment',
       Destination: TREASURY,
-      Amount: currency === 'XRP'
-        ? String(Math.round(amtNum * 1_000_000))
-        : { currency: toCurrencyCode(currency || 'RLUSD'), issuer: RLUSD_ISSUER, value: String(amtNum) },
+      Amount: payCurrency === 'XRP'
+        ? String(Math.round(Number(payAmount) * 1_000_000))
+        : { currency: RLUSD_HEX, issuer: RLUSD_ISSUER, value: payAmount },
+      Memos: [{ Memo: { MemoType: hex('xrplhub/product'), MemoData: hex(product) } }],
     }
 
     // Injected-wallet clients only need the txjson + treasury; skip Xaman.
@@ -64,9 +82,9 @@ export async function POST(req: NextRequest) {
       try {
         const p = await createPayload({
           txjson,
-          identifier: `xrplhub_${productId}_${Date.now()}`,
-          blob: { productId, amount: amtNum, currency, email: email || '' },
-          instruction: `XRPLHub — ${NAMES[productId] || productId}\nAmount: ${amtNum} ${currency}\nDestination: Treasury`,
+          identifier: `xrplhub_${product}_${Date.now()}`,
+          blob: { productId: product, amount: payAmount, currency: payCurrency, email: email || '' },
+          instruction: `XRPLHub — ${NAMES[product] || product}\nAmount: ${payAmount} ${payCurrency}\nDestination: Treasury`,
           expireMinutes: 15,
         })
         xaman = { uuid: p.uuid, qr_png: p.qrPng, deep_link: p.deepLink, expires_in: p.expiresIn }
@@ -88,9 +106,18 @@ export async function POST(req: NextRequest) {
       // Injected-wallet fields:
       txjson,
       treasury:   TREASURY,
-      productLabel: NAMES[productId] || productId,
+      productLabel: NAMES[product] || product,
+      // What the SERVER will accept — clients must charge exactly this:
+      amount:     payAmount,
+      currency:   payCurrency,
+      priceUsd,
+      xrpUsdRate,
     })
   } catch (err) {
+    if (err instanceof PricingError) {
+      const status = err.code === 'xrp_price_unavailable' ? 503 : 400
+      return NextResponse.json({ error: err.message, code: err.code }, { status })
+    }
     console.error('[create-payment]', err)
     return NextResponse.json({ error: 'Payment initialization failed. Please try again.' }, { status: 500 })
   }

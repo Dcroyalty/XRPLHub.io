@@ -33,11 +33,15 @@ const P = (
 
 export const SERVICE_CATALOG: ServiceDef[] = [
   // ── Wallet security ──────────────────────────────────────────────
-  { id: "multisig", label: "Multi-sig (SignerListSet)", category: "Wallet security", tier: "caution",
-    gives: "A SignerListSet txjson that puts the account under N-of-M control.",
+  { id: "multisig", label: "Multi-sig (signer list, optional master-key lockdown)", category: "Wallet security", tier: "caution",
+    gives:
+      "A SignerListSet txjson putting the account under N-of-M control. On its own it does NOT stop the master key from signing alone. " +
+      "With disableMaster=true it is THREE signed steps — signer list, remove any regular key, then disable the master key — after which multi-signing is the only way to move funds. " +
+      "Unrecoverable if the quorum can't be reached; the paid path forces a confirmation step.",
     params: [
-      P("signers", "string", true, "Comma-separated signer addresses", "rAAA...,rBBB...,rCCC..."),
-      P("quorum", "number", true, "Signatures required to move funds", "2"),
+      P("signers", "string", true, "Comma-separated signer addresses (1-32, unique, not your own)", "rAAA...,rBBB...,rCCC..."),
+      P("quorum", "number", true, "Signatures required to move funds (at most the number of signers)", "2"),
+      P("disableMaster", "boolean", false, "true = ALSO remove any regular key and disable the master key (3 steps). Without it the master key can still sign alone.", "false"),
     ] },
   { id: "regkey", label: "Set regular key", category: "Wallet security", tier: "caution",
     gives: "A SetRegularKey txjson adding a backup signing key (master key still works).",
@@ -51,10 +55,20 @@ export const SERVICE_CATALOG: ServiceDef[] = [
     params: [] },
 
   // ── Token issuer ────────────────────────────────────────────────
-  { id: "issuerdecl", label: "Default Ripple (issuer)", category: "Token issuer", tier: "safe",
-    gives: "An AccountSet txjson enabling Default Ripple so issued balances can flow.", params: [] },
-  { id: "issuercfg", label: "Issuer config", category: "Token issuer", tier: "safe",
-    gives: "An AccountSet txjson applying issuer defaults (Default Ripple).", params: [] },
+  { id: "issuerdecl", label: "Renounce freeze authority (asfNoFreeze)", category: "Token issuer", tier: "caution",
+    gives:
+      "An AccountSet txjson enabling No Freeze (SetFlag 6). PERMANENT: the account can never freeze an individual trust line again, and Global Freeze can never be turned off once switched on. " +
+      "Must be signed with the account's master key. Refused if Global Freeze is currently ON. The paid path forces a confirmation step.",
+    params: [] },
+  { id: "issuercfg", label: "Full issuer config", category: "Token issuer", tier: "safe",
+    gives:
+      "One AccountSet txjson: enables Default Ripple and sets any of Domain, TransferRate and TickSize (optionally DisallowXRP). Provide at least one of domain / transferFee / tickSize.",
+    params: [
+      P("domain", "string", false, "Lowercase hostname, e.g. example.com", "example.com"),
+      P("transferFee", "number", false, "Transfer fee percent 0-100 (charged on holder-to-holder transfers of your token)", "0.5"),
+      P("tickSize", "number", false, "Order-book price precision: 0 (off) or 3-15 significant digits", "5"),
+      P("disallowXRP", "boolean", false, "Set the DisallowXRP flag (advisory: signals the account does not want XRP)", "false"),
+    ] },
   { id: "tokenfee", label: "Set transfer fee", category: "Token issuer", tier: "safe",
     gives: "An AccountSet txjson setting a transfer fee on your issued token.",
     params: [P("transferFee", "number", true, "Fee percent, 0–100", "0.5")] },
@@ -66,15 +80,25 @@ export const SERVICE_CATALOG: ServiceDef[] = [
       P("limit", "string", false, "Trust limit (default 1000000000)", "1000000"),
     ] },
   { id: "trustsend", label: "Trust line + send currency", category: "Token issuer", tier: "safe",
-    gives: "Step 1 TrustSet txjson (the follow-up Payment is a separate signed step).",
+    gives:
+      "TWO transactions, signed in order: (1) TrustSet, (2) a Payment of that issued currency from your account to the destination. " +
+      "Step 2 needs you to already hold enough of the token and the destination to trust the issuer — both are checked against the ledger before it is built.",
     params: [
       P("issuer", "address", true, "Token issuer address", "rMxCKbEDwqr76QuheSUMdEGf4B9xJ8m5De"),
-      P("currency", "string", true, "3-char code or 40-char hex", "USD"),
-      P("limit", "string", false, "Trust limit (default 1000000000)", "1000000"),
+      P("currency", "string", true, "3-char code, or a longer code we hex-encode for you", "USD"),
+      P("destination", "address", true, "Who receives the currency", "rDest..."),
+      P("amount", "string", true, "How much to send", "10"),
+      P("limit", "string", false, "Trust limit (default 1000000000; at least the amount)", "1000000"),
     ] },
   { id: "rippling", label: "Rippling control", category: "Token issuer", tier: "safe",
-    gives: "An AccountSet txjson enabling or disabling rippling.",
-    params: [P("enable", "boolean", false, "true = allow rippling (default true)", "true")] },
+    gives:
+      "issuer mode: an AccountSet txjson setting or clearing Default Ripple. holder mode: a TrustSet on one existing trust line that clears or sets NoRipple (your current limit is preserved).",
+    params: [
+      P("mode", "string", false, "issuer (default) or holder", "issuer"),
+      P("enable", "boolean", false, "true = allow rippling (default true)", "true"),
+      P("currency", "string", false, "holder mode: currency of the trust line", "USD"),
+      P("issuer", "address", false, "holder mode: the counterparty (issuer) of the trust line", "rMxCKbEDwqr76QuheSUMdEGf4B9xJ8m5De"),
+    ] },
   { id: "mptissue", label: "Issue Multi-Purpose Token", category: "Token issuer", tier: "caution",
     gives:
       "An MPTokenIssuanceCreate txjson. Supply cap, decimals and any flag switched ON are permanent in every case; " +
@@ -137,13 +161,17 @@ export const SERVICE_CATALOG: ServiceDef[] = [
       P("takerPaysCurrency", "string", false, "Currency you want (default XRP)", "USD"),
       P("takerPaysIssuer", "address", false, "Issuer if not XRP", "rIssuer..."),
     ] },
-  { id: "smartswap", label: "Smart swap router", category: "DeFi", tier: "safe",
-    gives: "An OfferCreate txjson routed as a swap.",
+  { id: "smartswap", label: "Smart swap router (path payment)", category: "DeFi", tier: "safe",
+    gives:
+      "A cross-currency Payment routed by the ledger's own pathfinder across order books and AMM pools. You receive EXACTLY the amount you ask for; SendMax caps what you can be charged at the quote plus your slippage %. Refused if no route with liquidity exists.",
     params: [
-      P("takerGetsValue", "string", true, "Amount you give", "10"),
-      P("takerPaysValue", "string", true, "Amount you want", "10"),
-      P("takerPaysCurrency", "string", false, "Currency you want (default XRP)", "USD"),
-      P("takerPaysIssuer", "address", false, "Issuer if not XRP", "rIssuer..."),
+      P("receiveValue", "string", true, "Amount you want to receive", "10"),
+      P("receiveCurrency", "string", true, "Currency you want to receive", "USD"),
+      P("receiveIssuer", "address", false, "Issuer of the currency you receive, if not XRP", "rIssuer..."),
+      P("sendCurrency", "string", false, "Currency you pay with (default XRP)", "XRP"),
+      P("sendIssuer", "address", false, "Issuer of the currency you pay with, if not XRP", "rIssuer..."),
+      P("slippagePct", "number", false, "Max % over the current quote you accept (default 1, max 10)", "1"),
+      P("destination", "address", false, "Deliver to this address (default: yourself)", "rDest..."),
     ] },
   { id: "ammlaunch", label: "Create AMM pool", category: "DeFi", tier: "safe",
     gives: "An AMMCreate txjson launching a new liquidity pool.",
@@ -157,13 +185,15 @@ export const SERVICE_CATALOG: ServiceDef[] = [
       P("tradingFee", "number", false, "Fee in 1/1000 (default 500 = 0.5%)", "500"),
     ] },
   { id: "ammentry", label: "AMM liquidity deposit", category: "DeFi", tier: "safe",
-    gives: "An AMMDeposit txjson adding two-sided liquidity to an existing pool.",
+    gives:
+      "An AMMDeposit txjson (Asset + Asset2 identify the pool). Give both amounts for a two-sided deposit (tfTwoAsset) or only assetValue for a single-sided one (tfSingleAsset). Refused if no AMM exists for the pair.",
     params: [
       P("assetValue", "string", true, "Amount of asset 1", "1000"),
       P("assetCurrency", "string", false, "Asset 1 currency (default XRP)", "XRP"),
-      P("asset2Value", "string", true, "Amount of asset 2", "500"),
-      P("asset2Currency", "string", false, "Asset 2 currency", "USD"),
+      P("assetIssuer", "address", false, "Asset 1 issuer if not XRP", "rIssuer..."),
+      P("asset2Currency", "string", true, "Asset 2 currency (identifies the pool)", "USD"),
       P("asset2Issuer", "address", false, "Asset 2 issuer if not XRP", "rIssuer..."),
+      P("asset2Value", "string", false, "Amount of asset 2 — omit for a single-sided deposit", "500"),
     ] },
   { id: "paychannel", label: "Create payment channel", category: "DeFi", tier: "safe",
     gives: "A PaymentChannelCreate txjson for streaming/off-ledger payments.",
@@ -222,14 +252,25 @@ export const SERVICE_CATALOG: ServiceDef[] = [
     ] },
 
   // ── Identity / compliance ──────────────────────────────────────
-  { id: "identity", label: "Set on-chain identity (Domain)", category: "Identity", tier: "safe",
-    gives: "An AccountSet txjson writing your domain to the account Domain field.",
-    params: [P("data", "string", true, "Your domain", "xrplhub.io")] },
+  { id: "identity", label: "Set on-chain identity (Domain + email hash)", category: "Identity", tier: "safe",
+    gives:
+      "An AccountSet txjson writing your domain to the account Domain field and, if given, the XRPL EmailHash (the MD5 of your lowercased email — the Gravatar convention). " +
+      "Explorers may display these; a domain is only verified if you also publish an xrp-ledger.toml naming this account.",
+    params: [
+      P("domain", "string", true, "Your domain (lowercase hostname, no https://)", "xrplhub.io"),
+      P("email", "string", false, "Email address to hash into EmailHash (MD5)", "you@example.com"),
+    ] },
   { id: "did", label: "Create / update DID", category: "Identity", tier: "safe",
     gives: "A DIDSet txjson pointing at your DID document.",
     params: [P("uri", "string", true, "DID document URI", "https://example.com/did.json")] },
-  { id: "compliance", label: "Compliance bundle", category: "Identity", tier: "safe",
-    gives: "An AccountSet txjson applying compliance defaults (require destination tag).", params: [] },
+  { id: "compliance", label: "Compliance bundle (identity + domain + DID)", category: "Identity", tier: "safe",
+    gives:
+      "TWO transactions, signed in order: (1) AccountSet with your Domain and EmailHash, (2) DIDSet with your DID document URI.",
+    params: [
+      P("domain", "string", true, "Your domain (lowercase hostname, no https://)", "xrplhub.io"),
+      P("email", "string", false, "Email address to hash into EmailHash (MD5)", "you@example.com"),
+      P("didUri", "string", true, "URI of your DID document (<= 256 bytes)", "https://example.com/did.json"),
+    ] },
   { id: "credentialissue", label: "Issue a credential", category: "Identity", tier: "safe",
     gives: "A CredentialCreate txjson attesting a CredentialType about a subject wallet.",
     params: [

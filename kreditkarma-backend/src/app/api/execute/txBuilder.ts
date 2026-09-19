@@ -15,51 +15,22 @@ import { normalizeBacking, validateBacking, type BackingDeclaration } from '@/li
 import { buildMptMetadata } from '@/lib/mptMeta';
 import { parseMptLocks, type BuildContext } from '@/lib/mptPermanence';
 
-export type SafetyTier = 'safe' | 'caution' | 'blocked';
-
-export interface BuildResult {
-  ok: boolean;
-  txjson?: Record<string, unknown>;
-  tier?: SafetyTier;
-  label?: string;
-  error?: string;
-  needsParams?: string[]; // params we required but didn't get
-}
-
-interface Params { [k: string]: string | number | boolean | undefined }
-
-const str = (v: unknown) => (v === undefined || v === null ? '' : String(v)).trim();
-const isAddr = (v: string) => v.startsWith('r') && v.length >= 25 && v.length <= 35;
-const xrpToDrops = (xrp: number) => String(Math.round(xrp * 1_000_000));
+export type { SafetyTier, BuildResult, BuildStep } from './buildKit';
+import {
+  BAD, BLOCKED, CAUTION, NEED, SAFE, isAddr, str, xrpToDrops,
+  type Builder, type BuildResult, type BuildStep, type Params,
+} from './buildKit';
+import { richBuilders } from './serviceBuilders';
 
 // ── Per-product builders ──────────────────────────────────────────────
-// account = the customer's own wallet (the signer)
-type Builder = (account: string, p: Params, ctx?: BuildContext) => BuildResult;
-
-const SAFE = (txjson: Record<string, unknown>, label: string): BuildResult => ({ ok: true, txjson, tier: 'safe', label });
-const CAUTION = (txjson: Record<string, unknown>, label: string): BuildResult => ({ ok: true, txjson, tier: 'caution', label });
-const NEED = (needsParams: string[]): BuildResult => ({ ok: false, error: 'missing required parameters', needsParams });
-const BAD = (error: string): BuildResult => ({ ok: false, error });
-const BLOCKED = (error: string): BuildResult => ({ ok: false, tier: 'blocked', error });
-
+// account = the customer's own wallet (the signer). A builder may be async (it can read the
+// ledger) and may return several steps. The services in serviceBuilders.ts (multisig,
+// issuerdecl, issuercfg, rippling, identity, compliance, ammentry, smartswap, trustsend)
+// replace the older single-transaction versions that used to live here.
 const builders: Record<string, Builder> = {
+  ...richBuilders,
 
   // ── WALLET SECURITY ───────────────────────────────────────────────
-  multisig: (account, p) => {
-    // SignerListSet — caution: a bad quorum can lock the account
-    const signers = str(p.signers); // comma-separated addresses
-    const quorum = Number(p.quorum);
-    if (!signers || !quorum) return NEED(['signers', 'quorum']);
-    const list = signers.split(',').map(s => s.trim()).filter(Boolean);
-    if (list.length < 1 || list.some(a => !isAddr(a))) return BAD('invalid signer address list');
-    if (quorum < 1) return BAD('quorum must be at least 1');
-    return CAUTION({
-      TransactionType: 'SignerListSet',
-      Account: account,
-      SignerQuorum: quorum,
-      SignerEntries: list.map(a => ({ SignerEntry: { Account: a, SignerWeight: 1 } })),
-    }, 'Multi-Sig (SignerListSet)');
-  },
   regkey: (account, p) => {
     // SetRegularKey — caution: master key still works unless later disabled
     const key = str(p.regularKey);
@@ -71,7 +42,6 @@ const builders: Record<string, Builder> = {
   lockdown: () => BLOCKED('XRP Lockdown disables the master key and can permanently lock you out of your account. For your protection, this cannot be auto-executed. Contact support@xrplhub.io for a guided, manual process.'),
 
   // ── TOKEN ISSUER ──────────────────────────────────────────────────
-  issuerdecl: (account) => SAFE({ TransactionType: 'AccountSet', Account: account, SetFlag: 8 }, 'Default Ripple (issuer)'), // asfDefaultRipple
   tokenfee: (account, p) => {
     const fee = Number(p.transferFee); // 0..1000000000 (0%..100% as billionths over 1e9 base); UI passes percent
     if (p.transferFee === undefined) return NEED(['transferFee']);
@@ -80,16 +50,11 @@ const builders: Record<string, Builder> = {
     if (rate < 1_000_000_000 || rate > 2_000_000_000) return BAD('transfer fee must be between 0% and 100%');
     return SAFE({ TransactionType: 'AccountSet', Account: account, TransferRate: rate }, 'Set Transfer Fee');
   },
-  issuercfg: (account) => SAFE({ TransactionType: 'AccountSet', Account: account, SetFlag: 8 }, 'Issuer Config (Default Ripple)'),
   trustline: (account, p) => {
     const issuer = str(p.issuer), currency = str(p.currency), limit = str(p.limit || '1000000000');
     if (!issuer || !currency) return NEED(['issuer', 'currency']);
     if (!isAddr(issuer)) return BAD('invalid issuer address');
     return SAFE({ TransactionType: 'TrustSet', Account: account, LimitAmount: { currency, issuer, value: limit } }, 'Set Trust Line');
-  },
-  rippling: (account, p) => {
-    const enable = str(p.enable) !== 'false';
-    return SAFE({ TransactionType: 'AccountSet', Account: account, [enable ? 'ClearFlag' : 'SetFlag']: 8 }, 'Rippling Control');
   },
   mptissue: (account, p, ctx) => {
     // Full MPTokenIssuanceCreate builder. Choices here are hard or impossible to
@@ -168,13 +133,6 @@ const builders: Record<string, Builder> = {
     if (!isAddr(dest)) return BAD('invalid destination address');
     return SAFE({ TransactionType: 'Payment', Account: account, Destination: dest, Amount: { mpt_issuance_id: issuanceId, value: amount } }, 'Send MPT');
   },
-  trustsend: (account, p) => {
-    const issuer = str(p.issuer), currency = str(p.currency), limit = str(p.limit || '1000000000');
-    if (!issuer || !currency) return NEED(['issuer', 'currency']);
-    if (!isAddr(issuer)) return BAD('invalid issuer address');
-    // First leg: the trust line. (Sending currency is a separate signed Payment step.)
-    return SAFE({ TransactionType: 'TrustSet', Account: account, LimitAmount: { currency, issuer, value: limit } }, 'Trust Line + Send (step 1: TrustSet)');
-  },
   globalfreeze: (account) => SAFE({ TransactionType: 'AccountSet', Account: account, SetFlag: 7 }, 'Global Freeze (asfGlobalFreeze)'), // asfGlobalFreeze=7
   freezeline: (account, p) => {
     const issuer = str(p.holder), currency = str(p.currency);
@@ -201,16 +159,6 @@ const builders: Record<string, Builder> = {
     const b = bCur === 'XRP' || !bCur ? xrpToDrops(Number(bVal)) : { currency: bCur, issuer: bIss, value: bVal };
     return SAFE({ TransactionType: 'AMMCreate', Account: account, Amount: a, Amount2: b, TradingFee: Number(p.tradingFee || 500) }, 'Create AMM Pool');
   },
-  ammentry: (account, p) => {
-    const aCur = str(p.assetCurrency), aIss = str(p.assetIssuer);
-    const bCur = str(p.asset2Currency), bIss = str(p.asset2Issuer);
-    const aVal = str(p.assetValue), bVal = str(p.asset2Value);
-    if (!aVal || !bVal) return NEED(['assetValue', 'asset2Value']);
-    const a = aCur === 'XRP' || !aCur ? xrpToDrops(Number(aVal)) : { currency: aCur, issuer: aIss, value: aVal };
-    const b = bCur === 'XRP' || !bCur ? xrpToDrops(Number(bVal)) : { currency: bCur, issuer: bIss, value: bVal };
-    return SAFE({ TransactionType: 'AMMDeposit', Account: account, Amount: a, Amount2: b, Flags: 0x00100000 }, 'AMM Liquidity Deposit');
-  },
-  smartswap: (account, p) => builders.dexorder(account, p),
   paychannel: (account, p) => {
     const dest = str(p.destination), amount = str(p.amount), pubkey = str(p.publicKey);
     if (!dest || !amount || !pubkey) return NEED(['destination', 'amount', 'publicKey']);
@@ -270,19 +218,12 @@ const builders: Record<string, Builder> = {
   },
 
   // ── IDENTITY / COMPLIANCE ─────────────────────────────────────────
-  identity: (account, p) => {
-    const data = str(p.data);
-    if (!data) return NEED(['data']);
-    const hex = Buffer.from(data, 'utf8').toString('hex').toUpperCase();
-    return SAFE({ TransactionType: 'AccountSet', Account: account, Domain: hex }, 'Set On-Chain Identity (Domain)');
-  },
   did: (account, p) => {
     const uri = str(p.uri);
     if (!uri) return NEED(['uri']);
     const hex = Buffer.from(uri, 'utf8').toString('hex').toUpperCase();
     return SAFE({ TransactionType: 'DIDSet', Account: account, URI: hex }, 'Create / Update DID');
   },
-  compliance: (account) => SAFE({ TransactionType: 'AccountSet', Account: account, SetFlag: 1 }, 'Compliance Bundle (Require Dest Tag)'),
   credentialissue: (account, p) => {
     const subject = str(p.subject), credType = str(p.credentialType);
     if (!subject || !credType) return NEED(['subject', 'credentialType']);
@@ -300,20 +241,19 @@ const builders: Record<string, Builder> = {
 
 /**
  * `ctx` carries live amendment states for builders that depend on them (today only
- * mptissue, via mptBuildContext()). Omitted = "unknown": the builder then never
- * emits anything that needs an amendment to be active.
+ * mptissue, via mptBuildContext()), and — for multi-step services — the plan fixed at
+ * step 1 (planIds) and the step being built (step). Omitted = "unknown": builders then
+ * never emit anything that needs an amendment to be active.
+ *
+ * Always resolves to a BuildResult with `steps` set on success (single-step services get
+ * one step with id "main"); `txjson` is the first step's, for callers that only handle one.
  */
-export function buildServiceTx(productId: string, account: string, params: Params, ctx?: BuildContext): BuildResult {
+export async function buildServiceTx(productId: string, account: string, params: Params, ctx?: import('@/lib/mptPermanence').BuildContext): Promise<BuildResult> {
   if (!isAddr(account)) return BAD('invalid signer wallet address');
   const b = builders[productId];
   if (!b) return BAD(`product "${productId}" has no execution builder yet`);
-  return b(account, params, ctx);
-}
-
-// Quick lookup for the frontend: which params each product needs, and its tier.
-export function productMeta(productId: string): { needsParams: string[]; tier: SafetyTier } {
-  const probe = builders[productId]?.('rEXAMPLE0000000000000000000000000', {});
-  if (!probe) return { needsParams: [], tier: 'safe' };
-  if (probe.tier === 'blocked') return { needsParams: [], tier: 'blocked' };
-  return { needsParams: probe.needsParams || [], tier: (probe.tier as SafetyTier) || 'safe' };
+  const r = await b(account, params, ctx);
+  if (!r.ok) return r;
+  const steps: BuildStep[] = r.steps ?? [{ id: 'main', label: r.label ?? productId, txjson: r.txjson as Record<string, unknown> }];
+  return { ...r, steps, txjson: steps[0].txjson };
 }

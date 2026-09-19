@@ -828,7 +828,7 @@ async function toolBuildXrplTransaction(
     // MPT issuance: live DynamicMPT state drives both the build (locks only when active)
     // and the permanence notice below. Other products read nothing.
     const view = await mptRegimeFor(productId);
-    const result = buildServiceTx(productId, wallet, params, view ? buildContextFromView(view) : undefined);
+    const result = await buildServiceTx(productId, wallet, params, view ? buildContextFromView(view) : undefined);
     if (!result.ok) {
       return JSON.stringify({
         error:        result.error || 'Transaction build failed',
@@ -851,6 +851,13 @@ async function toolBuildXrplTransaction(
       label:       result.label,
       safetyTier:  result.tier,
       transaction: result.txjson,
+      // Services made of several transactions: sign them IN ORDER (the first is `transaction`).
+      ...(result.steps && result.steps.length > 1
+        ? {
+            transactions: result.steps.map((s) => ({ id: s.id, label: s.label, transaction: s.txjson })),
+            stepsNote: `This service is ${result.steps.length} transactions. Sign and submit them in the order listed, waiting for each to validate before the next.`,
+          }
+        : {}),
       ...(view ? permanenceNotice(view) : {}),
       signingInstructions:
         'Present this transaction object to the wallet holder. They must sign it ' +

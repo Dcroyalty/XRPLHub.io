@@ -65,7 +65,7 @@ export async function GET(req: Request) {
         return { ok: false, code: "bad_request", status: 400, message: "Provide &account=r... (the signer)." };
       }
       const view = await mptRegimeFor(productId); // MPT issuance only; null for every other product
-      const built = buildServiceTx(productId, account, extractParams(url), view ? buildContextFromView(view) : undefined);
+      const built = await buildServiceTx(productId, account, extractParams(url), view ? buildContextFromView(view) : undefined);
       if (!built.ok) {
         const need = built.needsParams?.length ? ` Missing params: ${built.needsParams.join(", ")}.` : "";
         return { ok: false, code: "bad_request", status: 422, message: `${built.error ?? "Could not build the transaction."}${need}` };
@@ -77,6 +77,10 @@ export async function GET(req: Request) {
           label: built.label ?? productId,
           tier: built.tier ?? "safe",
           txjson: built.txjson,
+          // Several-transaction services: sign them IN ORDER (txjson is the first).
+          ...(built.steps && built.steps.length > 1
+            ? { transactions: built.steps.map((s) => ({ id: s.id, label: s.label, txjson: s.txjson })) }
+            : {}),
           ...(view ? permanenceNotice(view) : {}),
           signWith: account,
           instructions: "Sign this txjson with your own XRPL wallet and submit it. This service never signs for anyone.",
