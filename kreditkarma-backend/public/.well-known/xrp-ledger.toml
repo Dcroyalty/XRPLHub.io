@@ -1,0 +1,32 @@
+# xrp-ledger.toml for XRPLHub.io
+# Spec: https://xrpl.org/docs/references/xrp-ledger-toml
+#
+# An [[ACCOUNTS]] entry is only authoritative when that account's on-ledger
+# Domain field also equals the host serving this file (www.xrplhub.io).
+# Keep the addresses below in sync with the constants in the codebase:
+#   treasury -> TREASURY in src/lib/pricing.ts
+#   issuer   -> EXPECTED_ISSUER in src/lib/credentials.ts
+#   anchor   -> ANCHOR_ACCOUNT in src/lib/mptAnchor.ts
+
+[METADATA]
+modified = 2026-09-19T23:19:11.000Z
+
+[[ACCOUNTS]]
+address = "rs59g3amo5iT6T64Cg96XXMAWuw3WPQcLF"
+network = "main"
+desc = "XRPLHub.io treasury: receives service payments and funds community grants."
+
+[[ACCOUNTS]]
+address = "rmWjCGeLtuLGerEuvHDkrsr46ej2Ni13f"
+network = "main"
+desc = "XRPLHub.io credential issuer: issues XLS-70 XRPLScore credentials (CredentialType io.xrplhub.score.v1.*)."
+
+[[ACCOUNTS]]
+address = "r9dQS1oGms3B7SdY6nyU24Dy7dWyWXuJXb"
+network = "main"
+desc = "XRPLHub.io anchor wallet: signs Merkle-root memo anchors only (MPT registry, screening receipts). Issues no credentials."
+
+[[PRINCIPALS]]
+name = "XRPLHub.io"
+email = "support@xrplhub.io"
+social_1 = "https://github.com/Dcroyalty/XRPLHub.io"
