@@ -7,16 +7,15 @@
 // the Loan object — it is Loan.LoanBrokerID -> LoanBroker.VaultID -> Vault.Asset.
 //
 // The amendment is NOT active on mainnet yet. The gate reads the on-ledger
-// Amendments object and checks for LendingProtocol; when it flips, this endpoint
-// serves with no redeploy.
+// Amendments object (see ./amendments) and checks for LendingProtocol; when it
+// flips, this endpoint serves with no redeploy.
 
 import { XRPL_NODES } from "./xrplscore";
+import { getAmendmentStatus, _resetAmendmentsForTest } from "./amendments";
 
 // SHA512-Half("LendingProtocol"). Verified against the known AMM amendment id.
 export const LENDING_PROTOCOL_AMENDMENT_ID =
   "565B90CA1AB2B9D42208ED10884188C64F9E19083DECB9634AAF06EB03299509";
-// The fixed ledger index of the singleton Amendments object.
-const AMENDMENTS_INDEX = "7DB0788C020F02780A673DC74757F23823FA3014C1866E72CC4CD8B226CD6EF4";
 
 const RIPPLE_EPOCH_OFFSET = 946_684_800;
 
@@ -44,26 +43,19 @@ async function rpc(method: string, params: object): Promise<RpcResult | null> {
   return null;
 }
 
-// ── Amendment gate (cached ~1h) ──────────────────────────────────────────────
-let amendmentCache: { active: boolean; at: number } | null = null;
-const AMENDMENT_TTL_MS = 60 * 60 * 1000;
+// ── Amendment gate ───────────────────────────────────────────────────────────
+// Backed by the shared tri-state gate in ./amendments (one Amendments-object read
+// for every amendment, shared node rotation, "active" remembered forever). Lending
+// wants to FAIL CLOSED, so anything but a confirmed "active" — including "unknown"
+// when the ledger can't be read — is treated as not active (a clean no-op).
 
 /** Test-only: clear the amendment-status cache. Not used in production paths. */
 export function _resetAmendmentCacheForTest(): void {
-  amendmentCache = null;
+  _resetAmendmentsForTest();
 }
 
 export async function lendingProtocolActive(): Promise<boolean> {
-  if (amendmentCache && Date.now() - amendmentCache.at < AMENDMENT_TTL_MS) return amendmentCache.active;
-  const r = await rpc("ledger_entry", { index: AMENDMENTS_INDEX, ledger_index: "validated" });
-  const list = ((r?.node as { Amendments?: string[] })?.Amendments ?? []) as string[];
-  // Only trust a definitive answer; on RPC failure, don't poison the cache.
-  if (r?.node) {
-    const active = list.includes(LENDING_PROTOCOL_AMENDMENT_ID);
-    amendmentCache = { active, at: Date.now() };
-    return active;
-  }
-  return amendmentCache?.active ?? false;
+  return (await getAmendmentStatus("LendingProtocol")).state === "active";
 }
 
 export interface ValidatedLedger {

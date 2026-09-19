@@ -8,6 +8,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/xrplscore-db";
 import { PRICE_PER_TX_PRODUCT_RLUSD, TREASURY_ADDRESS } from "@/lib/paycall";
 import { buildServiceTx } from "@/app/api/execute/txBuilder";
+import { buildContextFromView, mptRegimeFor, permanenceNotice } from "@/lib/mptPermanence";
 import { BUILDABLE_SERVICE_IDS } from "@/app/api/execute/serviceCatalog";
 import { rlusdRequirements, serveX402Paid, type HandlerResult } from "@/lib/x402";
 import { TX_SCHEMA } from "@/lib/x402Schemas";
@@ -63,7 +64,8 @@ export async function GET(req: Request) {
       if (!account || !isAddr(account)) {
         return { ok: false, code: "bad_request", status: 400, message: "Provide &account=r... (the signer)." };
       }
-      const built = buildServiceTx(productId, account, extractParams(url));
+      const view = await mptRegimeFor(productId); // MPT issuance only; null for every other product
+      const built = buildServiceTx(productId, account, extractParams(url), view ? buildContextFromView(view) : undefined);
       if (!built.ok) {
         const need = built.needsParams?.length ? ` Missing params: ${built.needsParams.join(", ")}.` : "";
         return { ok: false, code: "bad_request", status: 422, message: `${built.error ?? "Could not build the transaction."}${need}` };
@@ -75,6 +77,7 @@ export async function GET(req: Request) {
           label: built.label ?? productId,
           tier: built.tier ?? "safe",
           txjson: built.txjson,
+          ...(view ? permanenceNotice(view) : {}),
           signWith: account,
           instructions: "Sign this txjson with your own XRPL wallet and submit it. This service never signs for anyone.",
         },

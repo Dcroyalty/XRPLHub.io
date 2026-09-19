@@ -1087,7 +1087,9 @@ export async function GET(req: Request) {
           description:
             "Builds the exact service transaction and returns it DECODED, unsigned, with nothing submitted. " +
             "For the MPT issuance builder (productId 'mptissue') it also returns the full manifest of what is " +
-            "PERMANENT once signed, a plain-English guide to all 6 capability flags (what each lets the issuer " +
+            "permanent, what is locked and what the issuer could still change — written for the LIVE DynamicMPT " +
+            "(XLS-94) amendment state, which the response reports and dates ('permanence'); if the state can't be " +
+            "read the wording is hedged, never 'permanent' — a plain-English guide to all 6 capability flags (what each lets the issuer " +
             "do to holders — clawback means you can take the token back from anyone), and the issuer's backing " +
             "declaration echoed back with the hard line: XRPLHub publishes the declaration and does not verify " +
             "it. Pay via /api/create-payment then /api/execute to actually build and sign. Free.",

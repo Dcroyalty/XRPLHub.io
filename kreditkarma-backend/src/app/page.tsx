@@ -191,10 +191,10 @@ const PRODUCTS = [
 
   // TOKENS (v2 + management) — mirrors xrpl.org/docs/tutorials/tokens, done for you
   { id:'mptissue', cat:'Token Issuer', emoji:'🎫', name:'Multi-Purpose Token (MPT) Issuance', featured:false, tag:'NEW', comingSoon:false, color:'#38bdf8', priceRLUSD:55, priceXRP:180,
-    amendment:'MPTokenIssuanceCreate', tagline:'Tokenize on XRPL — with a plain-English guide to every permanent choice',
-    desc:'Fill a form, tokenize on XRPL. You choose the supply cap, decimals, the 6 capability flags (we explain in plain English what each one lets you do TO holders — clawback means you can take the token back from anyone), and a backing declaration recorded on-ledger. Free preview shows the decoded transaction and everything that can never be undone. Pay to build; you sign once in your own wallet.',
-    aiDetail:'Every choice is permanent — MPTokenIssuanceCreate is the only chance to set the flags, supply, scale, fee, and metadata. A confirmation step spells out exactly what you cannot undo. Your backing declaration is written into the on-ledger metadata; XRPLHub publishes it but does not and cannot verify it. New issuances appear in the XRPLHub MPT registry automatically.',
-    features:['Plain-English guide to all 6 flags','On-ledger backing declaration','Free preview of the decoded tx','Confirmation step for what is permanent','Auto-listed in the MPT registry','You sign once in your own wallet'] },
+    amendment:'MPTokenIssuanceCreate', tagline:'Tokenize on XRPL — a plain-English guide to what is permanent and what is not',
+    desc:'Fill a form, tokenize on XRPL. You choose the supply cap, decimals, the 6 capability flags (we explain in plain English what each one lets you do TO holders — clawback means you can take the token back from anyone), and a backing declaration recorded on-ledger. Free preview shows the decoded transaction and exactly what is permanent, what you can lock, and what the issuer could still change — read live from the XRPL amendment state. Pay to build; you sign once in your own wallet.',
+    aiDetail:'MPTokenIssuanceCreate is the only chance to set the flags, supply, scale, fee, and metadata. Supply and decimals never change, and a flag you switch on stays on; the rest is fixed only while the DynamicMPT amendment (XLS-94) stays inactive — once it is active the issuer can change it unless it is locked. A confirmation step states which case applies right now, read live from the ledger. Your backing declaration is written into the on-ledger metadata; XRPLHub publishes it but does not and cannot verify it. New issuances appear in the XRPLHub MPT registry automatically.',
+    features:['Plain-English guide to all 6 flags','On-ledger backing declaration','Free preview of the decoded tx','Live confirmation: what is permanent vs changeable','Auto-listed in the MPT registry','You sign once in your own wallet'] },
   { id:'mptsend', cat:'Token Issuer', emoji:'📤', name:'Send MPT', featured:false, comingSoon:false, color:'#38bdf8', priceRLUSD:20, priceXRP:65,
     amendment:'Payment · MPT', tagline:'Distribute your multi-purpose tokens to any wallet',
     desc:'You provide the destination and amount. AI builds the MPT Payment. You sign once in Xaman and your tokens are delivered on-chain.',
@@ -283,7 +283,7 @@ const EXEC_FIELDS: Record<string, ExecField[]> = {
   ],
   regkey: [{ key:'regularKey', label:'Regular key address', placeholder:'rXXX…', help:'A backup signing key. Your master key keeps working.', required:true }],
   // Token issuer
-  tokenfee: [{ key:'transferFee', label:'Transfer fee %', type:'number', default:'0.5', help:'Fee charged on transfers of your token (0–100%)', required:true }],
+  tokenfee: [{ key:'transferFee', label:'Transfer fee %', type:'number', default:'0.5', help:'0–50%. Requires "holders can transfer" ON. May be changeable later — see the notice above.', required:true }],
   trustline: [
     { key:'currency', label:'Currency code', placeholder:'USD', help:'3-letter code or 40-char hex', required:true },
     { key:'issuer', label:'Issuer address', placeholder:'rXXX…', required:true },
@@ -292,15 +292,15 @@ const EXEC_FIELDS: Record<string, ExecField[]> = {
   mptissue: [
     { key:'name', label:'Token name', placeholder:'ACME Points', help:'Stored in on-ledger metadata (≤64 chars)', required:true },
     { key:'ticker', label:'Ticker', placeholder:'ACME', help:'1–6 letters/digits, stored in metadata', required:true },
-    { key:'maximumAmount', label:'Maximum supply (hard cap)', type:'number', default:'1000000000', help:'Permanent. Creating the token mints 0 — you distribute later with Send MPT.', required:true },
-    { key:'assetScale', label:'Decimal places', type:'number', default:'0', help:'0–19. 2 = smallest unit is 0.01. Permanent.' },
+    { key:'maximumAmount', label:'Maximum supply (hard cap)', type:'number', default:'1000000000', help:'Permanent in every case. Creating the token mints 0 — you distribute later with Send MPT.', required:true },
+    { key:'assetScale', label:'Decimal places', type:'number', default:'0', help:'0–19. 2 = smallest unit is 0.01. Permanent in every case.' },
     { key:'metadataUrl', label:'Info URL (optional)', placeholder:'https://…', help:'Stored in metadata as weblink' },
-    { key:'canTransfer', label:'Holders can transfer to each other', type:'select', options:['off','on'], default:'on', help:'OFF = closed-loop / store credit — holders can only send it back to you. Permanent.' },
-    { key:'canTrade', label:'Holders can trade on the DEX/AMM', type:'select', options:['off','on'], default:'off', help:'Permanent.' },
-    { key:'canEscrow', label:'Holders can escrow their balance', type:'select', options:['off','on'], default:'off', help:'Permanent.' },
-    { key:'canLock', label:'⚠️ ISSUER POWER — you can freeze balances', type:'select', options:['off','on'], default:'off', help:'You could freeze one holder or every holder. Cannot be added or removed later.' },
-    { key:'requireAuth', label:'⚠️ ISSUER POWER — you approve every holder', type:'select', options:['off','on'], default:'off', help:'Nobody can hold it until you authorize their account. Permanent.' },
-    { key:'canClawback', label:'⚠️ ISSUER POWER — you can claw the token back', type:'select', options:['off','on'], default:'off', help:'You could take the token back from any holder, anytime, without their consent. CANNOT be added later.' },
+    { key:'canTransfer', label:'Holders can transfer to each other', type:'select', options:['off','on'], default:'on', help:'OFF = closed-loop / store credit — holders can only send it back to you. ON is permanent; OFF may be switchable later — see the notice above.' },
+    { key:'canTrade', label:'Holders can trade on the DEX/AMM', type:'select', options:['off','on'], default:'off', help:'ON is permanent; OFF may be switchable later — see the notice above.' },
+    { key:'canEscrow', label:'Holders can escrow their balance', type:'select', options:['off','on'], default:'off', help:'ON is permanent; OFF may be switchable later — see the notice above.' },
+    { key:'canLock', label:'⚠️ ISSUER POWER — you can freeze balances', type:'select', options:['off','on'], default:'off', help:'You could freeze one holder or every holder. ON is permanent; OFF may be switchable later — see the notice above.' },
+    { key:'requireAuth', label:'⚠️ ISSUER POWER — you approve every holder', type:'select', options:['off','on'], default:'off', help:'Nobody can hold it until you authorize their account. ON is permanent; OFF may be switchable later — see the notice above.' },
+    { key:'canClawback', label:'⚠️ ISSUER POWER — you can claw the token back', type:'select', options:['off','on'], default:'off', help:'You could take the token back from any holder, anytime, without their consent. ON is permanent; OFF may be switchable later — see the notice above.' },
     { key:'transferFee', label:'Secondary-sale fee %', type:'number', default:'0', help:'0–50%. Requires "holders can transfer" ON. Permanent.' },
     { key:'backingType', label:'What backs this token?', type:'select', options:['none','physical-custody','legal-entity','other-onchain','self-declared'], default:'none', help:'Declared on-ledger. XRPLHub does NOT verify this.' },
     { key:'backingStatement', label:'Backing statement', placeholder:'e.g. 1:1 USD held at …', help:'What you claim backs it. Required unless backing = none. A claim is not evidence.' },
@@ -688,7 +688,16 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
   const [exError, setExError]   = useState('');
   const [exLabel, setExLabel]   = useState('');
   const [cautionOk, setCautionOk] = useState(false);
-  const [exManifest, setExManifest] = useState<{ irreversible?:string[]; backingNotice?:string; warning?:string; confirmPrompt?:string; manifest?:Record<string,unknown> }|null>(null);
+  const [exManifest, setExManifest] = useState<{ irreversible?:string[]; backingNotice?:string; warning?:string; confirmPrompt?:string; heading?:string; listTitle?:string; manifest?:Record<string,unknown> }|null>(null);
+  // MPT issuance: which permanence regime applies RIGHT NOW (live DynamicMPT amendment state).
+  // Server-driven so the form never hard-codes "Permanent"; lock fields only appear once active.
+  const [mptPerm, setMptPerm] = useState<{ regime:string; headline:string[]; formHelp:Record<string,string>; lockFields:ExecField[] }|null>(null);
+  useEffect(() => {
+    if (step !== 'execute' || product?.id !== 'mptissue') return;
+    let dead = false;
+    fetch(`${API_URL}/api/mpt/permanence`).then(r => r.json()).then(d => { if (!dead && Array.isArray(d?.headline)) setMptPerm(d); }).catch(() => { if (!dead) setMptPerm(null); });
+    return () => { dead = true; };
+  }, [step, product?.id]);
   const exPollRef = useRef<ReturnType<typeof setTimeout>|null>(null);
   const pollRef   = useRef<ReturnType<typeof setTimeout>|null>(null);
   const cancelRef = useRef(false);
@@ -853,7 +862,7 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
       const data = await res.json();
       if (res.status === 409 && data.requiresConfirmation) {
         setExLabel(data.label||'');
-        setExManifest(data.manifest || data.irreversible ? { irreversible:data.irreversible, backingNotice:data.backingNotice, warning:data.warning, confirmPrompt:data.confirmPrompt, manifest:data.manifest } : null);
+        setExManifest(data.manifest || data.irreversible ? { irreversible:data.irreversible, backingNotice:data.backingNotice, warning:data.warning, confirmPrompt:data.confirmPrompt, heading:data.heading, listTitle:data.listTitle, manifest:data.manifest } : null);
         setExStatus('caution'); return;
       }
       if (res.status === 422 && data.needsParams) { setExError('Please fill: ' + data.needsParams.join(', ')); setExStatus('form'); return; }
@@ -880,7 +889,9 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
   };
 
   if (step === 'execute') {
-    const fields = EXEC_FIELDS[product.id] || [];
+    const isMpt = product.id === 'mptissue';
+    const fields: ExecField[] = [...(EXEC_FIELDS[product.id] || []), ...(isMpt ? (mptPerm?.lockFields ?? []) : [])];
+    const helpFor = (f: ExecField) => (isMpt && mptPerm?.formHelp?.[f.key]) || f.help;
     const setF = (k:string,v:string) => setExForm(f=>({...f,[k]:v}));
     return (
       <Overlay show={show} onClose={handleClose} wide>
@@ -900,6 +911,14 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
 
         {exStatus === 'form' && (
           <>
+            {isMpt && (
+              <div style={{ background:'rgba(245,158,11,.08)',border:'1px solid rgba(245,158,11,.35)',borderRadius:12,padding:'12px 16px',marginBottom:16 }}>
+                <p style={{ fontSize:11,fontWeight:700,color:'#f59e0b',letterSpacing:'.06em',textTransform:'uppercase',marginBottom:6 }}>What is permanent — live from the XRPL</p>
+                <p style={{ fontSize:12,color:'rgba(255,255,255,.7)',lineHeight:1.7 }}>
+                  {mptPerm ? mptPerm.headline.join(' ') : 'Live amendment state not loaded — treat nothing below as permanent, except the maximum supply, the decimals, and any flag you switch on.'}
+                </p>
+              </div>
+            )}
             {fields.length === 0 && <div style={{ background:'rgba(16,185,129,.05)',border:'1px solid rgba(16,185,129,.15)',borderRadius:12,padding:'13px 16px',marginBottom:16,fontSize:13,color:'rgba(255,255,255,.55)',lineHeight:1.6 }}>No details needed — tap below and AI will build your <strong style={{ color:'#10b981' }}>{product.name}</strong> transaction for you to sign in Xaman.</div>}
             {fields.map(f => (
               <div key={f.key} style={{ marginBottom:13 }}>
@@ -911,7 +930,7 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
                 ) : (
                   <input type={f.type==='number'?'number':'text'} value={exForm[f.key] ?? f.default ?? ''} onChange={e=>setF(f.key,e.target.value)} placeholder={f.placeholder||''} style={{ ...INP, fontFamily:(f.key.toLowerCase().includes('address')||f.key.includes('issuer')||f.key.includes('destination')||f.key.includes('wallet')||f.key.includes('Id')||f.key.includes('holder')||f.key.includes('subject'))?"'IBM Plex Mono',monospace":'inherit', fontSize:f.type==='number'?14:13 }} />
                 )}
-                {f.help && <p style={{ fontSize:11,color:'rgba(255,255,255,.3)',marginTop:4 }}>{f.help}</p>}
+                {helpFor(f) && <p style={{ fontSize:11,color:'rgba(255,255,255,.3)',marginTop:4 }}>{helpFor(f)}</p>}
               </div>
             ))}
             {exError && <p style={{ fontSize:12,color:'#fca5a5',marginBottom:10 }}>⚠️ {exError}</p>}
@@ -930,12 +949,12 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
         {exStatus === 'caution' && (
           <div>
             <div style={{ background:'rgba(245,158,11,.1)',border:'1px solid rgba(245,158,11,.4)',borderRadius:14,padding:'18px 20px',marginBottom:16 }}>
-              <p style={{ fontSize:14,fontWeight:800,color:'#f59e0b',marginBottom:8 }}>⚠️ Permanent — read every line</p>
+              <p style={{ fontSize:14,fontWeight:800,color:'#f59e0b',marginBottom:8 }}>⚠️ {exManifest?.heading || 'Permanent — read every line'}</p>
               <p style={{ fontSize:13,color:'rgba(255,255,255,.7)',lineHeight:1.7 }}>{exManifest?.warning || `This operation (${exLabel}) changes how your wallet is controlled and may be difficult or impossible to reverse. If misconfigured, you could lose access to your account. Make sure your details are correct before signing.`}</p>
             </div>
             {exManifest?.irreversible && exManifest.irreversible.length > 0 && (
               <div style={{ background:'rgba(255,255,255,.03)',border:'1px solid rgba(255,255,255,.1)',borderRadius:12,padding:'14px 16px',marginBottom:14 }}>
-                <p style={{ fontSize:11,fontWeight:700,color:'#f59e0b',letterSpacing:'.06em',textTransform:'uppercase',marginBottom:8 }}>Cannot be undone after you sign</p>
+                <p style={{ fontSize:11,fontWeight:700,color:'#f59e0b',letterSpacing:'.06em',textTransform:'uppercase',marginBottom:8 }}>{exManifest?.listTitle || 'Cannot be undone after you sign'}</p>
                 <ul style={{ margin:0,paddingLeft:18,fontSize:12,color:'rgba(255,255,255,.62)',lineHeight:1.7 }}>
                   {exManifest.irreversible.map((line,i) => <li key={i} style={{ marginBottom:4 }}>{line}</li>)}
                 </ul>

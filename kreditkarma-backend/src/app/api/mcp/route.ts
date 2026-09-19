@@ -38,6 +38,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { buildServiceTx } from '@/app/api/execute/txBuilder';
+import { buildContextFromView, mptRegimeFor, permanenceNotice } from '@/lib/mptPermanence';
 import { SERVICE_CATALOG, SERVICE_IDS, serviceParamLines } from '@/app/api/execute/serviceCatalog';
 import { prisma } from '@/lib/xrplscore-db';
 import { screenOfac, NoSnapshotError } from '@/lib/screen';
@@ -824,7 +825,10 @@ async function toolBuildXrplTransaction(
   }
 
   try {
-    const result = buildServiceTx(productId, wallet, params);
+    // MPT issuance: live DynamicMPT state drives both the build (locks only when active)
+    // and the permanence notice below. Other products read nothing.
+    const view = await mptRegimeFor(productId);
+    const result = buildServiceTx(productId, wallet, params, view ? buildContextFromView(view) : undefined);
     if (!result.ok) {
       return JSON.stringify({
         error:        result.error || 'Transaction build failed',
@@ -847,6 +851,7 @@ async function toolBuildXrplTransaction(
       label:       result.label,
       safetyTier:  result.tier,
       transaction: result.txjson,
+      ...(view ? permanenceNotice(view) : {}),
       signingInstructions:
         'Present this transaction object to the wallet holder. They must sign it ' +
         'using their Xaman wallet — the transaction cannot be submitted without ' +

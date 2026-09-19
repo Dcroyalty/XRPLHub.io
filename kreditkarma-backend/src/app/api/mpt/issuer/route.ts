@@ -9,7 +9,8 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/xrplscore-db";
 import { isValidXrplAddress } from "@/lib/engine";
-import { mptCoverage, decodeMptFlags, issuanceIdsHash } from "@/lib/mptIndex";
+import { mptCoverage, decodeMptFlags, issuanceIdsHash, holderData } from "@/lib/mptIndex";
+import { getAmendmentStatuses } from "@/lib/amendments";
 import { scoreWallet, AccountNotFoundError } from "@/lib/xrplscore";
 import { scoreLink, mptIssuanceLink, credentialsAccountLink } from "@/lib/related";
 import { backingDeclarationView } from "@/lib/mptBacking";
@@ -27,11 +28,13 @@ export async function GET(req: Request) {
     );
   }
 
-  const [rows, agg, coverage] = await Promise.all([
+  const [rows, agg, coverage, amend] = await Promise.all([
     prisma.indexedMPT.findMany({ where: { issuer: address }, orderBy: { outstanding: "desc" } }),
     prisma.indexedMptIssuer.findUnique({ where: { issuer: address } }),
     mptCoverage(prisma),
+    getAmendmentStatuses(["DynamicMPT", "ConfidentialTransfer"] as const),
   ]);
+  const ct = amend.ConfidentialTransfer.state;
 
   // Cached score if the aggregate has one; otherwise compute it live now.
   let xrplScore = agg?.xrplScore ?? null;
@@ -70,9 +73,16 @@ export async function GET(req: Request) {
     scoreSource,
     scoredAt,
     mptCount: rows.length,
+    amendments: { dynamicMpt: amend.DynamicMPT.state, confidentialTransfer: ct },
+    mutabilityNote:
+      "issuerPowers, flags, transferFee and metadata are a snapshot as of each row's last refresh. Under DynamicMPT (XLS-94) an issuer " +
+      "can switch flags that are off on and rewrite metadata / transfer fee unless locked with ImmutableFlags. Lock state is not " +
+      "indexed — GET /api/mpt/<issuanceId> returns it live (`mutability`).",
     // Every field the anchor canonicalisation (mpt-anchor-v1) reads is exposed
     // so a third party can reproduce the Merkle root — see GET /api/mpt/anchor.
-    mpts: rows.map((r) => ({
+    mpts: rows.map((r) => {
+      const hd = holderData(r, ct);
+      return {
       issuanceId: r.issuanceId,
       issuer: r.issuer,
       sequence: r.sequence,
@@ -87,9 +97,12 @@ export async function GET(req: Request) {
       issuerPowers: decodeMptFlags(r.flagsRaw),
       metadata: r.metadata,                 // raw decoded MPTokenMetadata string (or null)
       backingDeclaration: backingDeclarationView(r.metadata), // what the issuer DECLARED — unverified
-      holderCount: r.holderCount,
+      // Confidential issuance (XLS-96): per-holder data is UNAVAILABLE — null, never 0.
+      holderCount: hd.status === "unavailable" ? null : r.holderCount,
+      holderData: hd,
       sources: r.sources ? r.sources.split(",").sort() : [],
-    })),
+      };
+    }),
     related: related.slice(0, 3),
   });
 }

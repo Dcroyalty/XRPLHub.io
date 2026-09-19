@@ -12,6 +12,8 @@ import { createHash } from "crypto";
 import { convertHexToString, decodeAccountID } from "xrpl";
 import type { PrismaClient } from "@prisma/client";
 import type { BithompMpt } from "./bithomp";
+import type { AmendmentState } from "./amendments";
+import { MPT_LSF_CAN_HOLD_CONFIDENTIAL } from "./mptFlags";
 
 // The union of MPT issuers established by the reconciliation (our state walk +
 // Bithomp's index): 34 addresses. Seeds the first cron run; after that the
@@ -47,6 +49,7 @@ const FLAG = {
   canTrade: 0x0010,
   canTransfer: 0x0020,
   canClawback: 0x0040,
+  canHoldConfidential: MPT_LSF_CAN_HOLD_CONFIDENTIAL, // XLS-96 lsfMPTCanHoldConfidentialBalance — one-way, never cleared
 } as const;
 
 function safeDecode(hex: string): string {
@@ -185,7 +188,59 @@ export function decodeMptFlags(flagsRaw: number) {
     canTrade: (flagsRaw & FLAG.canTrade) !== 0,
     transferable: (flagsRaw & FLAG.canTransfer) !== 0,
     clawback: (flagsRaw & FLAG.canClawback) !== 0,
+    // XLS-96: holder balances are encrypted on this issuance (see holderData()).
+    canHoldConfidentialBalance: (flagsRaw & FLAG.canHoldConfidential) !== 0,
   };
+}
+
+/** True if the raw Flags carry lsfMPTCanHoldConfidentialBalance. */
+export function isConfidentialFlags(flagsRaw: number): boolean {
+  return (flagsRaw & FLAG.canHoldConfidential) !== 0;
+}
+
+export type HolderDataStatus = "available" | "not-indexed" | "unavailable" | "unverified";
+export interface HolderData {
+  status: HolderDataStatus;
+  /** The holder count when it can be trusted; null otherwise (never 0 as a stand-in). */
+  count: number | null;
+  reason: "confidential" | "confidential-state-unverified" | null;
+  note: string;
+}
+
+/**
+ * Per-holder data for one registry row, honest about confidentiality (XLS-96).
+ *  - flag set                      -> "unavailable": balances are ciphertext, so any
+ *                                     holder figure would be wrong. count is null, not 0.
+ *  - ConfidentialTransfer not inactive and the row was only ever seen via Bithomp ->
+ *                                     "unverified": Bithomp's flag map can't carry the
+ *                                     confidential bit, so we can't rule it out.
+ *  - otherwise                     -> "available" (or "not-indexed" when we hold no count).
+ * OutstandingAmount is unaffected — it stays exact (public + confidential combined).
+ */
+export function holderData(
+  row: { flagsRaw: number; holderCount: number | null; sources: string },
+  confidentialTransfer: AmendmentState
+): HolderData {
+  if (isConfidentialFlags(row.flagsRaw)) {
+    return {
+      status: "unavailable",
+      count: null,
+      reason: "confidential",
+      note: "Confidential balances are enabled on this issuance: holder balances are encrypted on-ledger, so per-holder balances, concentration and holder counts are not readable here. This is NOT zero. outstandingAmount is unaffected and exact.",
+    };
+  }
+  const walked = row.sources.split(",").includes("walk");
+  if (confidentialTransfer !== "inactive" && !walked) {
+    return {
+      status: "unverified",
+      count: row.holderCount,
+      reason: "confidential-state-unverified",
+      note: "ConfidentialTransfer is active (or its state couldn't be read) and this row comes only from Bithomp, whose flags can't tell us whether confidential balances are enabled. The holder count may not reflect encrypted balances.",
+    };
+  }
+  return row.holderCount == null
+    ? { status: "not-indexed", count: null, reason: null, note: "No holder count has been indexed for this issuance." }
+    : { status: "available", count: row.holderCount, reason: null, note: "Holder count as reported by the index source; balances are public." };
 }
 
 export function issuanceIdsHash(ids: string[]): string {

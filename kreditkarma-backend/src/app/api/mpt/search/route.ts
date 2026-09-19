@@ -7,13 +7,21 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/xrplscore-db";
 import { isValidXrplAddress } from "@/lib/engine";
-import { mptCoverage, decodeMptFlags } from "@/lib/mptIndex";
+import { mptCoverage, decodeMptFlags, holderData } from "@/lib/mptIndex";
+import { getAmendmentStatuses, type AmendmentState } from "@/lib/amendments";
 import { mptIssuanceLink, mptIssuerLink } from "@/lib/related";
 import { backingDeclarationView } from "@/lib/mptBacking";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 20;
+
+// Point-in-time caveat: flags, transfer fee and metadata in an index row are a SNAPSHOT as of
+// the row's last refresh. Lock state (ImmutableFlags) is not indexed — the live view has it.
+const MUTABILITY_NOTE =
+  "issuerPowers, flags, transferFee and metadata are a snapshot as of each row's last refresh. Under DynamicMPT (XLS-94) an issuer " +
+  "can switch flags that are off on and rewrite metadata / transfer fee unless locked with ImmutableFlags. Lock state is not " +
+  "indexed — GET /api/mpt/<issuanceId> returns it live (`mutability`).";
 
 const HEX_RE = /^[0-9A-Fa-f]{4,48}$/;
 const LIMIT = 50;
@@ -22,7 +30,8 @@ const LIMIT = 50;
 // here so a third party can reproduce the Merkle root from this response —
 // see GET /api/mpt/anchor. `issuerPowers` and `transferFeeBps` are the
 // human-friendly derivations of `flags` and `transferFee`.
-function shape(r: Awaited<ReturnType<typeof prisma.indexedMPT.findMany>>[number]) {
+function shape(r: Awaited<ReturnType<typeof prisma.indexedMPT.findMany>>[number], confidentialTransfer: AmendmentState) {
+  const hd = holderData(r, confidentialTransfer);
   return {
     issuanceId: r.issuanceId,
     issuer: r.issuer,
@@ -40,7 +49,10 @@ function shape(r: Awaited<ReturnType<typeof prisma.indexedMPT.findMany>>[number]
     // What the issuer DECLARED backs this token (from the on-ledger metadata).
     // XRPLHub does not verify it — see backingDeclaration.note.
     backingDeclaration: backingDeclarationView(r.metadata),
-    holderCount: r.holderCount,
+    // Confidential issuance (XLS-96): per-holder data is UNAVAILABLE — null here, never 0 —
+    // and holderData says why. outstandingAmount above is unaffected and exact.
+    holderCount: hd.status === "unavailable" ? null : r.holderCount,
+    holderData: hd,
     sources: r.sources ? r.sources.split(",").sort() : [],
     lastSeenAt: r.lastSeenAt.toISOString(),
   };
@@ -76,7 +88,11 @@ export async function GET(req: Request) {
     });
   }
 
-  const coverage = await mptCoverage(prisma);
+  const [coverage, amend] = await Promise.all([
+    mptCoverage(prisma),
+    getAmendmentStatuses(["DynamicMPT", "ConfidentialTransfer"] as const),
+  ]);
+  const ct = amend.ConfidentialTransfer.state;
   const related =
     rows.length === 1
       ? [mptIssuanceLink(rows[0].issuanceId), mptIssuerLink(rows[0].issuer)]
@@ -91,7 +107,9 @@ export async function GET(req: Request) {
     ...coverage,
     count: rows.length,
     truncated: rows.length === LIMIT,
-    results: rows.map(shape),
+    results: rows.map((r) => shape(r, ct)),
+    amendments: { dynamicMpt: amend.DynamicMPT.state, confidentialTransfer: ct },
+    mutabilityNote: MUTABILITY_NOTE,
     related,
   });
 }

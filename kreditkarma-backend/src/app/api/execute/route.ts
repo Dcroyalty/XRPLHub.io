@@ -11,6 +11,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { buildServiceTx } from './txBuilder';
 import { describeMptIssuanceCreate } from '@/lib/mptMeta';
 import { BACKING_HARD_LINE } from '@/lib/mptBacking';
+import { buildContextFromView, confirmCopy, mptRegimeFor } from '@/lib/mptPermanence';
 
 const XUMM_API  = 'https://xumm.app/api/v1/platform/payload';
 const XRPL_API  = 'https://xrplcluster.com/';
@@ -47,8 +48,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'No verified payment found for this order. Pay first, then execute.' }, { status: 402 });
     }
 
-    // Build the exact service transaction for the customer's own wallet.
-    const built = buildServiceTx(productId, account, params || {});
+    // Build the exact service transaction for the customer's own wallet. For an MPT
+    // issuance the LIVE DynamicMPT state is read here, on every call (including the
+    // confirmed second call), so the confirmation wording and the built transaction
+    // always reflect the regime at the moment of signing.
+    const view = await mptRegimeFor(productId);
+    const built = buildServiceTx(productId, account, params || {}, view ? buildContextFromView(view) : undefined);
     if (!built.ok) {
       if (built.tier === 'blocked') return NextResponse.json({ error: built.error, tier: 'blocked' }, { status: 403 });
       if (built.needsParams?.length) return NextResponse.json({ error: built.error, needsParams: built.needsParams }, { status: 422 });
@@ -56,24 +61,23 @@ export async function POST(req: NextRequest) {
     }
     // Caution tier requires explicit customer acknowledgement of irreversibility risk.
     if (built.tier === 'caution' && !confirmedCaution) {
-      // MPT issuance: spell out EXACTLY what can't be undone — the flag choices,
-      // the fixed supply/scale/fee/metadata, and the backing hard line.
-      if (productId === 'mptissue') {
-        const manifest = describeMptIssuanceCreate(built.txjson as Record<string, unknown>);
+      // MPT issuance: spell out what is permanent, what is locked, and what the issuer
+      // can still change — for the amendment regime that applies right now.
+      if (productId === 'mptissue' && view) {
+        const manifest = describeMptIssuanceCreate(built.txjson as Record<string, unknown>, view);
+        const copy = confirmCopy(view, manifest.permanence.lockedByThisTransaction);
         return NextResponse.json({
           tier: 'caution',
           requiresConfirmation: true,
           label: built.label,
-          permanent: true,
-          warning:
-            'MPTokenIssuanceCreate is the ONLY chance to set these. None of it can be changed after you sign: ' +
-            'the 6 capability flags, the supply cap, decimals, transfer fee, and the metadata (including the backing declaration).',
+          permanence: manifest.permanence,
+          heading: copy.heading,
+          listTitle: copy.listTitle,
+          warning: copy.warning,
           manifest,
           irreversible: manifest.irreversible,
           backingNotice: BACKING_HARD_LINE,
-          confirmPrompt:
-            'I understand every choice above is permanent, and that XRPLHub publishes my backing declaration ' +
-            'without verifying it.',
+          confirmPrompt: copy.confirmPrompt,
         }, { status: 409 });
       }
       return NextResponse.json({

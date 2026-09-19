@@ -19,6 +19,8 @@ import { listCredentialsHeldBy, type LiveCredential } from "./credentialLookup";
 import { scoreWallet, AccountNotFoundError } from "./xrplscore";
 import { bithompMptLookup, bithompConfigured } from "./bithomp";
 import { reportLink, credentialsAccountLink, mptFullLink, type RelatedLink } from "./related";
+import { MPT_LSF_CAN_HOLD_CONFIDENTIAL } from "./mptFlags";
+import { getMptRegimeView, issuanceMutability } from "./mptPermanence";
 
 export const MPT_ISSUANCE_ID_RE = /^[0-9A-Fa-f]{48}$/; // 192-bit MPTokenIssuanceID
 
@@ -31,6 +33,7 @@ const F = {
   canTrade: 0x0010,
   canTransfer: 0x0020,
   canClawback: 0x0040,
+  canHoldConfidential: MPT_LSF_CAN_HOLD_CONFIDENTIAL, // XLS-96 — one-way, never cleared
 } as const;
 
 function safeDecode(hex: string): string {
@@ -54,10 +57,22 @@ export interface MptRisk {
   issuance: {
     assetScale: number;
     maximumAmount: string | null;
+    /** Total of all non-issuer balances — public AND confidential combined (XLS-96), so it stays exact. */
     outstandingAmount: string;
+    /** The confidential part of outstandingAmount (plaintext on the issuance). null = the issuance carries no such field. */
+    confidentialOutstandingAmount: string | null;
     transferFeeBps: number; // basis points (TransferFee is tenths of a bp)
     metadata: unknown;
   } | null;
+  /** XLS-96 Confidential MPT. When enabled, individual holder balances are encrypted ciphertext:
+   *  per-holder data is UNAVAILABLE — reported as such, never as zero or absent. */
+  confidential?: {
+    canHoldConfidentialBalance: boolean;
+    perHolderData: "available" | "unavailable";
+    note: string;
+  };
+  /** What can still change about this issuance, from its live ledger object + the live amendment state. */
+  mutability?: ReturnType<typeof issuanceMutability>;
   issuerPowers: {
     clawback: boolean;       // issuer can seize holder balances
     canFreeze: boolean;      // issuer can lock balances
@@ -65,9 +80,11 @@ export interface MptRisk {
     requiresAuth: boolean;   // issuer must approve each holder
     transferable: boolean;   // false = can only be returned to issuer (store credit)
   } | null;
-  /** What the issuer DECLARED backs the token (on-ledger, immutable). XRPLHub
-   *  publishes this; it does not verify it. `declared` is null for issuances
-   *  created before the declaration convention. */
+  /** What the issuer DECLARED backs the token (written to the on-ledger metadata).
+   *  XRPLHub publishes this; it does not verify it. It is only as fixed as the
+   *  metadata: see `mutability.metadata` — under DynamicMPT the issuer can rewrite
+   *  it unless locked. `declared` is null for issuances created before the
+   *  declaration convention. */
   backingDeclaration?: ReturnType<typeof backingDeclarationView>;
   issuerRisk: {
     xrplScore: number | null;
@@ -150,6 +167,18 @@ export async function getMptRisk(issuanceId: string, opts: { full?: boolean } = 
 
   const issuer = String(node.Issuer);
   const flags = Number(node.Flags ?? 0);
+  // Live amendment state (cached ~10 min): drives what `mutability` says. Never throws;
+  // "unknown" yields the hedged statuses.
+  const view = await getMptRegimeView();
+  const mutability = issuanceMutability(node, view);
+  const confidentialEnabled = (flags & F.canHoldConfidential) !== 0;
+  const confidential = {
+    canHoldConfidentialBalance: confidentialEnabled,
+    perHolderData: confidentialEnabled ? ("unavailable" as const) : ("available" as const),
+    note: confidentialEnabled
+      ? "Confidential balances are enabled: holder balances are encrypted on-ledger, so per-holder balances, holder concentration and non-zero-holder counts are UNAVAILABLE here — not zero. outstandingAmount (public + confidential) and confidentialOutstandingAmount are plaintext and exact."
+      : "Confidential balances are not enabled on this issuance; holder balances are public.",
+  };
 
   // BASIC: just the score. FULL: + account_info (domain, blackhole) +
   // credentials + xrp-ledger.toml domain verification.
@@ -188,18 +217,20 @@ export async function getMptRisk(issuanceId: string, opts: { full?: boolean } = 
     assetScale: Number(node.AssetScale ?? 0),
     maximumAmount: node.MaximumAmount != null ? String(node.MaximumAmount) : null,
     outstandingAmount: String(node.OutstandingAmount ?? "0"),
+    confidentialOutstandingAmount: node.ConfidentialOutstandingAmount != null ? String(node.ConfidentialOutstandingAmount) : null,
     transferFeeBps: Number(node.TransferFee ?? 0) / 10,
     metadata: parseMetadata(metaRaw),
   };
-  // What the issuer DECLARED backs this token (on-ledger, immutable). XRPLHub
-  // does not and cannot verify it — see backingDeclaration.note.
+  // What the issuer DECLARED backs this token (in the on-ledger metadata — see
+  // `mutability.metadata` for whether it can still be rewritten). XRPLHub does not
+  // and cannot verify it — see backingDeclaration.note.
   const backingDeclaration = backingDeclarationView(metaDecoded);
 
   if (!full) {
     return {
       issuanceId: id, found: true, tier: "basic",
       source: { ledger: "MPTokenIssuance present on the validated ledger (live read)", bithompIndex: bithompStr, interpretation: "exists" },
-      issuer, issuance, issuerPowers, backingDeclaration,
+      issuer, issuance, issuerPowers, backingDeclaration, confidential, mutability,
       issuerRisk: { xrplScore, grade: gradeStr },
       related: [mptFullLink(id)],
     };
@@ -228,7 +259,7 @@ export async function getMptRisk(issuanceId: string, opts: { full?: boolean } = 
   return {
     issuanceId: id, found: true, tier: "full",
     source: { ledger: "MPTokenIssuance present on the validated ledger (live read)", bithompIndex: bithompStr, interpretation: "exists" },
-    issuer, issuance, issuerPowers, backingDeclaration,
+    issuer, issuance, issuerPowers, backingDeclaration, confidential, mutability,
     issuerRisk: {
       xrplScore, grade: gradeStr, accountAgeDays, blackholed, domain, domainVerified,
       credentialsHeld: credList.length,

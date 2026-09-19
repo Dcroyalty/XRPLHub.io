@@ -13,6 +13,16 @@
 
 import { normalizeBacking, BACKING_HARD_LINE, type BackingDeclaration } from "./mptBacking";
 import { explainMptFlags } from "./mptFlags";
+import {
+  ALWAYS_PERMANENT,
+  amendmentEvidence,
+  changeableLines,
+  confirmCopy,
+  decodeImmutableFlags,
+  lockGuide,
+  regimeHeadline,
+  type MptRegimeView,
+} from "./mptPermanence";
 import { convertHexToString } from "xrpl";
 
 export interface MptMetadataInput {
@@ -65,16 +75,29 @@ export interface MptIssuanceManifest {
     holderCapabilities: string[];
   };
   backingDeclaration: BackingDeclaration | null;
+  /** Which permanence regime these lines were written for, and the live amendment read behind it. */
+  permanence: {
+    regime: MptRegimeView["regime"];
+    amendment: ReturnType<typeof amendmentEvidence>;
+    /** Items this transaction locks with ImmutableFlags (empty unless DynamicMPT is active). */
+    lockedByThisTransaction: string[];
+  };
+  /** Kept under its original name: the lines the confirmation UI lists. It is
+   *  NOT all irreversible any more — each line says which it is. */
   irreversible: string[];
   costs: { ownerReserveXrpLocked: number; transactionFeeXrp: number; reserveReclaimable: string };
   notMinted: string;
   hardLine: { flags: string; backing: string };
 }
 
-/** Describe an already-built MPTokenIssuanceCreate txjson in plain English. */
-export function describeMptIssuanceCreate(txjson: Record<string, unknown>): MptIssuanceManifest {
+/**
+ * Describe an already-built MPTokenIssuanceCreate txjson in plain English, for the
+ * permanence regime `view` (from getMptRegimeView() — a live amendment read).
+ */
+export function describeMptIssuanceCreate(txjson: Record<string, unknown>, view: MptRegimeView): MptIssuanceManifest {
   const flagsRaw = Number(txjson.Flags ?? 0);
-  const exp = explainMptFlags(flagsRaw);
+  const exp = explainMptFlags(flagsRaw, view.regime);
+  const locks = decodeImmutableFlags(Number(txjson.ImmutableFlags ?? 0)).locked;
   const metaHex = typeof txjson.MPTokenMetadata === "string" ? txjson.MPTokenMetadata : null;
   let decoded: string | null = null;
   if (metaHex) {
@@ -87,12 +110,18 @@ export function describeMptIssuanceCreate(txjson: Record<string, unknown>): MptI
   const meta = parseMptMetadata(decoded);
   const transferFee = txjson.TransferFee != null ? Number(txjson.TransferFee) : null;
 
+  // Each line says whether it is permanent, locked, or changeable — nothing here
+  // may say "can never be changed" about an item without a regime (see mptFlags.ts).
   const irreversible: string[] = [
-    "All six capability flags are set once, here, and can NEVER be changed. DynamicMPT is not enabled on mainnet.",
-    ...exp.set.map((f) => `PERMANENT — ${f.label}: ${f.plain}`),
-    ...exp.issuerPowersNotGranted,
-    "The maximum supply, decimal scale, transfer fee, and this metadata (including the backing declaration) are fixed forever.",
-    "The MPTokenIssuanceID is permanently tied to your account. The issuance can only be destroyed if zero tokens are ever outstanding.",
+    ...regimeHeadline(view),
+    ...ALWAYS_PERMANENT.map((l) => `PERMANENT — ${l}`),
+    ...exp.set.map((f) => `PERMANENT (flag on) — ${f.label}: ${f.plain}`),
+    // Per-flag lines stay short: the regime-specific "Flags left OFF" line below carries the
+    // conditional once, instead of repeating it for every flag.
+    ...exp.unset.map((f) => `OFF — ${f.label}: ${f.ifEnabledLater}`),
+    ...changeableLines(view, { transferFeeSet: transferFee != null && transferFee > 0 }),
+    ...locks.map((i) => `LOCKED by this transaction — ${i.label} (${i.tif}): can never change after you sign.`),
+    ...lockGuide(view),
   ];
 
   return {
@@ -111,6 +140,11 @@ export function describeMptIssuanceCreate(txjson: Record<string, unknown>): MptI
       holderCapabilities: exp.set.filter((f) => f.category === "holder-capability").map((f) => f.plain),
     },
     backingDeclaration: meta.backing,
+    permanence: {
+      regime: view.regime,
+      amendment: amendmentEvidence(view),
+      lockedByThisTransaction: locks.map((i) => i.key),
+    },
     irreversible,
     costs: {
       ownerReserveXrpLocked: 0.2,
@@ -121,8 +155,7 @@ export function describeMptIssuanceCreate(txjson: Record<string, unknown>): MptI
     notMinted:
       "Creating the issuance mints ZERO tokens. You put supply into circulation later by sending Payments of the token to holders (the Send MPT service).",
     hardLine: {
-      flags:
-        "These flags are the issuer's power over holders. Nobody else explains them. Clawback means you can take the token back from anyone. Set them deliberately — this is the only chance.",
+      flags: confirmCopy(view, locks.map((i) => i.key)).hardLineFlags,
       backing: BACKING_HARD_LINE,
     },
   };

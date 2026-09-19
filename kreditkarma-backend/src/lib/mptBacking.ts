@@ -1,6 +1,8 @@
 // src/lib/mptBacking.ts
 // Every MPT issued through XRPLHub declares what — if anything — backs it. The
-// declaration is written into MPTokenMetadata, so it is on-ledger and immutable.
+// declaration is written into MPTokenMetadata, so it is on-ledger. It is only as fixed
+// as the metadata: once DynamicMPT (XLS-94) is active the issuer can rewrite the
+// metadata unless it was locked with ImmutableFlags (see mptPermanence.ts).
 //
 // HARD LINE (repeated in the confirmation step and every response that carries a
 // backingDeclaration):

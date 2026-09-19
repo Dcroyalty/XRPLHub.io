@@ -69,7 +69,8 @@ and "partial" must be read as a floor, not the whole population.
 - GET ${origin}/api/mpt/search?q=<issuer r... | MPTokenIssuanceID or hex prefix | token name> — free, indexed
 - GET ${origin}/api/mpt/issuer?address=r... — free, indexed: every MPT this issuer has out + the issuer's XRPLScore
 - GET ${origin}/api/mpt/anchor — free: the latest on-ledger Merkle-root anchor of the registry (BIS WP 1374 pattern) + the canonicalisation scheme, so anyone can check the registry rows we publish against the root we anchored on-ledger (proves published rows match the anchored root at a known time, not immutability — the index is mutable and re-anchored)
-- GET ${origin}/api/mpt/<48-hex MPTokenIssuanceID> — free, live: issuance facts + issuer powers + issuer score/grade
+- GET ${origin}/api/mpt/<48-hex MPTokenIssuanceID> — free, live: issuance facts + issuer powers + issuer score/grade + "mutability" (what the issuer can still change, incl. ImmutableFlags locks) + "confidential" (XLS-96: per-holder data reported as unavailable, never zero)
+- GET ${origin}/api/mpt/permanence — free, live: which MPT permanence regime applies right now (DynamicMPT amendment state read from the ledger) and the wording that follows
 - GET ${origin}/api/x402/usdc/mpt/<48-hex id> — $0.01 USDC on Base (x402): full issuer risk — account age, xrp-ledger.toml-verified domain, credentials held, Bithomp cross-check
 
 ## OFAC SDN screening attestation
@@ -131,7 +132,7 @@ MCP server (Streamable HTTP, JSON-RPC 2.0, no auth):
 - Tools:
   - check_xrpl_score — free 300-850 wallet score + 8-signal breakdown + tips. Param: wallet_address.
   - list_xrpl_services — the 35 build_xrpl_transaction actions, each with its params + examples. No params.
-  - build_xrpl_transaction — ready-to-sign txjson for one of 35 XRPL actions. Params: product_id, wallet_address, params. Free. NOTE: mptissue (MPT issuance) has a full form — name, ticker, supply cap, decimals, 6 permanent capability flags (canTransfer/canTrade/canEscrow/canLock/requireAuth/canClawback — clawback = you can take the token back from any holder), an optional transfer fee, and a backing declaration (backingType, backingStatement, verifiedBy, redeemable). Free preview at POST /api/execute/preview shows the decoded tx + everything that is permanent + the flag guide + the backing hard line (XRPLHub publishes the declaration, never verifies it).
+  - build_xrpl_transaction — ready-to-sign txjson for one of 35 XRPL actions. Params: product_id, wallet_address, params. Free. NOTE: mptissue (MPT issuance) has a full form — name, ticker, supply cap, decimals, 6 capability flags (canTransfer/canTrade/canEscrow/canLock/requireAuth/canClawback — clawback = you can take the token back from any holder), an optional transfer fee, and a backing declaration (backingType, backingStatement, verifiedBy, redeemable). Free preview at POST /api/execute/preview shows the decoded tx + what is permanent vs changeable RIGHT NOW (read live from the DynamicMPT amendment state; hedged if unreadable) + the flag guide + the backing hard line (XRPLHub publishes the declaration, never verifies it).
   - issue_score_credential — paid (1 XRP or 1 RLUSD) signed, verifiable score certificate, 90 days. Params: wallet_address, currency, uuid (2nd call).
   - submit_grant_application — apply for a $25-$100 community micro-grant (a person reviews every application). Params: wallet_address, category, amount, description.
   - donate_to_community_fund — donate XRP or RLUSD to the grant treasury. Params: amount, currency, donor_wallet, message.

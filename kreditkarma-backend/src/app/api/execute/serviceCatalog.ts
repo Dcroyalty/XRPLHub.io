@@ -77,9 +77,12 @@ export const SERVICE_CATALOG: ServiceDef[] = [
     params: [P("enable", "boolean", false, "true = allow rippling (default true)", "true")] },
   { id: "mptissue", label: "Issue Multi-Purpose Token", category: "Token issuer", tier: "caution",
     gives:
-      "An MPTokenIssuanceCreate txjson. EVERY choice is permanent — the 6 capability flags, supply cap, " +
-      "decimals, transfer fee, and metadata (incl. the backing declaration) can never be changed. Free " +
-      "preview at POST /api/execute/preview; the paid path forces a confirmation manifest before signing.",
+      "An MPTokenIssuanceCreate txjson. Supply cap, decimals and any flag switched ON are permanent in every case; " +
+      "the transfer fee, the metadata (incl. the backing declaration) and flags left OFF are fixed only while the " +
+      "DynamicMPT amendment (XLS-94) stays inactive — once it is active the issuer can change them unless locked " +
+      "with ImmutableFlags. Which case applies right now is read live from the ledger: see GET /api/mpt/permanence " +
+      "and the free preview at POST /api/execute/preview (the 'permanence' block); the paid path forces a " +
+      "confirmation manifest before signing.",
     params: [
       P("name", "string", true, "Token name (<=64 chars), stored in on-ledger metadata", "ACME Points"),
       P("ticker", "string", true, "1-6 letters/digits, stored in on-ledger metadata", "ACME"),
@@ -91,12 +94,13 @@ export const SERVICE_CATALOG: ServiceDef[] = [
       P("canEscrow", "boolean", false, "Holders can escrow their balance", "false"),
       P("canLock", "boolean", false, "ISSUER POWER: you can freeze one holder or all holders", "false"),
       P("requireAuth", "boolean", false, "ISSUER POWER: nobody can hold it until you approve them", "false"),
-      P("canClawback", "boolean", false, "ISSUER POWER: you can take the token back from any holder without consent. Cannot be added later.", "false"),
+      P("canClawback", "boolean", false, "ISSUER POWER: you can take the token back from any holder without consent. Once on it stays on; if left off it can only be switched on later if DynamicMPT is active and the flag is not locked.", "false"),
       P("transferFee", "number", false, "Secondary-sale fee 0-50%%, requires canTransfer", "0"),
       P("backingType", "string", false, "none | physical-custody | legal-entity | other-onchain | self-declared (default none)", "none"),
       P("backingStatement", "string", false, "What the issuer claims backs the token. XRPLHub does not verify this.", "1:1 USD held at ..."),
       P("verifiedBy", "string", false, "Who verifies the backing, if anyone. Never XRPLHub.", ""),
       P("redeemable", "string", false, "yes | no | unspecified — can a holder exchange the token for the underlying", "unspecified"),
+      P("lockAll", "boolean", false, "Lock every item with ImmutableFlags (XLS-94) so it can never change. ONLY accepted while DynamicMPT is active — otherwise the build is refused (never silently dropped). Per-item: lockMetadata, lockTransferFee, lockCanLock, lockRequireAuth, lockCanEscrow, lockCanTrade, lockCanTransfer, lockCanClawback.", "false"),
     ] },
   { id: "mptsend", label: "Send MPT", category: "Token issuer", tier: "safe",
     gives: "A Payment txjson sending a Multi-Purpose Token.",

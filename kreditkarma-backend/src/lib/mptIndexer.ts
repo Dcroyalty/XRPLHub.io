@@ -22,9 +22,11 @@ import type { PrismaClient } from "@prisma/client";
 import { connectMainnetOrThrow, validatedLedgerCloseTimeRipple } from "./credentials";
 import { scoreWallet, AccountNotFoundError } from "./xrplscore";
 import { bithompMptsByIssuer, bithompRecentMpts } from "./bithomp";
+import { MPT_LSF_CAN_HOLD_CONFIDENTIAL } from "./mptFlags";
 import {
   MPT_CHECKPOINT_ID,
   MPT_BOOTSTRAP_ISSUERS,
+  isConfidentialFlags,
   mptRowFromLedgerNode,
   mptRowFromBithomp,
   mptSearchText,
@@ -69,8 +71,15 @@ async function upsertRow(prisma: PrismaClient, row: MptRowInput, passNumber: num
   if (!/^[0-9A-F]{48}$/.test(row.issuanceId) || !row.issuer) return false;
   const existing = await prisma.indexedMPT.findUnique({
     where: { issuanceId: row.issuanceId },
-    select: { sources: true },
+    select: { sources: true, flagsRaw: true },
   });
+  // Bithomp's flags are rebuilt from a boolean map that can't carry
+  // lsfMPTCanHoldConfidentialBalance (XLS-96), so a Bithomp write would silently CLEAR
+  // a bit our ledger walk set. That flag is one-way (never cleared on-ledger), so
+  // OR-preserving it is exactly right. Other bits keep last-writer-wins, as before.
+  const flagsRaw =
+    row.source === "bithomp" ? row.flagsRaw | ((existing?.flagsRaw ?? 0) & MPT_LSF_CAN_HOLD_CONFIDENTIAL) : row.flagsRaw;
+  const confidential = isConfidentialFlags(flagsRaw);
   const sources = new Set((existing?.sources ?? "").split(",").filter(Boolean));
   sources.add(row.source);
   const common = {
@@ -80,13 +89,15 @@ async function upsertRow(prisma: PrismaClient, row: MptRowInput, passNumber: num
     maxAmount: row.maxAmount,
     outstanding: row.outstanding,
     transferFee: row.transferFee,
-    flagsRaw: row.flagsRaw,
+    flagsRaw,
     metadata: row.metadata,
     name: row.name,
     ticker: row.ticker,
     searchText: mptSearchText(row.name, row.ticker),
     sources: [...sources].sort().join(","),
-    ...(row.holderCount != null ? { holderCount: row.holderCount } : {}),
+    // Confidential issuance: per-holder data is unavailable, so write null (never a
+    // stale or misleading number) — the anchored record then says "unknown", not a count.
+    ...(confidential ? { holderCount: null } : row.holderCount != null ? { holderCount: row.holderCount } : {}),
     ...(row.source === "walk" ? { passNumber, ledgerIndex: row.ledgerIndex } : {}),
   };
   await prisma.indexedMPT.upsert({

@@ -11,7 +11,16 @@
 import { NextResponse } from "next/server";
 import { buildServiceTx } from "../txBuilder";
 import { describeMptIssuanceCreate } from "@/lib/mptMeta";
-import { MPT_FLAGS } from "@/lib/mptFlags";
+import { MPT_FLAGS, flagPermanence, lockFlagName } from "@/lib/mptFlags";
+import {
+  LOCK_ITEMS,
+  buildContextFromView,
+  confirmCopy,
+  formHelp,
+  lockGuide,
+  mptRegimeFor,
+  regimeHeadline,
+} from "@/lib/mptPermanence";
 import { BACKING_HARD_LINE, BACKING_TYPES, REDEEMABLE_VALUES, DEFAULT_BACKING } from "@/lib/mptBacking";
 
 export const runtime = "nodejs";
@@ -32,7 +41,16 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "account must be a valid XRPL address (the issuer / signer)" }, { status: 400 });
   }
 
-  const built = buildServiceTx(productId, account, (body.params ?? {}) as Record<string, string | number | boolean | undefined>);
+  // MPT issuance: read the LIVE amendment state once; the copy and the builder both
+  // use it, so what we say and what we build can't disagree. Unknown => hedged copy,
+  // and no ImmutableFlags.
+  const view = await mptRegimeFor(productId);
+  const built = buildServiceTx(
+    productId,
+    account,
+    (body.params ?? {}) as Record<string, string | number | boolean | undefined>,
+    view ? buildContextFromView(view) : undefined
+  );
   if (!built.ok) {
     return NextResponse.json(
       {
@@ -54,19 +72,36 @@ export async function POST(req: Request) {
     priced: "Free preview. Pay to build and sign — see /api/create-payment then /api/execute.",
   };
 
-  if (productId === "mptissue") {
-    const manifest = describeMptIssuanceCreate(built.txjson as Record<string, unknown>);
+  if (productId === "mptissue" && view) {
+    const manifest = describeMptIssuanceCreate(built.txjson as Record<string, unknown>, view);
+    const copy = confirmCopy(view, manifest.permanence.lockedByThisTransaction);
     return NextResponse.json({
       ...base,
-      permanent: true,
+      // Replaces the old blanket `permanent: true`: what is permanent depends on the live
+      // DynamicMPT amendment state, which this block reports and dates.
+      permanence: manifest.permanence,
       manifest,
-      flagGuide: MPT_FLAGS.map((f) => ({
-        flag: f.txFlag,
-        label: f.label,
-        category: f.category,
-        plain: f.plain,
-        permanence: f.permanence,
-      })),
+      flagGuide: MPT_FLAGS.map((f) => {
+        const p = flagPermanence(f, view.regime);
+        return {
+          flag: f.txFlag,
+          label: f.label,
+          category: f.category,
+          plain: f.plain,
+          permanence: `If on: ${p.ifOn} If off: ${p.ifOff}`,
+          permanenceIfOn: p.ifOn,
+          permanenceIfOff: p.ifOff,
+          lockBit: lockFlagName(f),
+        };
+      }),
+      // Locks (ImmutableFlags) — offered only while DynamicMPT is confirmed active.
+      locks: {
+        available: view.regime === "post-activation",
+        guide: lockGuide(view),
+        options: view.regime === "post-activation" ? LOCK_ITEMS.map((i) => ({ param: i.param, tif: i.tif, bit: i.bit, label: i.label })) : [],
+        lockAllParam: "lockAll",
+      },
+      formHelp: formHelp(view),
       backing: {
         types: BACKING_TYPES,
         redeemableValues: REDEEMABLE_VALUES,
@@ -75,8 +110,12 @@ export async function POST(req: Request) {
         hardLine: BACKING_HARD_LINE,
       },
       disclaimer:
-        "Every field above is permanent once you sign — MPTokenIssuanceCreate is the only chance to set the flags, " +
-        "supply, scale, fee, and metadata. " +
+        "MPTokenIssuanceCreate is the only chance to set the flags, supply, scale, fee, metadata — and, once DynamicMPT " +
+        "is active, the locks that make them permanent. " +
+        regimeHeadline(view).join(" ") +
+        " " +
+        copy.warning +
+        " " +
         BACKING_HARD_LINE,
     });
   }

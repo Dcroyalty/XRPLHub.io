@@ -13,6 +13,7 @@
 import { buildMptFlagsValue, flagSelectionFromParams } from '@/lib/mptFlags';
 import { normalizeBacking, validateBacking, type BackingDeclaration } from '@/lib/mptBacking';
 import { buildMptMetadata } from '@/lib/mptMeta';
+import { parseMptLocks, type BuildContext } from '@/lib/mptPermanence';
 
 export type SafetyTier = 'safe' | 'caution' | 'blocked';
 
@@ -33,7 +34,7 @@ const xrpToDrops = (xrp: number) => String(Math.round(xrp * 1_000_000));
 
 // ── Per-product builders ──────────────────────────────────────────────
 // account = the customer's own wallet (the signer)
-type Builder = (account: string, p: Params) => BuildResult;
+type Builder = (account: string, p: Params, ctx?: BuildContext) => BuildResult;
 
 const SAFE = (txjson: Record<string, unknown>, label: string): BuildResult => ({ ok: true, txjson, tier: 'safe', label });
 const CAUTION = (txjson: Record<string, unknown>, label: string): BuildResult => ({ ok: true, txjson, tier: 'caution', label });
@@ -90,10 +91,11 @@ const builders: Record<string, Builder> = {
     const enable = str(p.enable) !== 'false';
     return SAFE({ TransactionType: 'AccountSet', Account: account, [enable ? 'ClearFlag' : 'SetFlag']: 8 }, 'Rippling Control');
   },
-  mptissue: (account, p) => {
-    // Full MPTokenIssuanceCreate builder. Every choice here is PERMANENT
-    // (XLS-33 §3.1.1) so this is `caution` tier — the execute route forces a
-    // confirmation manifest before signing. See src/lib/mptFlags.ts,
+  mptissue: (account, p, ctx) => {
+    // Full MPTokenIssuanceCreate builder. Choices here are hard or impossible to
+    // undo (which ones depends on the live DynamicMPT amendment state — see
+    // src/lib/mptPermanence.ts) so this is `caution` tier — the execute route
+    // forces a confirmation manifest before signing. See src/lib/mptFlags.ts,
     // src/lib/mptBacking.ts, src/lib/mptMeta.ts.
     const name = str(p.name);
     const ticker = str(p.ticker);
@@ -150,6 +152,13 @@ const builders: Record<string, Builder> = {
       MPTokenMetadata: md.hex,
     };
     if (transferFee !== undefined) txjson.TransferFee = transferFee;
+
+    // ImmutableFlags (XLS-94 locks). Only ever added when DynamicMPT is confirmed
+    // ACTIVE in ctx — otherwise the ledger rejects the field (temDISABLED) after
+    // the customer has paid — and never as 0 (temINVALID_FLAG).
+    const locks = parseMptLocks(p as Record<string, unknown>, ctx);
+    if (!locks.ok) return BAD(locks.error);
+    if (locks.value) txjson.ImmutableFlags = locks.value;
 
     return CAUTION(txjson, 'Multi-Purpose Token Issuance');
   },
@@ -289,11 +298,16 @@ const builders: Record<string, Builder> = {
   },
 };
 
-export function buildServiceTx(productId: string, account: string, params: Params): BuildResult {
+/**
+ * `ctx` carries live amendment states for builders that depend on them (today only
+ * mptissue, via mptBuildContext()). Omitted = "unknown": the builder then never
+ * emits anything that needs an amendment to be active.
+ */
+export function buildServiceTx(productId: string, account: string, params: Params, ctx?: BuildContext): BuildResult {
   if (!isAddr(account)) return BAD('invalid signer wallet address');
   const b = builders[productId];
   if (!b) return BAD(`product "${productId}" has no execution builder yet`);
-  return b(account, params);
+  return b(account, params, ctx);
 }
 
 // Quick lookup for the frontend: which params each product needs, and its tier.
