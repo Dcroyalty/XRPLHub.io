@@ -11,7 +11,7 @@ export const PRICE_PER_SCORE_RLUSD = 0.02;
 // Full wallet risk report (score + flags + signals + on-chain snapshot).
 export const PRICE_PER_PRODUCT_RLUSD = 0.08;
 
-// Prebuilt ready-to-sign XRPL transaction (27-service engine).
+// Prebuilt ready-to-sign XRPL transaction (every buildable service).
 export const PRICE_PER_TX_PRODUCT_RLUSD = 0.15;
 
 // How long an unpaid quote stays valid before it expires.

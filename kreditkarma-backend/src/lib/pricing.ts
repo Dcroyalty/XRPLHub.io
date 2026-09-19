@@ -12,6 +12,9 @@
 // display change lands; scripts in the repo assert the two agree.
 
 import { xrpUsd } from "./xrpPrice";
+import { SERVICE_PRICE_USD } from "./servicePrices";
+
+export { SERVICE_PRICE_USD };
 
 export const TREASURY = "rs59g3amo5iT6T64Cg96XXMAWuw3WPQcLF";
 export const RLUSD_ISSUER = process.env.RLUSD_ISSUER || "rMxCKbEDwqr76QuheSUMdEGf4B9xJ8m5De";
@@ -19,46 +22,6 @@ export const RLUSD_ISSUER = process.env.RLUSD_ISSUER || "rMxCKbEDwqr76QuheSUMdEG
 export const RLUSD_HEX = "524C555344000000000000000000000000000000";
 
 export type PayCurrency = "XRP" | "RLUSD";
-
-/** USD (= RLUSD) list price of each storefront service. */
-export const SERVICE_PRICE_USD: Readonly<Record<string, number>> = Object.freeze({
-  multisig: 60,
-  regkey: 30,
-  depositauth: 20,
-  desttag: 15,
-  issuerdecl: 40,
-  tokenfee: 25,
-  issuercfg: 80,
-  trustline: 20,
-  rippling: 20,
-  dexorder: 25,
-  ammlaunch: 75,
-  ammentry: 35,
-  smartswap: 25,
-  paychannel: 50,
-  nftmint: 30,
-  nftburn: 20,
-  nftoffer: 20,
-  identity: 20,
-  did: 35,
-  compliance: 55,
-  escrow: 40,
-  mptissue: 55,
-  mptsend: 20,
-  trustsend: 25,
-  globalfreeze: 30,
-  freezeline: 25,
-  checkcreate: 20,
-  checkcash: 15,
-  checkcancel: 15,
-  desttagreq: 20,
-  dextrade: 25,
-  tickets: 20,
-  credentialissue: 35,
-  permdomain: 45,
-  // Not a builder service: the paid XRPLScore credential (/api/credential).
-  credential: 1,
-});
 
 /** Products that are payments but not priced services (accepted, never executable). */
 export const OPEN_AMOUNT_PRODUCTS: ReadonlySet<string> = new Set(["donate"]);

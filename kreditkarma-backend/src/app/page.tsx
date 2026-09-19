@@ -1,6 +1,8 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { SERVICE_PRICE_USD } from '@/lib/servicePrices';
+import { GRANT_APPLICATIONS_OPEN, GRANTS_PAUSED_TITLE, GRANTS_PAUSED_MESSAGE, GRANTS_DONATE_NOTE } from '@/lib/grantsStatus';
 import WalletPicker from '@/lib/wallet/WalletPicker';
 import XamanPayPrompt from '@/components/XamanPayPrompt';
 import {
@@ -34,6 +36,35 @@ const TEST_PRICE_RLUSD = 0.01; // RLUSD has 2-decimal minimum on issuer; this is
 // ────────────────────────────────────────────────────────────────────────
 
 type Currency = 'RLUSD' | 'XRP';
+// ─── Live pricing ───
+// RLUSD is the list price. The XRP figure is derived SERVER-SIDE from the live XRP/USD rate
+// (/api/pricing) — never typed here, never stale. If no live rate exists we show RLUSD only.
+type PricingData = { xrpUsd: number | null; asOf: string | null; xrp: Record<string, number | null> };
+let pricingCache: { data: PricingData; at: number } | null = null;
+let pricingInflight: Promise<PricingData | null> | null = null;
+const PRICING_TTL_MS = 5 * 60_000;
+function loadPricing(): Promise<PricingData | null> {
+  if (pricingCache && Date.now() - pricingCache.at < PRICING_TTL_MS) return Promise.resolve(pricingCache.data);
+  if (!pricingInflight) {
+    pricingInflight = fetch('/api/pricing', { cache: 'no-store' })
+      .then(r => r.json())
+      .then((d: PricingData) => { pricingCache = { data: d, at: Date.now() }; return d; })
+      .catch(() => null)
+      .finally(() => { pricingInflight = null; });
+  }
+  return pricingInflight;
+}
+function usePricing(): PricingData | null {
+  const [d, setD] = useState<PricingData | null>(pricingCache?.data ?? null);
+  useEffect(() => { let live = true; loadPricing().then(x => { if (live && x) setD(x); }); return () => { live = false; }; }, []);
+  return d;
+}
+const fmtXrp = (n: number) => (n >= 100 ? n.toFixed(0) : n.toFixed(1));
+/** "≈13.9 XRP", or null when there is no live rate (we then show RLUSD only, never a stale number). */
+const xrpLabel = (pr: PricingData | null, id: string): string | null => {
+  const v = pr?.xrp?.[id];
+  return typeof v === 'number' ? `≈${fmtXrp(v)} XRP` : null;
+};
 const fmt   = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 const trunc = (a: string) => a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '';
 
@@ -57,221 +88,224 @@ function Wordmark({ size = 18 }: { size?: number }) {
   );
 }
 
-const TICKER = [
-  'Write a check on XRPL — yes, really. Create, cash, or cancel a Check in one tap',
+// A function (not a constant) so the count is derived from the product table at render time.
+const tickerLines = (): string[] => [
+  'Write a check on XRPL — yes, really. Create, cash, or cancel a Check in a few taps',
   'XRPLScore™ — your own on-chain credit score. No FICO. No bureau. No SSN.',
-  'Send money safely with on-chain Escrow — funds release exactly when you choose',
-  'Behind on rent or groceries? Apply for a Community Grant — money straight to your wallet',
-  'Mint NFTs with royalties baked in — your digital art, yours forever',
+  'Lock XRP in an on-chain Escrow — it releases at the time you set',
+  'Community Grants: a public treasury on the XRP Ledger — applications are paused until it is funded',
+  'Mint NFTs with royalties baked in — up to 50%, recorded on-chain',
   'One leaked key shouldn\'t drain your wallet — lock it down with Multi-Sig Fortress',
-  'Build XRPLScore™ monthly — turn on-chain history into real reputation',
-  'Launch a token the right way — Issuer Trustless Declaration in one signed transaction',
-  'Spin up an AMM liquidity pool with a single Xaman signature',
-  'Put your identity on-chain — verifiable, portable, yours',
-  'Donate to the Community Grant treasury — 100% reaches real people, verifiable on-chain',
-  'Check any XRPL wallet\'s XRPLScore™ free — instant, live from mainnet',
-  'Found an XRPL tutorial but don\'t code? Skip it — pay here, AI does it for you',
-  '35 XRPL services done for you · You sign once in Xaman · Live on mainnet in ~4 seconds',
+  'XRPLScore™ reads 8 public on-chain signals — account age, activity, balances, trust lines and more',
+  'Launch a token the right way — renounce freeze authority for good with Issuer Trustless Declaration',
+  'Spin up an AMM liquidity pool — we build the transaction, you sign it',
+  'Put your domain and DID on-chain — verifiable, portable, yours',
+  'Donate to the public grants treasury — every payment in and out is visible on-chain',
+  'Check any XRPL wallet\'s XRPLScore™ free — read from mainnet, refreshed every 15 minutes',
+  'Found an XRPL tutorial but don\'t code? Skip it — pay here, we build the exact transaction and you sign it',
+  `${PRODUCTS.length} XRPL services done for you · Pay, then sign your transaction · Live on mainnet in ~4 seconds`,
   'XRPLHub.io — XRPL Services · Community Grants · XRPLScore™',
 ];
 
 // ─── XRPL SERVICES — DONE FOR YOU (mirrors xrpl.org tutorials) ───
-const PRODUCTS = [
+const RAW_PRODUCTS = [
   // WALLET SECURITY
-  { id:'multisig', cat:'Wallet Security', emoji:'🏰', name:'Multi-Sig Fortress', featured:false, tag:'HOT', comingSoon:false, color:'#10b981', priceRLUSD:60, priceXRP:195,
+  { id:'multisig', cat:'Wallet Security', emoji:'🏰', name:'Multi-Sig Fortress', featured:false, tag:'HOT', comingSoon:false, color:'#10b981',
     amendment:'SignerListSet', tagline:'Require multiple signatures for every transaction',
-    desc:'You tell us the signers and quorum. AI builds the exact SignerListSet transaction. Tick the lockdown option and it becomes a 3-step flow (signer list, remove any regular key, disable your master key) after which multi-signing is the only way to move funds. That is irreversible without your quorum, so you confirm before you sign.',
-    aiDetail:'AI assembles a SignerListSet with your quorum and signer list. On its own that leaves your master key working. With the lockdown option no single key can move funds, and if your quorum is ever unreachable the account is locked for good.',
+    desc:'You tell us the signers and quorum. We build the exact SignerListSet transaction. Tick the lockdown option and it becomes a 3-step flow (signer list, remove any regular key, disable your master key) after which multi-signing is the only way to move funds. That is irreversible without your quorum, so you confirm before you sign.',
+    aiDetail:'We build a SignerListSet with your quorum and signer list. On its own that leaves your master key working. With the lockdown option no single key can move funds, and if your quorum is ever unreachable the account is locked for good.',
     features:['SignerListSet built to your spec','M-of-N signature requirement','Optional master-key lockdown (3 steps)','Lock-out warning before you sign','TX hash receipts'] },
-  { id:'regkey', cat:'Wallet Security', emoji:'🔑', name:'Regular Key Rotator', featured:false, comingSoon:false, color:'#34d399', priceRLUSD:30, priceXRP:95,
+  { id:'regkey', cat:'Wallet Security', emoji:'🔑', name:'Regular Key Rotator', featured:false, comingSoon:false, color:'#34d399',
     amendment:'SetRegularKey', tagline:'Assign a backup signing key without exposing your master key',
-    desc:'You provide the regular key. AI builds the SetRegularKey transaction. You sign once in Xaman.',
-    aiDetail:'AI assembles a SetRegularKey transaction so you can sign day-to-day with a rotatable key while your master key stays cold.',
-    features:['SetRegularKey built to your spec','Rotatable signing key','Master key stays offline','You sign once in Xaman','TX hash receipt'] },
-  { id:'depositauth', cat:'Wallet Security', emoji:'🛡️', name:'Deposit Auth Guard', featured:false, comingSoon:false, color:'#10b981', priceRLUSD:20, priceXRP:65,
+    desc:'You provide the regular key. We build the SetRegularKey transaction. You sign it in Xaman.',
+    aiDetail:'We build a SetRegularKey transaction so you can sign day-to-day with a rotatable key while your master key stays cold.',
+    features:['SetRegularKey built to your spec','Rotatable signing key','Master key stays offline','You sign it in your wallet','TX hash receipt'] },
+  { id:'depositauth', cat:'Wallet Security', emoji:'🛡️', name:'Deposit Auth Guard', featured:false, comingSoon:false, color:'#10b981',
     amendment:'AccountSet · asfDepositAuth', tagline:'Block unsolicited incoming payments',
-    desc:'AI builds the AccountSet (asfDepositAuth) transaction. You sign once — only pre-authorized senders can deposit.',
-    aiDetail:'AI assembles AccountSet with asfDepositAuth. After signing, your account rejects payments from unauthorized senders.',
-    features:['asfDepositAuth set on-chain','Blocks unsolicited deposits','Pre-authorize senders','You sign once in Xaman','TX hash receipt'] },
-  { id:'desttag', cat:'Wallet Security', emoji:'🏷️', name:'Destination Tag Lock', featured:false, comingSoon:false, color:'#34d399', priceRLUSD:15, priceXRP:50,
+    desc:'We build the AccountSet (asfDepositAuth) transaction. You sign it — only pre-authorized senders can deposit.',
+    aiDetail:'We build AccountSet with asfDepositAuth. After signing, your account rejects payments from unauthorized senders.',
+    features:['asfDepositAuth set on-chain','Blocks unsolicited deposits','Pre-authorize senders','You sign it in your wallet','TX hash receipt'] },
+  { id:'desttag', cat:'Wallet Security', emoji:'🏷️', name:'Destination Tag Lock', featured:false, comingSoon:false, color:'#34d399',
     amendment:'AccountSet · RequireDest', tagline:'Require a destination tag on every incoming payment',
-    desc:'AI builds AccountSet with asfRequireDest. You sign once — prevents misrouted deposits.',
-    aiDetail:'AI assembles AccountSet (asfRequireDest). After signing, payments without a destination tag are rejected.',
-    features:['asfRequireDest set on-chain','Prevents misrouted deposits','You sign once in Xaman','Permanent on mainnet','TX hash receipt'] },
+    desc:'We build AccountSet with asfRequireDest. You sign it — prevents misrouted deposits.',
+    aiDetail:'We build AccountSet (asfRequireDest). After signing, payments without a destination tag are rejected.',
+    features:['asfRequireDest set on-chain','Prevents misrouted deposits','You sign it in your wallet','Permanent on mainnet','TX hash receipt'] },
   // TOKEN ISSUER
-  { id:'issuerdecl', cat:'Token Issuer', emoji:'📜', name:'Issuer Trustless Declaration', featured:false, tag:'POPULAR', comingSoon:false, color:'#f59e0b', priceRLUSD:40, priceXRP:130,
+  { id:'issuerdecl', cat:'Token Issuer', emoji:'📜', name:'Issuer Trustless Declaration', featured:false, tag:'POPULAR', comingSoon:false, color:'#f59e0b',
     amendment:'AccountSet · asfNoFreeze', tagline:'As an issuer, permanently give up freeze authority',
-    desc:'For token issuers: AI builds AccountSet (asfNoFreeze), permanently surrendering your ability to freeze holders\u2019 trust lines — a credible trustless signal. You sign once in Xaman.',
-    aiDetail:'AI assembles AccountSet with asfNoFreeze on YOUR issuing account. It permanently removes your ability to freeze individual trust lines and makes Global Freeze a one-way switch (once on, never off). It needs your master key. It does not affect tokens others issue to you.',
-    features:['asfNoFreeze on issuing account','Permanent — cannot be undone','Confirmation step before you sign','You sign once in Xaman','TX hash receipt'] },
-  { id:'tokenfee', cat:'Token Issuer', emoji:'💱', name:'Token Transfer Fee', featured:false, comingSoon:false, color:'#fbbf24', priceRLUSD:25, priceXRP:80,
+    desc:'For token issuers: we build AccountSet (asfNoFreeze), permanently surrendering your ability to freeze holders\u2019 trust lines — a credible trustless signal. You sign it in Xaman.',
+    aiDetail:'We build AccountSet with asfNoFreeze on YOUR issuing account. It permanently removes your ability to freeze individual trust lines and makes Global Freeze a one-way switch (once on, never off). It needs your master key. It does not affect tokens others issue to you.',
+    features:['asfNoFreeze on issuing account','Permanent — cannot be undone','Confirmation step before you sign','You sign it in your wallet','TX hash receipt'] },
+  { id:'tokenfee', cat:'Token Issuer', emoji:'💱', name:'Token Transfer Fee', featured:false, comingSoon:false, color:'#fbbf24',
     amendment:'AccountSet · TransferRate', tagline:'Set a transfer fee on the token you issue',
-    desc:'AI builds AccountSet with your TransferRate. You sign once.',
-    aiDetail:'AI assembles AccountSet with your chosen TransferRate (0–100%). Applies to secondary transfers of your issued token.',
-    features:['TransferRate set to your spec','Up to protocol max','You sign once in Xaman','Permanent until changed','TX hash receipt'] },
-  { id:'issuercfg', cat:'Token Issuer', emoji:'🏭', name:'Full Issuer Config', featured:false, comingSoon:false, color:'#f59e0b', priceRLUSD:80, priceXRP:260,
+    desc:'We build AccountSet with your TransferRate. You sign it.',
+    aiDetail:'We build AccountSet with your chosen TransferRate (0–100%). Applies to secondary transfers of your issued token.',
+    features:['TransferRate set to your spec','Up to protocol max','You sign it in your wallet','Permanent until changed','TX hash receipt'] },
+  { id:'issuercfg', cat:'Token Issuer', emoji:'🏭', name:'Full Issuer Config', featured:false, comingSoon:false, color:'#f59e0b',
     amendment:'AccountSet · Multi-flag', tagline:'Complete issuer setup in one guided flow',
-    desc:'Default Ripple, domain, transfer fee and tick size configured together in one AccountSet. AI builds the transaction; you sign in Xaman.',
-    aiDetail:'AI assembles one AccountSet for a production token issuer — Default Ripple, plus your domain, TransferRate and TickSize.',
+    desc:'Default Ripple, domain, transfer fee and tick size configured together in one AccountSet. We build the transaction; you sign in Xaman.',
+    aiDetail:'We build one AccountSet for a production token issuer — Default Ripple, plus your domain, TransferRate and TickSize.',
     features:['One AccountSet, built to spec','Domain + fee + tick size','Default Ripple enabled','You sign in Xaman','TX hash receipt'] },
-  { id:'trustline', cat:'Token Issuer', emoji:'🔗', name:'Trust Line Configurator', featured:false, tag:'SALE', comingSoon:false, color:'#fbbf24', priceRLUSD:20, priceXRP:65,
+  { id:'trustline', cat:'Token Issuer', emoji:'🔗', name:'Trust Line Configurator', featured:false, tag:'SALE', comingSoon:false, color:'#fbbf24',
     amendment:'TrustSet', tagline:'Create or adjust a trust line with precise limits',
-    desc:'AI builds a TrustSet transaction with your currency, issuer, and limit. You sign once.',
-    aiDetail:'AI assembles TrustSet with your specified currency, issuer, and limit value.',
-    features:['TrustSet built to your spec','Custom limit + flags','You sign once in Xaman','Permanent on mainnet','TX hash receipt'] },
-  { id:'rippling', cat:'Token Issuer', emoji:'🌊', name:'Rippling Controller', featured:false, comingSoon:false, color:'#f59e0b', priceRLUSD:20, priceXRP:65,
+    desc:'We build a TrustSet transaction with your currency, issuer, and limit. You sign it.',
+    aiDetail:'We build TrustSet with your specified currency, issuer, and limit value.',
+    features:['TrustSet built to your spec','Custom limit + flags','You sign it in your wallet','Permanent on mainnet','TX hash receipt'] },
+  { id:'rippling', cat:'Token Issuer', emoji:'🌊', name:'Rippling Controller', featured:false, comingSoon:false, color:'#f59e0b',
     amendment:'AccountSet · DefaultRipple / NoRipple', tagline:'Control rippling on your trust lines',
-    desc:'AI builds the AccountSet / TrustSet flags to enable or disable rippling. You sign once.',
-    aiDetail:'AI assembles the DefaultRipple or NoRipple flag changes appropriate for an issuer or a holder.',
-    features:['Rippling flags built to spec','Issuer + holder modes','You sign once in Xaman','Permanent until changed','TX hash receipt'] },
+    desc:'We build the AccountSet / TrustSet flags to enable or disable rippling. You sign it.',
+    aiDetail:'We build the DefaultRipple or NoRipple flag changes appropriate for an issuer or a holder.',
+    features:['Rippling flags built to spec','Issuer + holder modes','You sign it in your wallet','Permanent until changed','TX hash receipt'] },
   // DEFI
-  { id:'dexorder', cat:'DeFi', emoji:'📊', name:'DEX Order Builder', featured:false, comingSoon:false, color:'#a78bfa', priceRLUSD:25, priceXRP:80,
+  { id:'dexorder', cat:'DeFi', emoji:'📊', name:'DEX Order Builder', featured:false, comingSoon:false, color:'#a78bfa',
     amendment:'OfferCreate', tagline:'Place a limit order on the native XRPL DEX',
-    desc:'You give the pair and price. AI builds the OfferCreate transaction. You sign once — the order rests on the XRPL order book.',
-    aiDetail:'AI assembles OfferCreate with your TakerPays / TakerGets. Placed directly on the XRPL DEX after you sign. No smart contract risk.',
-    features:['OfferCreate built to your spec','Native XRPL DEX','You sign once in Xaman','No smart-contract risk','TX hash receipt'] },
-  { id:'ammlaunch', cat:'DeFi', emoji:'🌀', name:'AMM Pool Launch', featured:false, tag:'HOT', comingSoon:false, color:'#8b5cf6', priceRLUSD:75, priceXRP:245,
+    desc:'You give the pair and price. We build the OfferCreate transaction. You sign it — the order rests on the XRPL order book.',
+    aiDetail:'We build OfferCreate with your TakerPays / TakerGets. Placed directly on the XRPL DEX after you sign. No smart contract risk.',
+    features:['OfferCreate built to your spec','Native XRPL DEX','You sign it in your wallet','No smart-contract risk','TX hash receipt'] },
+  { id:'ammlaunch', cat:'DeFi', emoji:'🌀', name:'AMM Pool Launch', featured:false, tag:'HOT', comingSoon:false, color:'#8b5cf6',
     amendment:'AMMCreate', tagline:'Launch a new AMM liquidity pool',
-    desc:'You choose the asset pair and seed amounts. AI builds the AMMCreate transaction. You sign once in Xaman.',
-    aiDetail:'AI assembles AMMCreate for your asset pair and seed liquidity. After you sign, the pool exists on XRPL mainnet.',
-    features:['AMMCreate built to your spec','New pool on mainnet','You sign once in Xaman','LP tokens to your wallet','TX hash receipt'] },
-  { id:'ammentry', cat:'DeFi', emoji:'💧', name:'AMM Liquidity Entry', featured:false, comingSoon:false, color:'#a78bfa', priceRLUSD:35, priceXRP:115,
+    desc:'You choose the asset pair and seed amounts. We build the AMMCreate transaction. You sign it in Xaman.',
+    aiDetail:'We build AMMCreate for your asset pair and seed liquidity. After you sign, the pool exists on XRPL mainnet.',
+    features:['AMMCreate built to your spec','New pool on mainnet','You sign it in your wallet','LP tokens to your wallet','TX hash receipt'] },
+  { id:'ammentry', cat:'DeFi', emoji:'💧', name:'AMM Liquidity Entry', featured:false, comingSoon:false, color:'#a78bfa',
     amendment:'AMMDeposit', tagline:'Add liquidity to an existing AMM pool',
-    desc:'AI builds the AMMDeposit transaction for your chosen pool and amounts. You sign once.',
-    aiDetail:'AI assembles AMMDeposit for your target pool. You receive LP tokens after signing.',
-    features:['AMMDeposit built to spec','Single or double-sided','You sign once in Xaman','LP tokens to your wallet','TX hash receipt'] },
-  { id:'smartswap', cat:'DeFi', emoji:'🔁', name:'Smart Swap Router', featured:false, comingSoon:false, color:'#8b5cf6', priceRLUSD:25, priceXRP:80,
+    desc:'We build the AMMDeposit transaction for your chosen pool and amounts. You sign it.',
+    aiDetail:'We build AMMDeposit for your target pool. You receive LP tokens after signing.',
+    features:['AMMDeposit built to spec','Single or double-sided','You sign it in your wallet','LP tokens to your wallet','TX hash receipt'] },
+  { id:'smartswap', cat:'DeFi', emoji:'🔁', name:'Smart Swap Router', featured:false, comingSoon:false, color:'#8b5cf6',
     amendment:'Payment · Pathfinding', tagline:'Swap assets through the best on-ledger path',
-    desc:'AI builds a path Payment that routes through DEX + AMM liquidity. You sign once.',
-    aiDetail:'AI assembles a Payment with pathfinding so your swap takes an efficient on-ledger route.',
-    features:['Path Payment built to spec','Routes DEX + AMM','You sign once in Xaman','Slippage bounds set','TX hash receipt'] },
-  { id:'paychannel', cat:'DeFi', emoji:'⚡', name:'Payment Channel', featured:false, comingSoon:false, color:'#a78bfa', priceRLUSD:50, priceXRP:160,
+    desc:'We build a path Payment that routes through DEX + AMM liquidity. You sign it.',
+    aiDetail:'We build a Payment with pathfinding so your swap takes an efficient on-ledger route.',
+    features:['Path Payment built to spec','Routes DEX + AMM','You sign it in your wallet','Slippage bounds set','TX hash receipt'] },
+  { id:'paychannel', cat:'DeFi', emoji:'⚡', name:'Payment Channel', featured:false, comingSoon:false, color:'#a78bfa',
     amendment:'PaymentChannelCreate', tagline:'Open a channel for streaming micropayments',
-    desc:'AI builds PaymentChannelCreate with your destination and settle delay. You sign once.',
-    aiDetail:'AI assembles PaymentChannelCreate. After signing, you can stream off-ledger claims with one final settlement.',
-    features:['PaymentChannelCreate built','Off-ledger micropayments','You sign once in Xaman','Configurable settle delay','TX hash receipt'] },
+    desc:'We build PaymentChannelCreate with your destination and settle delay. You sign it.',
+    aiDetail:'We build PaymentChannelCreate. After signing, you can stream off-ledger claims with one final settlement.',
+    features:['PaymentChannelCreate built','Off-ledger micropayments','You sign it in your wallet','Configurable settle delay','TX hash receipt'] },
   // NFT
-  { id:'nftmint', cat:'NFT', emoji:'🎨', name:'NFT Minter', featured:false, tag:'HOT', comingSoon:false, color:'#ec4899', priceRLUSD:30, priceXRP:95,
+  { id:'nftmint', cat:'NFT', emoji:'🎨', name:'NFT Minter', featured:false, tag:'HOT', comingSoon:false, color:'#ec4899',
     amendment:'NFTokenMint', tagline:'Mint an NFT with up to 50% royalties',
-    desc:'You give the metadata URI and royalty. AI builds NFTokenMint. You sign once in Xaman.',
-    aiDetail:'AI assembles NFTokenMint with your URI, transfer fee (0–50%), and flags. Minted to your wallet after signing.',
-    features:['NFTokenMint built to spec','Up to 50% royalty','Custom URI + flags','You sign once in Xaman','TX hash receipt'] },
-  { id:'nftburn', cat:'NFT', emoji:'🔥', name:'NFT Burn Certificate', featured:false, comingSoon:false, color:'#f472b6', priceRLUSD:20, priceXRP:65,
+    desc:'You give the metadata URI and royalty. We build NFTokenMint. You sign it in Xaman.',
+    aiDetail:'We build NFTokenMint with your URI, transfer fee (0–50%), and flags. Minted to your wallet after signing.',
+    features:['NFTokenMint built to spec','Up to 50% royalty','Custom URI + flags','You sign it in your wallet','TX hash receipt'] },
+  { id:'nftburn', cat:'NFT', emoji:'🔥', name:'NFT Burn Certificate', featured:false, comingSoon:false, color:'#f472b6',
     amendment:'NFTokenBurn', tagline:'Permanently burn an NFT with on-chain proof',
-    desc:'AI builds NFTokenBurn for your token ID. You sign once — the burn is permanent and verifiable.',
-    aiDetail:'AI assembles NFTokenBurn for your NFTokenID. After signing, the token is destroyed on mainnet.',
-    features:['NFTokenBurn built to spec','Permanent + verifiable','You sign once in Xaman','On-chain burn proof','TX hash receipt'] },
-  { id:'nftoffer', cat:'NFT', emoji:'🏷️', name:'NFT Offer Creator', featured:false, comingSoon:false, color:'#ec4899', priceRLUSD:20, priceXRP:65,
+    desc:'We build NFTokenBurn for your token ID. You sign it — the burn is permanent and verifiable.',
+    aiDetail:'We build NFTokenBurn for your NFTokenID. After signing, the token is destroyed on mainnet.',
+    features:['NFTokenBurn built to spec','Permanent + verifiable','You sign it in your wallet','On-chain burn proof','TX hash receipt'] },
+  { id:'nftoffer', cat:'NFT', emoji:'🏷️', name:'NFT Offer Creator', featured:false, comingSoon:false, color:'#ec4899',
     amendment:'NFTokenCreateOffer', tagline:'Create a buy or sell offer for an NFT',
-    desc:'AI builds NFTokenCreateOffer with your price and token. You sign once.',
-    aiDetail:'AI assembles NFTokenCreateOffer (buy or sell) for your token at your price.',
-    features:['NFTokenCreateOffer built','Buy or sell side','You sign once in Xaman','On-chain offer','TX hash receipt'] },
+    desc:'We build NFTokenCreateOffer with your price and token. You sign it.',
+    aiDetail:'We build NFTokenCreateOffer (buy or sell) for your token at your price.',
+    features:['NFTokenCreateOffer built','Buy or sell side','You sign it in your wallet','On-chain offer','TX hash receipt'] },
   // IDENTITY
-  { id:'identity', cat:'Identity', emoji:'🪪', name:'On-Chain Identity', featured:false, comingSoon:false, color:'#06b6d4', priceRLUSD:20, priceXRP:65,
+  { id:'identity', cat:'Identity', emoji:'🪪', name:'On-Chain Identity', featured:false, comingSoon:false, color:'#06b6d4',
     amendment:'AccountSet · Domain + Email Hash', tagline:'Link your domain and email hash to your wallet',
-    desc:'AI builds AccountSet encoding your domain and, if you give one, your email hash. You sign once — they are written to your account for explorers and wallets to read.',
-    aiDetail:'AI assembles AccountSet with your domain (hex) and an MD5 email hash (the XRPL EmailHash convention) into your account root.',
-    features:['AccountSet built to spec','Domain + email hash','Readable by explorers and wallets','You sign once in Xaman','TX hash receipt'] },
-  { id:'did', cat:'Identity', emoji:'🆔', name:'DID Creator', featured:false, comingSoon:false, color:'#22d3ee', priceRLUSD:35, priceXRP:115,
+    desc:'We build AccountSet encoding your domain and, if you give one, your email hash. You sign it — they are written to your account for explorers and wallets to read.',
+    aiDetail:'We build AccountSet with your domain (hex) and an MD5 email hash (the XRPL EmailHash convention) into your account root.',
+    features:['AccountSet built to spec','Domain + email hash','Readable by explorers and wallets','You sign it in your wallet','TX hash receipt'] },
+  { id:'did', cat:'Identity', emoji:'🆔', name:'DID Creator', featured:false, comingSoon:false, color:'#22d3ee',
     amendment:'DIDSet', tagline:'Create a decentralized identifier on the XRP Ledger',
-    desc:'AI builds a DIDSet transaction with your DID document reference. You sign once.',
-    aiDetail:'AI assembles DIDSet with your DID document URI / data. After signing, the DID is anchored on mainnet.',
-    features:['DIDSet built to spec','On-ledger DID anchor','You sign once in Xaman','Document URI reference','TX hash receipt'] },
-  { id:'compliance', cat:'Identity', emoji:'✅', name:'Compliance Bundle', featured:false, comingSoon:false, color:'#06b6d4', priceRLUSD:55, priceXRP:180,
+    desc:'We build a DIDSet transaction with your DID document reference. You sign it.',
+    aiDetail:'We build DIDSet with your DID document URI / data. After signing, the DID is anchored on mainnet.',
+    features:['DIDSet built to spec','On-ledger DID anchor','You sign it in your wallet','Document URI reference','TX hash receipt'] },
+  { id:'compliance', cat:'Identity', emoji:'✅', name:'Compliance Bundle', featured:false, comingSoon:false, color:'#06b6d4',
     amendment:'AccountSet + Domain + DID', tagline:'Identity + domain + DID configured together',
     desc:'A guided bundle: on-chain identity, domain, and a DID, built as two transactions you sign in order in Xaman.',
-    aiDetail:'AI assembles the combined identity transactions (AccountSet domain/email + DIDSet) for a complete verifiable profile.',
+    aiDetail:'We build the combined identity transactions (AccountSet domain/email + DIDSet) for a complete verifiable profile.',
     features:['Identity + domain + DID','One guided flow','You sign in Xaman','Explorer-recognized','TX hash receipts'] },
   // ESCROW
-  { id:'escrow', cat:'Escrow', emoji:'🏛️', name:'Escrow Setup', featured:false, tag:'POPULAR', comingSoon:false, color:'#f97316', priceRLUSD:40, priceXRP:130,
+  { id:'escrow', cat:'Escrow', emoji:'🏛️', name:'Escrow Setup', featured:false, tag:'POPULAR', comingSoon:false, color:'#f97316',
     amendment:'EscrowCreate', tagline:'Time-lock XRP with a release condition',
-    desc:'You set the amount and release time. AI builds EscrowCreate. You sign once — funds release on your terms.',
-    aiDetail:'AI assembles EscrowCreate with your FinishAfter time and optional condition. You later finish or cancel it.',
-    features:['EscrowCreate built to spec','Time or crypto-condition','You sign once in Xaman','On-chain audit trail','TX hash receipt'] },
+    desc:'You set the amount and release time. We build EscrowCreate. You sign it — funds release on your terms.',
+    aiDetail:'We build EscrowCreate with your FinishAfter time and optional condition. You later finish or cancel it.',
+    features:['EscrowCreate built to spec','Time or crypto-condition','You sign it in your wallet','On-chain audit trail','TX hash receipt'] },
 
   // TOKENS (v2 + management) — mirrors xrpl.org/docs/tutorials/tokens, done for you
-  { id:'mptissue', cat:'Token Issuer', emoji:'🎫', name:'Multi-Purpose Token (MPT) Issuance', featured:false, tag:'NEW', comingSoon:false, color:'#38bdf8', priceRLUSD:55, priceXRP:180,
+  { id:'mptissue', cat:'Token Issuer', emoji:'🎫', name:'Multi-Purpose Token (MPT) Issuance', featured:false, tag:'NEW', comingSoon:false, color:'#38bdf8',
     amendment:'MPTokenIssuanceCreate', tagline:'Tokenize on XRPL — a plain-English guide to what is permanent and what is not',
-    desc:'Fill a form, tokenize on XRPL. You choose the supply cap, decimals, the 6 capability flags (we explain in plain English what each one lets you do TO holders — clawback means you can take the token back from anyone), and a backing declaration recorded on-ledger. Free preview shows the decoded transaction and exactly what is permanent, what you can lock, and what the issuer could still change — read live from the XRPL amendment state. Pay to build; you sign once in your own wallet.',
+    desc:'Fill a form, tokenize on XRPL. You choose the supply cap, decimals, the 6 capability flags (we explain in plain English what each one lets you do TO holders — clawback means you can take the token back from anyone), and a backing declaration recorded on-ledger. Free preview shows the decoded transaction and exactly what is permanent, what you can lock, and what the issuer could still change — read live from the XRPL amendment state. Pay to build; you sign it in your own wallet.',
     aiDetail:'MPTokenIssuanceCreate is the only chance to set the flags, supply, scale, fee, and metadata. Supply and decimals never change, and a flag you switch on stays on; the rest is fixed only while the DynamicMPT amendment (XLS-94) stays inactive — once it is active the issuer can change it unless it is locked. A confirmation step states which case applies right now, read live from the ledger. Your backing declaration is written into the on-ledger metadata; XRPLHub publishes it but does not and cannot verify it. New issuances appear in the XRPLHub MPT registry automatically.',
-    features:['Plain-English guide to all 6 flags','On-ledger backing declaration','Free preview of the decoded tx','Live confirmation: what is permanent vs changeable','Auto-listed in the MPT registry','You sign once in your own wallet'] },
-  { id:'mptsend', cat:'Token Issuer', emoji:'📤', name:'Send MPT', featured:false, comingSoon:false, color:'#38bdf8', priceRLUSD:20, priceXRP:65,
+    features:['Plain-English guide to all 6 flags','On-ledger backing declaration','Free preview of the decoded tx','Live confirmation: what is permanent vs changeable','Auto-listed in the MPT registry','You sign it in your own wallet'] },
+  { id:'mptsend', cat:'Token Issuer', emoji:'📤', name:'Send MPT', featured:false, comingSoon:false, color:'#38bdf8',
     amendment:'Payment · MPT', tagline:'Distribute your multi-purpose tokens to any wallet',
-    desc:'You provide the destination and amount. AI builds the MPT Payment. You sign once in Xaman and your tokens are delivered on-chain.',
-    aiDetail:'AI assembles a Payment carrying your MPT issuance ID to the destination. After signing in Xaman it settles on mainnet in ~4s with a permanent receipt.',
-    features:['MPT Payment built to spec','Deliver to any XRPL wallet','You sign once in Xaman','On-chain delivery proof','TX hash receipt'] },
-  { id:'trustsend', cat:'Token Issuer', emoji:'🔗', name:'Trust Line + Send Currency', featured:false, comingSoon:false, color:'#34d399', priceRLUSD:25, priceXRP:80,
+    desc:'You provide the destination and amount. We build the MPT Payment. You sign it in Xaman and your tokens are delivered on-chain.',
+    aiDetail:'We build a Payment carrying your MPT issuance ID to the destination. After signing in Xaman it settles on mainnet in ~4s with a permanent receipt.',
+    features:['MPT Payment built to spec','Deliver to any XRPL wallet','You sign it in your wallet','On-chain delivery proof','TX hash receipt'] },
+  { id:'trustsend', cat:'Token Issuer', emoji:'🔗', name:'Trust Line + Send Currency', featured:false, comingSoon:false, color:'#34d399',
     amendment:'TrustSet · Payment', tagline:'Set a trust line and send issued currency in one flow',
-    desc:'The tutorial teaches the JavaScript for trust lines and payments. We handle it. AI builds the TrustSet and the issued-currency Payment. You sign in Xaman.',
-    aiDetail:'AI assembles TrustSet to your specified issuer/limit, then a Payment of the issued currency. You sign in Xaman; both settle on mainnet with receipts.',
-    features:['TrustSet built to spec','Issued-currency Payment','Set limit and issuer','You sign once in Xaman','TX hash receipts'] },
-  { id:'globalfreeze', cat:'Token Issuer', emoji:'❄️', name:'Global Freeze', featured:false, comingSoon:false, color:'#60a5fa', priceRLUSD:30, priceXRP:95,
+    desc:'The tutorial teaches the JavaScript for trust lines and payments. We handle it. We build the TrustSet and the issued-currency Payment. You sign in Xaman.',
+    aiDetail:'We build TrustSet to your specified issuer/limit, then a Payment of the issued currency. You sign in Xaman; both settle on mainnet with receipts.',
+    features:['TrustSet built to spec','Issued-currency Payment','Set limit and issuer','You sign it in your wallet','TX hash receipts'] },
+  { id:'globalfreeze', cat:'Token Issuer', emoji:'❄️', name:'Global Freeze', featured:false, comingSoon:false, color:'#60a5fa',
     amendment:'AccountSet · asfGlobalFreeze', tagline:'Freeze all tokens you issue (issuer protection)',
-    desc:'For token issuers who need to halt activity. AI builds the AccountSet (asfGlobalFreeze) transaction. You sign once in Xaman to freeze all balances of your issued token.',
-    aiDetail:'AI assembles AccountSet with asfGlobalFreeze. Affects only tokens YOU issue — a standard issuer compliance control. Reversible by clearing the flag.',
-    features:['AccountSet asfGlobalFreeze built to spec','Issuer-side control only','Reversible','You sign once in Xaman','TX hash receipt'] },
-  { id:'freezeline', cat:'Token Issuer', emoji:'🧊', name:'Freeze a Trust Line', featured:false, comingSoon:false, color:'#60a5fa', priceRLUSD:25, priceXRP:80,
+    desc:'For token issuers who need to halt activity. We build the AccountSet (asfGlobalFreeze) transaction. You sign it in Xaman to freeze all balances of your issued token.',
+    aiDetail:'We build AccountSet with asfGlobalFreeze. Affects only tokens YOU issue — a standard issuer compliance control. Reversible by clearing the flag.',
+    features:['AccountSet asfGlobalFreeze built to spec','Issuer-side control only','Reversible','You sign it in your wallet','TX hash receipt'] },
+  { id:'freezeline', cat:'Token Issuer', emoji:'🧊', name:'Freeze a Trust Line', featured:false, comingSoon:false, color:'#60a5fa',
     amendment:'TrustSet · tfSetFreeze', tagline:'Freeze a single holder of your issued token',
-    desc:'Freeze one specific holder rather than everyone. AI builds the TrustSet with the freeze flag for that holder. You sign in Xaman.',
-    aiDetail:'AI assembles TrustSet with tfSetFreeze targeting a single trust line you issued. Targeted issuer control; reversible with tfClearFreeze.',
-    features:['TrustSet tfSetFreeze built to spec','Targets one holder','Reversible','You sign once in Xaman','TX hash receipt'] },
+    desc:'Freeze one specific holder rather than everyone. We build the TrustSet with the freeze flag for that holder. You sign in Xaman.',
+    aiDetail:'We build TrustSet with tfSetFreeze targeting a single trust line you issued. Targeted issuer control; reversible with tfClearFreeze.',
+    features:['TrustSet tfSetFreeze built to spec','Targets one holder','Reversible','You sign it in your wallet','TX hash receipt'] },
 
   // PAYMENTS — mirrors xrpl.org/docs/tutorials/payments, done for you
-  { id:'checkcreate', cat:'Payments', emoji:'🧾', name:'Create a Check', featured:true, tag:'#1', comingSoon:false, color:'#a78bfa', priceRLUSD:20, priceXRP:65,
+  { id:'checkcreate', cat:'Payments', emoji:'🧾', name:'Create a Check', featured:true, tag:'#1', comingSoon:false, color:'#a78bfa',
     amendment:'CheckCreate', tagline:'Write a deferred on-chain check the recipient can cash later',
-    desc:'You set recipient and amount. AI builds the CheckCreate transaction. You sign in Xaman; the recipient cashes it whenever they choose.',
-    aiDetail:'AI assembles CheckCreate with your destination, SendMax, and optional expiration. Like a paper check on-chain — the recipient pulls funds when ready.',
-    features:['CheckCreate built to spec','Recipient cashes on their schedule','Optional expiration','You sign once in Xaman','TX hash receipt'] },
-  { id:'checkcash', cat:'Payments', emoji:'💵', name:'Cash a Check', featured:false, tag:'#2', comingSoon:false, color:'#a78bfa', priceRLUSD:15, priceXRP:50,
+    desc:'You set recipient and amount. We build the CheckCreate transaction. You sign in Xaman; the recipient cashes it whenever they choose.',
+    aiDetail:'We build CheckCreate with your destination, SendMax, and optional expiration. Like a paper check on-chain — the recipient pulls funds when ready.',
+    features:['CheckCreate built to spec','Recipient cashes on their schedule','Optional expiration','You sign it in your wallet','TX hash receipt'] },
+  { id:'checkcash', cat:'Payments', emoji:'💵', name:'Cash a Check', featured:false, tag:'#2', comingSoon:false, color:'#a78bfa',
     amendment:'CheckCash', tagline:'Cash a check written to you, for a flexible amount',
-    desc:'Someone wrote you an on-chain check. AI builds the CheckCash transaction. You sign in Xaman and the funds land in your wallet.',
-    aiDetail:'AI assembles CheckCash for the check ID, supporting flexible-amount cashing up to the SendMax. You sign in Xaman; funds settle on mainnet.',
-    features:['CheckCash built to spec','Flexible amount supported','You sign once in Xaman','Funds to your wallet','TX hash receipt'] },
-  { id:'checkcancel', cat:'Payments', emoji:'🚫', name:'Cancel a Check', featured:false, tag:'#3', comingSoon:false, color:'#a78bfa', priceRLUSD:15, priceXRP:50,
+    desc:'Someone wrote you an on-chain check. We build the CheckCash transaction. You sign in Xaman and the funds land in your wallet.',
+    aiDetail:'We build CheckCash for the check ID, supporting flexible-amount cashing up to the SendMax. You sign in Xaman; funds settle on mainnet.',
+    features:['CheckCash built to spec','Flexible amount supported','You sign it in your wallet','Funds to your wallet','TX hash receipt'] },
+  { id:'checkcancel', cat:'Payments', emoji:'🚫', name:'Cancel a Check', featured:false, tag:'#3', comingSoon:false, color:'#a78bfa',
     amendment:'CheckCancel', tagline:'Void an on-chain check without moving money',
-    desc:'Need to void a check you wrote (or one written to you)? AI builds the CheckCancel transaction. You sign in Xaman.',
-    aiDetail:'AI assembles CheckCancel for the check ID. No funds move; the check is removed from the ledger.',
-    features:['CheckCancel built to spec','No funds move','You sign once in Xaman','Ledger cleaned up','TX hash receipt'] },
-  { id:'desttagreq', cat:'Payments', emoji:'🏷️', name:'Require Destination Tags', featured:false, comingSoon:false, color:'#f59e0b', priceRLUSD:20, priceXRP:65,
-    amendment:'AccountSet · asfRequireDest', tagline:'Force senders to include a destination tag',
-    desc:'Exchanges and businesses need this. AI builds the AccountSet (asfRequireDest) transaction. You sign in Xaman — incoming payments without a tag are rejected.',
-    aiDetail:'AI assembles AccountSet with asfRequireDest. Prevents lost deposits by requiring a destination tag on every incoming payment.',
-    features:['AccountSet asfRequireDest built to spec','Prevents untagged deposits','Exchange-grade control','You sign once in Xaman','TX hash receipt'] },
+    desc:'Need to void a check you wrote (or one written to you)? We build the CheckCancel transaction. You sign in Xaman.',
+    aiDetail:'We build CheckCancel for the check ID. No funds move; the check is removed from the ledger.',
+    features:['CheckCancel built to spec','No funds move','You sign it in your wallet','Ledger cleaned up','TX hash receipt'] },
+  { id:'depositpreauth', cat:'Wallet Security', emoji:'🤝', name:'Deposit Preauthorization', featured:false, comingSoon:false, color:'#10b981',
+    amendment:'DepositPreauth', tagline:'Let one trusted sender pay you while Deposit Auth is on',
+    desc:'With Deposit Auth on, your account rejects payments from everyone except accounts you have preauthorized. We build the DepositPreauth transaction for one sender (or to revoke one) and you sign it in Xaman. Each entry counts toward your owner reserve (0.2 XRP).',
+    aiDetail:'We build a DepositPreauth transaction that authorizes (or revokes) exactly one sender account, after checking on the ledger that the sender exists. It is the companion to Deposit Auth Guard.',
+    features:['DepositPreauth built to your spec','Authorize or revoke one sender','Sender checked on the ledger','Works with Deposit Auth Guard','TX hash receipt'] },
 
   // DEFI — mirrors xrpl.org/docs/tutorials/defi, done for you
-  { id:'dextrade', cat:'DeFi', emoji:'📊', name:'DEX Trade Execution', featured:false, tag:'NEW', comingSoon:false, color:'#10b981', priceRLUSD:25, priceXRP:80,
-    amendment:'OfferCreate', tagline:'Place a buy or sell order on the native XRPL DEX',
-    desc:'The tutorial shows the code to trade on the decentralized exchange. We build it for you. AI assembles the OfferCreate to your price and size. You sign in Xaman.',
-    aiDetail:'AI assembles OfferCreate with your TakerGets/TakerPays for a buy or sell on the native XRPL DEX. You sign in Xaman; the order books on mainnet.',
-    features:['OfferCreate built to spec','Buy or sell on native DEX','Your price and size','You sign once in Xaman','TX hash receipt'] },
-  { id:'tickets', cat:'DeFi', emoji:'🎟️', name:'Ticket Batch Setup', featured:false, comingSoon:false, color:'#34d399', priceRLUSD:20, priceXRP:65,
+  { id:'ammwithdraw', cat:'DeFi', emoji:'💦', name:'AMM Liquidity Exit', featured:false, tag:'NEW', comingSoon:false, color:'#10b981',
+    amendment:'AMMWithdraw', tagline:'Take your liquidity back out of an AMM pool',
+    desc:'Withdraw from an XRPL AMM pool: redeem all your LP tokens for both assets, or take out an amount of one or both. We build the AMMWithdraw transaction after checking on the ledger that the pool exists and that you hold its LP tokens. You sign in Xaman.',
+    aiDetail:'We build an AMMWithdraw with the pool identified by Asset and Asset2 and your chosen mode: withdraw everything (tfWithdrawAll), one asset (tfSingleAsset) or both (tfTwoAsset).',
+    features:['AMMWithdraw built to spec','Withdraw all, one asset, or both','Pool and LP tokens checked first','Companion to AMM Liquidity Entry','TX hash receipt'] },
+  { id:'tickets', cat:'DeFi', emoji:'🎟️', name:'Ticket Batch Setup', featured:false, comingSoon:false, color:'#34d399',
     amendment:'TicketCreate', tagline:'Reserve sequence numbers to send transactions out of order',
-    desc:'Power users and businesses use Tickets to pre-authorize transactions. AI builds the TicketCreate. You sign in Xaman.',
-    aiDetail:'AI assembles TicketCreate for the count you need, letting you later submit transactions outside normal sequence order — useful for automation and multi-sign workflows.',
-    features:['TicketCreate built to spec','Out-of-order transactions','Automation-friendly','You sign once in Xaman','TX hash receipt'] },
+    desc:'Power users and businesses use Tickets to pre-authorize transactions. We build the TicketCreate. You sign in Xaman.',
+    aiDetail:'We build TicketCreate for the count you need, letting you later submit transactions outside normal sequence order — useful for automation and multi-sign workflows.',
+    features:['TicketCreate built to spec','Out-of-order transactions','Automation-friendly','You sign it in your wallet','TX hash receipt'] },
 
   // COMPLIANCE — mirrors xrpl.org/docs/tutorials/compliance-features, done for you
-  { id:'credentialissue', cat:'Compliance', emoji:'📜', name:'Issue a Credential', featured:false, comingSoon:false, color:'#38bdf8', priceRLUSD:35, priceXRP:115,
+  { id:'credentialissue', cat:'Compliance', emoji:'📜', name:'Issue a Credential', featured:false, comingSoon:false, color:'#38bdf8',
     amendment:'CredentialCreate', tagline:'Issue an on-chain credential to a subject wallet',
-    desc:'The tutorial codes a credential-issuing service. We run it for you. AI builds the CredentialCreate transaction. You sign in Xaman.',
-    aiDetail:'AI assembles CredentialCreate with your subject, credential type, and optional expiration/URI. The foundation for compliant, permissioned on-chain finance.',
-    features:['CredentialCreate built to spec','Subject + type + expiration','Compliance-ready','You sign once in Xaman','TX hash receipt'] },
-  { id:'permdomain', cat:'Compliance', emoji:'🏛️', name:'Permissioned Domain', featured:false, comingSoon:false, color:'#38bdf8', priceRLUSD:45, priceXRP:150,
+    desc:'The tutorial codes a credential-issuing service. We run it for you. We build the CredentialCreate transaction. You sign in Xaman.',
+    aiDetail:'We build CredentialCreate with your subject, credential type, and optional expiration/URI. The foundation for compliant, permissioned on-chain finance.',
+    features:['CredentialCreate built to spec','Subject + type + expiration','Compliance-ready','You sign it in your wallet','TX hash receipt'] },
+  { id:'permdomain', cat:'Compliance', emoji:'🏛️', name:'Permissioned Domain', featured:false, comingSoon:false, color:'#38bdf8',
     amendment:'PermissionedDomainSet', tagline:'Restrict access to credentialed participants only',
-    desc:'Build a permissioned domain so only credential-holders can access your financial service. AI builds the PermissionedDomainSet. You sign in Xaman.',
-    aiDetail:'AI assembles PermissionedDomainSet with your accepted credential set. Enables compliant, gated DeFi access on the XRP Ledger.',
-    features:['PermissionedDomainSet built to spec','Credential-gated access','Compliant DeFi','You sign once in Xaman','TX hash receipt'] },
+    desc:'Build a permissioned domain so only credential-holders can access your financial service. We build the PermissionedDomainSet. You sign in Xaman.',
+    aiDetail:'We build PermissionedDomainSet with your accepted credential set. Enables compliant, gated DeFi access on the XRP Ledger.',
+    features:['PermissionedDomainSet built to spec','Credential-gated access','Compliant DeFi','You sign it in your wallet','TX hash receipt'] },
 
 ] as const;
 
-// PRODUCTS is a heterogeneous array literal — not every entry has `tag`, and
-// `isMonthly` is referenced by the pricing UI but never set on any entry today
-// (renders as "" / "Buy"). Widen the element type so both are safely optional
-// rather than a per-member union access.
-type Product = typeof PRODUCTS[number] & { tag?: string; isMonthly?: boolean };
+// The RLUSD (USD) price of every card comes from src/lib/servicePrices.ts — the SAME table the
+// server verifies every payment against. There is no price (and no XRP price) typed in this file.
+const PRODUCTS = RAW_PRODUCTS.map((p) => ({ ...p, priceRLUSD: SERVICE_PRICE_USD[p.id] }));
+
+// PRODUCTS is a heterogeneous array literal — not every entry has `tag`. Widen the element
+// type so it is safely optional rather than a per-member union access.
+type Product = typeof PRODUCTS[number] & { tag?: string };
 
 // ─── EXECUTION FORM SCHEMA ───
-// Per-product fields the customer fills AFTER payment so AI builds the exact
+// Per-product fields the customer fills AFTER payment so we build the exact
 // transaction. Defaults + placeholders keep input clean; the engine validates.
 // Products NOT listed here need no params — they execute straight to Xaman sign.
 type ExecField = { key:string; label:string; placeholder?:string; type?:'text'|'number'|'select'; options?:string[]; default?:string; help?:string; required?:boolean };
@@ -345,13 +379,18 @@ const EXEC_FIELDS: Record<string, ExecField[]> = {
     { key:'takerGetsCurrency', label:'You give (currency)', placeholder:'XRP or USD', default:'XRP' },
     { key:'takerGetsIssuer', label:'…issuer (if not XRP)', placeholder:'rXXX…' },
   ],
-  dextrade: [
-    { key:'takerPaysValue', label:'You want (amount)', type:'number', required:true },
-    { key:'takerPaysCurrency', label:'You want (currency)', placeholder:'XRP or USD', default:'XRP' },
-    { key:'takerPaysIssuer', label:'…issuer (if not XRP)', placeholder:'rXXX…' },
-    { key:'takerGetsValue', label:'You give (amount)', type:'number', required:true },
-    { key:'takerGetsCurrency', label:'You give (currency)', placeholder:'XRP or USD', default:'XRP' },
-    { key:'takerGetsIssuer', label:'…issuer (if not XRP)', placeholder:'rXXX…' },
+  ammwithdraw: [
+    { key:'mode', label:'What to withdraw', type:'select', options:['all','single','two'], default:'all', help:'all = redeem ALL your LP tokens for both assets. single = an amount of asset 1. two = amounts of both.' },
+    { key:'assetCurrency', label:'Asset 1 currency', placeholder:'XRP', default:'XRP' },
+    { key:'assetIssuer', label:'…issuer (if not XRP)', placeholder:'rXXX…' },
+    { key:'asset2Currency', label:'Asset 2 currency', placeholder:'RLUSD', required:true, help:'Identifies the pool — it must exist and you must hold its LP tokens.' },
+    { key:'asset2Issuer', label:'…issuer (if not XRP)', placeholder:'rXXX…' },
+    { key:'assetValue', label:'Asset 1 amount (single / two)', type:'number' },
+    { key:'asset2Value', label:'Asset 2 amount (two)', type:'number' },
+  ],
+  depositpreauth: [
+    { key:'sender', label:'Sender to preauthorize', placeholder:'rXXX…', required:true, help:'The one account allowed to pay you while Deposit Auth is on. Counts toward your owner reserve (0.2 XRP).' },
+    { key:'action', label:'Action', type:'select', options:['authorize','remove'], default:'authorize', help:'authorize = allow this sender; remove = revoke an existing preauthorization.' },
   ],
   ammlaunch: [
     { key:'assetValue', label:'Asset 1 amount', type:'number', required:true },
@@ -478,7 +517,7 @@ function Btn(v: 'green'|'ghost'|'color', color?: string, extra?: React.CSSProper
 function TickerBar() {
   const Half = () => (
     <div style={{ display:'flex', flexShrink:0 }}>
-      {TICKER.map((m, i) => (
+      {tickerLines().map((m, i) => (
         <span key={`${m}-${i}`} style={{ display:'inline-flex', alignItems:'center', gap:12, padding:'0 26px', fontSize:12, fontWeight:700, letterSpacing:'.06em', color:'#fff', fontFamily:"'IBM Plex Mono',monospace", textTransform:'uppercase' }}>
           <span style={{ width:6, height:6, borderRadius:'50%', background:'#10b981', boxShadow:'0 0 10px #10b981', flexShrink:0 }} />
           <span style={{ whiteSpace:'nowrap' }}>{m}</span>
@@ -519,7 +558,12 @@ function Overlay({ show, onClose, children, wide=false }: { show:boolean; onClos
 // Reads /api/treasury-stats once per page view. Field names match the route:
 // totalXRP · spendableXRP · reservedXRP · totalUSD · xrpContributed · grantsFunded.
 function TreasuryStatsBar() {
-  const [stats, setStats] = useState<{ totalXRP:number; spendableXRP:number; reservedXRP:number; totalUSD:string; xrpContributed:number; grantsFunded:number }|null>(null);
+  type TStats = {
+    totalXRP:number; spendableXRP:number; reservedXRP:number; totalUSD:string|null;
+    received:number|null; internal:number|null; internalN:number|null; dustN:number|null; complete:boolean|null;
+    grantsPaid:number|null; paidTotals:{ currency:string; amount:number }[]|null; awaiting:number|null;
+  };
+  const [stats, setStats] = useState<TStats|null>(null);
   const [statsError, setStatsError] = useState(false);
   useEffect(() => {
     let stop = false;
@@ -530,12 +574,18 @@ function TreasuryStatsBar() {
         const d = await res.json();
         if (!stop) {
           setStats({
-            totalXRP:       Number(d.totalXRP || 0),
-            spendableXRP:   Number(d.spendableXRP || 0),
-            reservedXRP:    Number(d.reservedXRP || 0),
-            totalUSD:       String(d.totalUSD || '$0'),
-            xrpContributed: Number(d.xrpContributed || 0),
-            grantsFunded:   Number(d.grantsFunded || 0),
+            totalXRP:     Number(d.totalXRP || 0),
+            spendableXRP: Number(d.spendableXRP || 0),
+            reservedXRP:  Number(d.reservedXRP || 0),
+            totalUSD:     typeof d.totalUSD === 'string' ? d.totalUSD : null,   // null = no live rate: say so, don't guess
+            received:     typeof d.xrpReceivedExternal === 'number' ? d.xrpReceivedExternal : null,
+            internal:     typeof d.xrpReceivedInternal === 'number' ? d.xrpReceivedInternal : null,
+            internalN:    typeof d.internalPayments === 'number' ? d.internalPayments : null,
+            dustN:        typeof d.dustPayments === 'number' ? d.dustPayments : null,
+            complete:     typeof d.historyComplete === 'boolean' ? d.historyComplete : null,
+            grantsPaid:   typeof d.grantsPaid === 'number' ? d.grantsPaid : null,
+            paidTotals:   Array.isArray(d.grantsPaidTotals) ? d.grantsPaidTotals : null,
+            awaiting:     typeof d.grantsAwaitingFunds === 'number' ? d.grantsAwaitingFunds : null,
           });
           setStatsError(d.source === 'error');
         }
@@ -560,12 +610,25 @@ function TreasuryStatsBar() {
         <Cell label="Treasury Total"  value={stats ? fmt(stats.totalXRP) : '—'}       suffix="XRP" color="#10b981" />
         <Cell label="Spendable"       value={stats ? fmt(stats.spendableXRP) : '—'}   suffix="XRP" color="#34d399" />
         <Cell label="Reserved"        value={stats ? fmt(stats.reservedXRP) : '—'}    suffix="XRP" color="rgba(255,255,255,.5)" />
-        <Cell label="XRP Contributed" value={stats ? fmt(stats.xrpContributed) : '—'} suffix="XRP" color="#38bdf8" />
-        <Cell label="Grants Funded"   value={stats ? fmtCount(stats.grantsFunded) : '—'}           color="#8b5cf6" />
+        <Cell label="Received from outside" value={stats && stats.received != null ? `${stats.complete === false ? '≥' : ''}${fmt(stats.received)}` : '—'} suffix="XRP" color="#38bdf8" />
+        <Cell label="Grants paid"   value={stats && stats.grantsPaid != null ? fmtCount(stats.grantsPaid) : '—'}           color="#8b5cf6" />
       </div>
       {stats && (
         <div style={{ textAlign:'center', fontSize:10, color:'rgba(255,255,255,.28)', paddingBottom:4 }}>
-          Total {stats.totalUSD} · {fmt(stats.reservedXRP)} XRP locked as the XRPL account reserve
+          {stats.totalUSD ? `Total ${stats.totalUSD} · ` : 'USD value unavailable right now · '}{fmt(stats.reservedXRP)} XRP locked as the XRPL account reserve
+        </div>
+      )}
+      {stats && (
+        <div style={{ textAlign:'center', fontSize:10, color:'rgba(255,255,255,.28)', padding:'0 12px 4px', lineHeight:1.6 }}>
+          &ldquo;Received from outside&rdquo; = inbound XRP payments from wallets other than XRPLHub&apos;s own, dust excluded — donations and service payments both count.
+          {stats.internal != null && stats.internalN != null && stats.internalN > 0 ? ` It excludes ${fmt(stats.internal)} XRP (${stats.internalN} payments) of XRPLHub&apos;s own transfers` : ''}
+          {stats.dustN ? ` and ${stats.dustN} dust deposits` : ''}{stats.internal != null && stats.internalN ? '.' : ''}
+        </div>
+      )}
+      {stats && stats.grantsPaid != null && (
+        <div style={{ textAlign:'center', fontSize:10, color:'rgba(255,255,255,.28)', padding:'0 12px 4px', lineHeight:1.6 }}>
+          Grants paid: {stats.grantsPaid}{stats.paidTotals && stats.paidTotals.length ? ` (${stats.paidTotals.map(t => `${t.amount} ${t.currency}`).join(', ')} paid out in total)` : ''}
+          {stats.awaiting ? ` · ${stats.awaiting} approved grant${stats.awaiting === 1 ? '' : 's'} awaiting funds` : ''}
         </div>
       )}
       {(statsError || !stats) && (
@@ -731,7 +794,12 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
   const pollRef   = useRef<ReturnType<typeof setTimeout>|null>(null);
   const cancelRef = useRef(false);
 
-  const displayPrice = product ? (currency==='RLUSD' ? product.priceRLUSD : product.priceXRP) : 0;
+  const pricing = usePricing();
+  const xrpNow = product ? (pricing?.xrp?.[product.id] ?? null) : null;   // live, derived server-side
+  const displayPrice = product ? (currency==='RLUSD' ? product.priceRLUSD : (xrpNow ?? 0)) : 0;
+  const xrpUnavailable = currency==='XRP' && xrpNow == null;
+  // what the server actually asked for (it adds a small buffer for rate drift) — shown once we have it
+  const [quoted, setQuoted] = useState<{ amount:string; currency:string }|null>(null);
   const price = TEST_MODE ? (currency==='RLUSD' ? TEST_PRICE_RLUSD : TEST_PRICE_XRP) : displayPrice;
 
   // Payment polling — verified only when on-chain TX confirms
@@ -848,6 +916,7 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
       });
       const cd = await cr.json();
       if (!cr.ok || !cd.treasury) throw new Error(cd.error || 'Could not start payment');
+      if (cd.amount) setQuoted({ amount:String(cd.amount), currency:String(cd.currency||currency) });
       const handle = provider.submitPayment({
         // the SERVER decides what to charge (pricing.ts); an injected wallet must send exactly that
         productId: product.id, to: cd.treasury, amount: String(cd.amount ?? price), currency: (cd.currency ?? currency) as Currency,
@@ -878,7 +947,7 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
       const res  = await fetch(`${API_URL}/api/create-payment`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ productId:product.id, currency, amount:price, email }) });
       const data = await res.json();
       if (!res.ok || !data.uuid) throw new Error(data.error || 'Failed to create payment');
-      setUuid(data.uuid); setQrUrl(data.qr_png); setDeepLnk(data.deep_link); setCountdown(data.expires_in || 900); setPayStatus('waiting');
+      setUuid(data.uuid); setQrUrl(data.qr_png); setDeepLnk(data.deep_link); setCountdown(data.expires_in || 900); if (data.amount) setQuoted({ amount:String(data.amount), currency:String(data.currency||currency) }); setPayStatus('waiting');
     } catch (e: unknown) { setPayError(e instanceof Error ? e.message : 'Payment failed'); setPayStatus('idle'); }
   };
 
@@ -930,7 +999,7 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
       <Overlay show={show} onClose={handleClose} wide>
         <div style={{ fontSize:10,fontWeight:700,color:product.color,letterSpacing:'.12em',textTransform:'uppercase',marginBottom:5,fontFamily:"'IBM Plex Mono',monospace" }}>Step 2 · Execute Service</div>
         <h3 style={{ fontSize:20,fontWeight:900,marginBottom:4 }}>{product.name}</h3>
-        <p style={{ fontSize:12,color:'rgba(255,255,255,.4)',marginBottom:16 }}>Paid ✓ — now AI builds your exact transaction. You sign once in Xaman.</p>
+        <p style={{ fontSize:12,color:'rgba(255,255,255,.4)',marginBottom:16 }}>Paid ✓ — now we build your exact transaction and you sign it in your wallet.</p>
 
         {exStatus === 'form' && !connectedWallet && (
           <div style={{ background:'rgba(245,158,11,.1)',border:'1px solid rgba(245,158,11,.35)',borderRadius:12,padding:'14px 18px',marginBottom:16 }}>
@@ -952,7 +1021,7 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
                 </p>
               </div>
             )}
-            {fields.length === 0 && <div style={{ background:'rgba(16,185,129,.05)',border:'1px solid rgba(16,185,129,.15)',borderRadius:12,padding:'13px 16px',marginBottom:16,fontSize:13,color:'rgba(255,255,255,.55)',lineHeight:1.6 }}>No details needed — tap below and AI will build your <strong style={{ color:'#10b981' }}>{product.name}</strong> transaction for you to sign in Xaman.</div>}
+            {fields.length === 0 && <div style={{ background:'rgba(16,185,129,.05)',border:'1px solid rgba(16,185,129,.15)',borderRadius:12,padding:'13px 16px',marginBottom:16,fontSize:13,color:'rgba(255,255,255,.55)',lineHeight:1.6 }}>No details needed — tap below and we will build your <strong style={{ color:'#10b981' }}>{product.name}</strong> transaction for you to sign in Xaman.</div>}
             {fields.map(f => (
               <div key={f.key} style={{ marginBottom:13 }}>
                 <label style={LBL}>{f.label}{f.required && <span style={{ color:product.color }}> *</span>}</label>
@@ -968,14 +1037,14 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
             ))}
             {exError && <p style={{ fontSize:12,color:'#fca5a5',marginBottom:10 }}>⚠️ {exError}</p>}
             <button disabled={!connectedWallet} onClick={()=>handleExecute(false)} style={{ ...Btn('color',product.color,{width:'100%',padding:'14px',fontSize:15,marginTop:6,opacity:connectedWallet?1:.4}) }}>⚡ Build &amp; Sign{walletSel !== 'xaman' ? ` with ${getWalletProvider(walletSel)?.label ?? 'wallet'}` : ' in Xaman'} →</button>
-            <p style={{ fontSize:11,color:'rgba(255,255,255,.26)',textAlign:'center',marginTop:10 }}>AI builds the exact XRPL transaction · you approve it in your own wallet · we verify on-chain</p>
+            <p style={{ fontSize:11,color:'rgba(255,255,255,.26)',textAlign:'center',marginTop:10 }}>we build the exact XRPL transaction · you approve it in your own wallet · we verify on-chain</p>
           </>
         )}
 
         {exStatus === 'building' && (
           <div style={{ textAlign:'center', padding:'34px 0' }}>
             <div style={{ width:60,height:60,borderRadius:'50%',background:`${product.color}15`,border:`2px solid ${product.color}40`,display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 14px',fontSize:26,animation:'spin 1.5s linear infinite' }}>🤖</div>
-            <p style={{ color:product.color,fontWeight:700,fontSize:15 }}>AI is building your transaction…</p>
+            <p style={{ color:product.color,fontWeight:700,fontSize:15 }}>Building your transaction…</p>
           </div>
         )}
 
@@ -1078,7 +1147,7 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
         <h3 style={{ fontSize:24,fontWeight:900,marginBottom:8 }}>Payment Confirmed</h3>
         <div style={{ background:'rgba(255,255,255,.04)',border:'1px solid rgba(255,255,255,.08)',borderRadius:14,padding:18,margin:'14px 0 18px',textAlign:'left' }}>
           <p style={{ fontSize:11,color:product.color,fontFamily:"'IBM Plex Mono',monospace",fontWeight:700,marginBottom:6,textTransform:'uppercase',letterSpacing:'.08em' }}>Verified on-chain</p>
-          <p style={{ fontSize:13,color:'rgba(255,255,255,.65)',lineHeight:1.75 }}>Your payment is confirmed on XRPL mainnet. Next, finish your service — AI builds the exact transaction and you sign it once in Xaman.</p>
+          <p style={{ fontSize:13,color:'rgba(255,255,255,.65)',lineHeight:1.75 }}>Your payment is confirmed on XRPL mainnet. Next, finish your service — we build the exact transaction and you sign it in your wallet.</p>
         </div>
         {verifiedTx && <p style={{ fontSize:11,color:'rgba(255,255,255,.28)',fontFamily:"'IBM Plex Mono',monospace",marginBottom:10,wordBreak:'break-all' }}>TX: {verifiedTx.slice(0,22)}…{verifiedTx.slice(-8)}</p>}
         {email && <p style={{ fontSize:12,color:'rgba(255,255,255,.38)',marginBottom:18 }}>✅ Receipt sent to <strong style={{ color:'#fff' }}>{email}</strong></p>}
@@ -1094,7 +1163,7 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
     <Overlay show={show} onClose={handleClose}>
       <div style={{ fontSize:10,fontWeight:700,color:product.color,letterSpacing:'.12em',textTransform:'uppercase',marginBottom:5,fontFamily:"'IBM Plex Mono',monospace" }}>{product.amendment}</div>
       <h3 style={{ fontSize:20,fontWeight:900,marginBottom:4 }}>{product.name}</h3>
-      <p style={{ fontSize:12,color:'rgba(255,255,255,.4)',marginBottom:14 }}>{displayPrice} {currency} — one swipe in Xaman {TEST_MODE && <span style={{ color:'#f59e0b',fontWeight:700 }}>· TEST MODE (charging {price} {currency})</span>}</p>
+      <p style={{ fontSize:12,color:'rgba(255,255,255,.4)',marginBottom:14 }}>{currency==='XRP' ? (xrpNow!=null ? `≈${fmtXrp(xrpNow)}` : '—') : displayPrice} {currency} — one payment, then your transaction {TEST_MODE && <span style={{ color:'#f59e0b',fontWeight:700 }}>· TEST MODE (charging {price} {currency})</span>}</p>
 
       {payStatus === 'creating' && (
         <div style={{ textAlign:'center', padding:'32px 0' }}>
@@ -1115,7 +1184,7 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
           {uuid ? (
             <div style={{ marginBottom:14 }}>
               <XamanPayPrompt theme="light" mode="pay" qrPng={qrUrl} deepLink={deepLnk} uuid={uuid}
-                amount={price} currency={currency} destination={TREASURY} />
+                amount={quoted ? Number(quoted.amount) : price} currency={currency} destination={TREASURY} />
             </div>
           ) : (
             <p style={{ textAlign:'center',color:'rgba(255,255,255,.55)',fontSize:13,margin:'18px 0' }}>
@@ -1123,7 +1192,7 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
             </p>
           )}
           <div style={{ background:'rgba(255,255,255,.04)',border:'1px solid rgba(255,255,255,.07)',borderRadius:14,padding:'14px 18px',marginBottom:12 }}>
-            {[['1',uuid?'Scan QR or tap "Open in Xaman"':'Approve in your wallet'],['2',`Review the pre-filled ${price} ${currency} payment`],['3','Confirm — we verify it on-chain']].map(([n,t]) => (
+            {[['1',uuid?'Scan QR or tap "Open in Xaman"':'Approve in your wallet'],['2',`Review the pre-filled ${quoted ? quoted.amount : (currency==='XRP' ? (xrpNow!=null ? '≈'+fmtXrp(xrpNow) : '—') : price)} ${currency} payment`],['3','Confirm — we verify it on-chain']].map(([n,t]) => (
               <div key={n} style={{ display:'flex',alignItems:'flex-start',gap:12,marginBottom:n==='3'?0:10 }}>
                 <span style={{ width:22,height:22,borderRadius:'50%',background:`${product.color}20`,border:`1px solid ${product.color}40`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:800,color:product.color,flexShrink:0 }}>{n}</span>
                 <span style={{ fontSize:13,color:'rgba(255,255,255,.6)',lineHeight:1.5,paddingTop:2 }}>{t}</span>
@@ -1148,7 +1217,7 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
           <div style={{ display:'flex',gap:8,marginBottom:14 }}>
             {(['RLUSD','XRP'] as Currency[]).map(c => (
               <button key={c} onClick={()=>setCurrency(c)} style={{ flex:1,padding:'10px',borderRadius:12,cursor:'pointer',fontFamily:'inherit',fontWeight:700,fontSize:14,border:`1px solid ${currency===c?product.color:'rgba(255,255,255,.1)'}`,background:currency===c?`${product.color}15`:'rgba(255,255,255,.04)',color:currency===c?product.color:'rgba(255,255,255,.5)' }}>
-                {c==='RLUSD'?'💵 RLUSD':'◈ XRP'} — {c==='RLUSD'?product.priceRLUSD:product.priceXRP}
+                {c==='RLUSD'?'💵 RLUSD':'◈ XRP'} — {c==='RLUSD'?product.priceRLUSD:(xrpNow!=null?'≈'+fmtXrp(xrpNow):'unavailable')}
               </button>
             ))}
           </div>
@@ -1161,15 +1230,16 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
             </div>
           )}
           <div style={{ background:'rgba(16,185,129,.05)',border:'1px solid rgba(16,185,129,.15)',borderRadius:12,padding:'11px 14px',marginBottom:16,fontSize:12,color:'rgba(255,255,255,.45)',lineHeight:1.6 }}>
-            <strong style={{ color:'#10b981' }}>How it works:</strong> Sign the pre-filled {price} {currency} payment → we verify it on XRPL mainnet → service activates.
+            <strong style={{ color:'#10b981' }}>How it works:</strong> Sign the {currency==='XRP' ? (xrpNow!=null ? '≈'+fmtXrp(xrpNow) : '—') : price} {currency} payment → we verify it on XRPL mainnet → we build your transaction → you sign it. {currency==='XRP' && <>The exact XRP amount is quoted at the live rate when you pay.</>}
           </div>
           <div style={{ display:'flex',gap:10 }}>
             <button onClick={()=>setStep('info')} style={{ ...Btn('ghost',undefined,{flex:1}) }}>← Back</button>
             <button
+              disabled={xrpUnavailable}
               onClick={() => (walletSel === 'xaman' ? handleBuyNow() : buyWithExtension(walletSel))}
-              style={{ ...Btn('color',product.color,{flex:2,fontSize:15}) }}
+              style={{ ...Btn('color',product.color,{flex:2,fontSize:15,opacity:xrpUnavailable?.45:1}) }}
             >
-              {walletSel === 'xaman' ? '📱' : ''} Pay {price} {currency} →
+              {walletSel === 'xaman' ? '📱' : ''} {xrpUnavailable ? 'XRP price unavailable — use RLUSD' : `Pay ${currency==='XRP' ? '≈'+fmtXrp(xrpNow as number) : price} ${currency} →`}
             </button>
             {TEST_MODE && <p style={{ fontSize:10,color:'#f59e0b',textAlign:'center',marginTop:6,fontWeight:700,letterSpacing:'.08em' }}>⚠️ TEST MODE — real launch price is {displayPrice} {currency}</p>}
           </div>
@@ -1207,7 +1277,7 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
           <div style={{ fontSize:11,color:'rgba(255,255,255,.38)',marginBottom:4 }}>One-time</div>
           <div style={{ display:'flex',gap:12,alignItems:'baseline',flexWrap:'wrap' }}>
             <span style={{ fontSize:28,fontWeight:900,color:product.color }}>{product.priceRLUSD} RLUSD</span>
-            <span style={{ fontSize:13,color:'rgba(255,255,255,.3)' }}>or {product.priceXRP} XRP</span>
+            <span style={{ fontSize:13,color:'rgba(255,255,255,.3)' }}>{xrpLabel(pricing, product.id) ? `or ${xrpLabel(pricing, product.id)}` : 'XRP price unavailable — pay in RLUSD'}</span>
           </div>
         </div>
         <div style={{ textAlign:'right' }}>
@@ -1474,6 +1544,22 @@ function GrantModal({ show, onClose, connectedWallet, user }: { show:boolean; on
 
   const handleClose = () => { onClose(); setTimeout(()=>{ setStep('form'); setForm({name:'',wallet:'',email:'',phone:'',category:'',need:'',amount:'25'}); setErrors({}); }, 300); };
 
+  // Applications are paused (src/lib/grantsStatus.ts; the API refuses them too). Show why, keep donating open.
+  if (!GRANT_APPLICATIONS_OPEN) return (
+    <Overlay show={show} onClose={onClose}>
+      <div style={{ textAlign:'center', padding:'8px 0' }}>
+        <div style={{ fontSize:40, marginBottom:12 }}>⏸️</div>
+        <h3 style={{ fontSize:22, fontWeight:900, marginBottom:10 }}>{GRANTS_PAUSED_TITLE}</h3>
+        <p style={{ fontSize:14, color:'rgba(255,255,255,.6)', lineHeight:1.75, marginBottom:12 }}>{GRANTS_PAUSED_MESSAGE}</p>
+        <p style={{ fontSize:13, color:'rgba(255,255,255,.45)', lineHeight:1.75, marginBottom:20 }}>{GRANTS_DONATE_NOTE}</p>
+        <div style={{ display:'flex', gap:10, justifyContent:'center', flexWrap:'wrap' }}>
+          <button onClick={()=>{ onClose(); setTimeout(()=>document.getElementById('grants')?.scrollIntoView({ behavior:'smooth' }), 250); }} style={Btn('green')}>💚 Donate instead</button>
+          <button onClick={onClose} style={Btn('ghost')}>Close</button>
+        </div>
+      </div>
+    </Overlay>
+  );
+
   if (step === 'reviewing') return (
     <Overlay show={show} onClose={()=>{}}>
       <div style={{ textAlign:'center', padding:'44px 0' }}>
@@ -1489,7 +1575,7 @@ function GrantModal({ show, onClose, connectedWallet, user }: { show:boolean; on
       <div style={{ textAlign:'center', padding:'20px 0' }}>
         <div style={{ fontSize:56, marginBottom:12 }}>❤️</div>
         <h3 style={{ fontSize:24, fontWeight:900, color:'#8b5cf6', marginBottom:10 }}>Application Received</h3>
-        <p style={{ color:'rgba(255,255,255,.55)', fontSize:14, lineHeight:1.75, marginBottom:10 }}>Your ${form.amount} grant request is in our review queue. A person reviews every application — allow <strong style={{ color:'#fff' }}>24–48 hours</strong> for a decision. We help as many people as we can based on need, available treasury funds, and urgency.</p>
+        <p style={{ color:'rgba(255,255,255,.55)', fontSize:14, lineHeight:1.75, marginBottom:10 }}>Your ${form.amount} grant request is in our review queue. A person reviews every application. We help as many people as we can based on need, available treasury funds, and urgency.</p>
         <p style={{ color:'rgba(255,255,255,.35)', fontSize:13, lineHeight:1.75, marginBottom:24 }}>Approved funds go <strong style={{ color:'#fff' }}>directly to your XRPL wallet</strong>. You&apos;ll get a status update at {form.email}.</p>
         <button onClick={handleClose} style={Btn('color','#8b5cf6')}>Done</button>
       </div>
@@ -1540,9 +1626,9 @@ function AboutModal({ show, onClose }: { show:boolean; onClose:()=>void }) {
       <div style={{ fontSize:14,color:'rgba(255,255,255,.65)',lineHeight:1.9,display:'flex',flexDirection:'column',gap:14 }}>
         <p>XRPLHub was built for the people legacy finance was designed to exclude. No bank account. No credit history. No gatekeepers. Just an XRPL wallet and access to real services.</p>
         <p>We build entirely on the <strong style={{ color:'#fff' }}>XRP Ledger</strong> — fast, low-cost, and energy-efficient. Three pillars power the platform: XRPL Services, Community Grants, and XRPLScore.</p>
-        <p><strong style={{ color:'#10b981' }}>XRPLScore™</strong> is our proprietary on-chain rating, 300–850, computed live from your wallet. No FICO. No bureau. No SSN. The Builder lets you grow it over time through verifiable on-chain history.</p>
-        <p>Our <strong style={{ color:'#fff' }}>XRPL Services</strong> are AI-delivered on-chain tools covering major XRPL transaction types — pay in Xaman, AI verifies on mainnet, the service activates in seconds.</p>
-        <p><strong style={{ color:'#10b981' }}>Community Grants</strong>: donors fund a public XRPL treasury. A person reviews every application and makes every decision. Approved grants go wallet-to-wallet. No NGO. No middlemen. Permanently verifiable on-chain.</p>
+        <p><strong style={{ color:'#10b981' }}>XRPLScore™</strong> is our proprietary on-chain rating, 300–850, computed from your wallet’s public on-chain history (cached for up to 15 minutes). No FICO. No bureau. No SSN. It is derived only from public on-chain history.</p>
+        <p>Our <strong style={{ color:'#fff' }}>XRPL Services</strong> are on-chain tools covering major XRPL transaction types — you pay, we check the payment on the XRP Ledger, then we build the exact transaction and you sign it in your wallet.</p>
+        <p><strong style={{ color:'#10b981' }}>Community Grants</strong>: donors fund a public XRPL treasury. A person reviews every application and makes every decision. Approved grants go wallet-to-wallet. No NGO. No middlemen. Every payment is verifiable on-chain. (Applications are paused until the treasury is funded.)</p>
         <p style={{ fontSize:12,color:'rgba(255,255,255,.4)',fontStyle:'italic' }}>XRPLScore™ methodology is proprietary and licensable to financial institutions, DeFi platforms, and on-chain data partners. Partnership inquiries: <a href="mailto:partners@xrplhub.io" style={{ color:'#10b981' }}>partners@xrplhub.io</a></p>
       </div>
       <button onClick={onClose} style={{ ...Btn('green',undefined,{marginTop:24}) }}>Close</button>
@@ -1554,10 +1640,10 @@ function AboutModal({ show, onClose }: { show:boolean; onClose:()=>void }) {
 function FAQModal({ show, onClose }: { show:boolean; onClose:()=>void }) {
   const [open, setOpen] = useState<number|null>(0);
   const faqs:[string,string][] = [
-    ['What is XRPLScore™?',"XRPLScore™ is XRPLHub's proprietary on-chain rating — 300 to 850, computed live from your XRPL wallet. No SSN, no credit bureau, no FICO affiliation. It's your verifiable on-chain reputation."],
-    ['How do the XRPL Services work?','You pay in Xaman and get a TX hash. Our AI verifies the transaction on XRPL mainnet, confirms the amount and destination, and activates your service within one ledger close (~4 seconds).'],
-    ['How does the grant system work?',"Donate XRP/RLUSD to the public treasury (viewable on XRPScan). Anyone in need can apply for $25–$100. A person reviews every application and makes every decision. Approved funds then go directly to the recipient's XRPL wallet."],
-    ['Do I need a Xaman wallet?','Yes — Xaman is the XRPL wallet, free on iOS and Android at xaman.app. Payments are a single QR scan and swipe.'],
+    ['What is XRPLScore™?',"XRPLScore™ is XRPLHub's proprietary on-chain rating — 300 to 850, computed from your wallet’s public on-chain history (cached for up to 15 minutes). No SSN, no credit bureau, no FICO affiliation. It's your verifiable on-chain reputation."],
+    ['How do the XRPL Services work?','You pay the listed price in XRP or RLUSD and get a TX hash. Our server checks that payment on the XRP Ledger — that it succeeded, went to the treasury, is in the right currency and covers the price — then builds the exact transaction for your wallet. You sign it yourself; some services are several transactions signed one after another. A signed transaction settles in about 4 seconds.'],
+    ['How does the grant system work?',"Donate XRP/RLUSD to the public treasury (viewable on XRPScan). Applications are currently paused until the treasury is funded. When they reopen, anyone in need can apply for $25–$100; a person reviews every application and makes every decision, and approved funds go directly to the recipient's XRPL wallet."],
+    ['Do I need a wallet?','You need an XRPL wallet. Xaman (free on iOS and Android at xaman.app) is how you connect on this site and the wallet we recommend. When you pay for a service you can also use Crossmark or GemWallet on desktop — just make sure it is the same XRPL account you connected, because the transaction we build is for that account.'],
     ['Is XRPLHub a bank?','No. Not a bank, broker, insurer, or FDIC institution. XRPLHub is a financial technology platform on the XRP Ledger. All services are on-chain operational tools.'],
   ];
   return (
@@ -1593,8 +1679,8 @@ function TermsModal({ show, onClose }: { show:boolean; onClose:()=>void }) {
         <p style={P}>XRPLHub is a financial technology platform on the XRP Ledger providing XRPL Services, XRPLScore, and a community grant program. We are not a bank, broker-dealer, investment advisor, insurer, or FDIC-insured institution.</p>
         <span style={H}>2. Eligibility</span>
         <p style={P}>You must be 18+ and legally able to enter contracts in your jurisdiction. Service unavailable where prohibited by law, including OFAC-sanctioned regions.</p>
-        <span style={H}>3. XRPL Services & AI Verification</span>
-        <p style={P}>Services are on-chain operational tools. You pay in Xaman, and our AI verifies the transaction on XRPL mainnet. <strong style={{ color:'rgba(255,255,255,.8)' }}>All XRPL transactions are final and irrevocable.</strong> Services are not insurance contracts, securities, or financial instruments.</p>
+        <span style={H}>3. XRPL Services & Payment Verification</span>
+        <p style={P}>Services are on-chain operational tools. You pay the listed price in XRP or RLUSD to the XRPLHub treasury. Our server checks that payment on the XRP Ledger against the price on file — it must be validated, successful, sent to the treasury, in XRP or RLUSD from the official issuer, and cover the price — and each payment can be used for one service only. We then build the exact transaction for your wallet and you sign and submit it yourself; some services are several transactions signed in order. XRPLHub never holds your keys and cannot sign for you. <strong style={{ color:'rgba(255,255,255,.8)' }}>All XRPL transactions are final and irrevocable</strong>, and if the ledger rejects a transaction you may need to correct your details and try again. Services are not insurance contracts, securities, or financial instruments.</p>
         <span style={H}>4. XRPLScore™</span>
         <p style={P}>XRPLScore™ is our proprietary on-chain assessment derived from public XRPL wallet data. It is not a FICO score, consumer credit report, or NRSRO rating, and has no affiliation with any credit bureau. The XRPLScore™ name, methodology, signal weighting, and underlying framework are intellectual property of XRPLHub and are available for commercial licensing.</p>
         <span style={H}>5. Community Grant Program</span>
@@ -1849,6 +1935,7 @@ function ReportSparkline({ points, color }: { points: Array<{score:number;scanne
 export default function XRPLHubHome() {
   const [user, setUser]               = useState<User|null>(null);
   const [connectedWallet, setConnected] = useState('');
+  const pricing = usePricing();
   const [scoreData, setScoreData]     = useState<ScoreData|null>(null);
   const [scoreLoading, setSL]         = useState(false);
   const [scoreError, setSE]           = useState<string|null>(null);
@@ -1950,7 +2037,7 @@ export default function XRPLHubHome() {
     'checkcancel',    // Cancel a Check
     'escrow',         // Hold money safely until a date (like a deposit in escrow)
     'paychannel',     // Stream / channel payments
-    'desttagreq',     // Require a tag so payments arrive correctly
+    'depositpreauth', // Preauthorize a sender for Deposit Auth
     'trustsend',      // Set up to receive a currency
     // ── Familiar digital things: art, collectibles, identity ──
     'nftmint',        // Mint an NFT (digital art / collectible)
@@ -1973,7 +2060,7 @@ export default function XRPLHubHome() {
     'freezeline',     // Freeze a single trust line
     // ── Trading / DeFi (power users) ──
     'dexorder',       // Place a DEX order
-    'dextrade',       // Execute a trade
+    'ammwithdraw',    // Take liquidity back out of an AMM pool
     'smartswap',      // Smart swap
     'ammlaunch',      // Launch an AMM pool
     'ammentry',       // Add liquidity
@@ -2054,7 +2141,7 @@ export default function XRPLHubHome() {
                 : <button className="wallet-btn" onClick={()=>setShowConnect(true)}>🔐 Connect Wallet</button>}
               <a className="navbtn" href="/pricing">Score API</a>
               <button className="navbtn" onClick={()=>setShowDonate(true)}>Donate</button>
-              <button className="navbtn" onClick={()=>setShowGrant(true)}>Apply for Grant</button>
+              <button className="navbtn" onClick={()=>setShowGrant(true)}>{GRANT_APPLICATIONS_OPEN ? 'Apply for Grant' : 'Grants (paused)'}</button>
               <button onClick={()=>fetchScore()} style={{ padding:'8px 18px',borderRadius:99,fontFamily:'inherit',fontWeight:700,fontSize:13,cursor:'pointer',border:'none',background:'#10b981',color:'#000',whiteSpace:'nowrap' }}>Get XRPLScore</button>
             </div>
             <button className="nav-mobile-toggle" onClick={()=>setMM(!mobileMenu)} style={{ alignItems:'center',justifyContent:'center',width:42,height:42,borderRadius:10,background:'rgba(16,185,129,.12)',border:'1px solid rgba(16,185,129,.28)',color:'#10b981',cursor:'pointer',fontSize:20,fontWeight:700 }} aria-label="Menu">{mobileMenu?'✕':'☰'}</button>
@@ -2066,7 +2153,7 @@ export default function XRPLHubHome() {
                 : <button className="wallet-btn" onClick={()=>{setShowConnect(true);setMM(false);}}>🔐 Connect Wallet</button>}
               <a className="navbtn" href="/pricing" onClick={()=>setMM(false)}>Score API</a>
               <button className="navbtn" onClick={()=>{setShowDonate(true);setMM(false);}}>Donate</button>
-              <button className="navbtn" onClick={()=>{setShowGrant(true);setMM(false);}}>Apply for Grant</button>
+              <button className="navbtn" onClick={()=>{setShowGrant(true);setMM(false);}}>{GRANT_APPLICATIONS_OPEN ? 'Apply for Grant' : 'Grants (paused)'}</button>
               <button onClick={()=>{fetchScore();setMM(false);}} style={{ padding:'12px',borderRadius:99,fontFamily:'inherit',fontWeight:700,fontSize:14,cursor:'pointer',border:'none',background:'#10b981',color:'#000' }}>Get XRPLScore</button>
             </div>
           )}
@@ -2109,7 +2196,7 @@ export default function XRPLHubHome() {
           </div>
 
           <a href={XAMAN_DL} target="_blank" rel="noopener noreferrer" style={{ display:'inline-flex',alignItems:'center',gap:8,fontSize:13,color:'#10b981',fontWeight:600,textDecoration:'none' }}>
-            📲 Xaman Wallet required — download free (iOS / Android) →
+            📲 Connect with Xaman (free, iOS / Android) — Crossmark and GemWallet can pay and sign on desktop →
           </a>
         </section>
 
@@ -2121,8 +2208,9 @@ export default function XRPLHubHome() {
               <span style={{ fontSize:11,fontWeight:700,color:'#10b981',letterSpacing:'.14em',textTransform:'uppercase' }}>{PRODUCTS.length} XRPL Services · Done For You</span>
             </div>
             <h2 style={{ fontSize:'clamp(24px,4vw,42px)',fontWeight:900,letterSpacing:'-2px',marginBottom:12 }}>You sign. We build. The ledger settles.</h2>
-            <p style={{ fontSize:14,color:'rgba(255,255,255,.44)',maxWidth:560,margin:'0 auto' }}>Pay once in Xaman → we verify your transaction on XRPL mainnet → your service is built.</p>
-            <p style={{ fontSize:12,color:'rgba(255,255,255,.32)',maxWidth:540,margin:'10px auto 0',lineHeight:1.6 }}>Every one of these is a documented XRPL operation. You can code it yourself from the developer tutorials — or pay here and AI builds the exact transaction for you to sign in one tap. No coding, no errors.</p>
+            <p style={{ fontSize:14,color:'rgba(255,255,255,.44)',maxWidth:560,margin:'0 auto' }}>Pay in Xaman → we verify the payment on XRPL mainnet → we build your exact transaction → you sign it. Two signatures: the payment, then the service.</p>
+            <p style={{ fontSize:12,color:'rgba(255,255,255,.4)',maxWidth:540,margin:'10px auto 0',lineHeight:1.6 }}>Prices are set in RLUSD (USD). XRP amounts are approximate — quoted at the live XRP/USD rate when you pay.{pricing && pricing.xrpUsd == null ? ' No live XRP rate is available right now, so only RLUSD prices are shown.' : ''}</p>
+            <p style={{ fontSize:12,color:'rgba(255,255,255,.32)',maxWidth:540,margin:'10px auto 0',lineHeight:1.6 }}>Every one of these is a documented XRPL operation. You can code it yourself from the developer tutorials — or pay here and we build the exact transaction for you to sign in your wallet. No coding, no copy-paste errors.</p>
           </div>
           <div style={{ display:'grid',gridTemplateColumns:'1fr',gap:18,marginBottom:18 }}>
             {featured.map(p=>(
@@ -2141,8 +2229,8 @@ export default function XRPLHubHome() {
                     <p style={{ fontSize:14,color:'rgba(255,255,255,.55)',lineHeight:1.7,marginBottom:0,maxWidth:540 }}>{p.tagline}</p>
                   </div>
                   <div style={{ textAlign:'right',flexShrink:0 }}>
-                    <div style={{ fontSize:'clamp(22px,2.4vw,28px)',fontWeight:900,color:p.color,whiteSpace:'nowrap' }}>{p.priceRLUSD} RLUSD</div>
-                    <div style={{ fontSize:11,color:'rgba(255,255,255,.32)',marginBottom:12,whiteSpace:'nowrap' }}>or {p.priceXRP} XRP{p.isMonthly?'/mo':''}</div>
+                    <div style={{ fontSize:'clamp(22px,2.4vw,28px)',fontWeight:900,color:p.color,whiteSpace:'nowrap' }}>{p.priceRLUSD} RLUSD{xrpLabel(pricing,p.id) ? <span style={{ fontSize:13,fontWeight:700,color:'rgba(255,255,255,.55)' }}> · {xrpLabel(pricing,p.id)}</span> : null}</div>
+                    <div style={{ fontSize:11,color:'rgba(255,255,255,.32)',marginBottom:12,whiteSpace:'nowrap' }}>{xrpLabel(pricing,p.id) ? 'XRP at the live rate' : 'pay in RLUSD (no live XRP rate)'}</div>
                     <button style={{ padding:'12px 22px',borderRadius:99,background:p.color,color:'#000',border:'none',fontWeight:800,fontSize:13,cursor:'pointer',fontFamily:'inherit',whiteSpace:'nowrap' }}>Buy Now →</button>
                   </div>
                 </div>
@@ -2158,8 +2246,8 @@ export default function XRPLHubHome() {
                 <h3 style={{ fontSize:14,fontWeight:800,marginBottom:5,lineHeight:1.25 }}>{p.name}</h3>
                 <p style={{ fontSize:11,color:'rgba(255,255,255,.42)',lineHeight:1.55,marginBottom:12,flex:1 }}>{p.tagline}</p>
                 <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',paddingTop:10,borderTop:`1px solid ${p.color}15`,gap:6,marginTop:'auto' }}>
-                  <span style={{ fontSize:14,fontWeight:900,color:p.color,whiteSpace:'nowrap' }}>{p.priceRLUSD}{p.isMonthly?'/mo':''}</span>
-                  <button style={{ padding:'6px 12px',borderRadius:99,background:`${p.color}18`,border:`1px solid ${p.color}32`,color:p.color,fontWeight:700,fontSize:10,cursor:'pointer',fontFamily:'inherit',whiteSpace:'nowrap' }}>{p.isMonthly?'Subscribe':'Buy'} →</button>
+                  <span style={{ fontSize:13,fontWeight:900,color:p.color,lineHeight:1.3 }}>{p.priceRLUSD} RLUSD{xrpLabel(pricing,p.id) ? <span style={{ fontWeight:700,opacity:.75 }}> · {xrpLabel(pricing,p.id)}</span> : null}</span>
+                  <button style={{ padding:'6px 12px',borderRadius:99,background:`${p.color}18`,border:`1px solid ${p.color}32`,color:p.color,fontWeight:700,fontSize:10,cursor:'pointer',fontFamily:'inherit',whiteSpace:'nowrap' }}>Buy →</button>
                 </div>
               </div>
             ))}
@@ -2184,7 +2272,7 @@ export default function XRPLHubHome() {
                 </div>
                 <h2 style={{ fontSize:'clamp(22px,3.3vw,36px)',fontWeight:900,letterSpacing:'-2px',marginBottom:14 }}>Our own on-chain score.<br />No FICO. No bureau. No SSN.</h2>
                 <p style={{ fontSize:13,color:'rgba(255,255,255,.5)',lineHeight:1.8,marginBottom:20 }}>
-                  XRPLScore™ is XRPLHub's proprietary 300–850 rating, computed live from your XRPL wallet.
+                  XRPLScore™ is XRPLHub's proprietary 300–850 rating, computed from your wallet’s public on-chain history (cached for up to 15 minutes).
                   <strong style={{ color:'#fff' }}> No FICO. No bureau. No SSN.</strong> Connect your Xaman wallet to see your score instantly — your results save to your account.
                 </p>
 
@@ -2204,7 +2292,7 @@ export default function XRPLHubHome() {
           <div style={{ textAlign:'center',marginBottom:34 }}>
             <div style={{ display:'inline-flex',alignItems:'center',gap:6,marginBottom:12 }}><span style={{ width:5,height:5,borderRadius:'50%',background:'#8b5cf6',boxShadow:'0 0 8px #8b5cf6' }} /><span style={{ fontSize:11,fontWeight:700,color:'#8b5cf6',letterSpacing:'.14em',textTransform:'uppercase' }}>Community Grants</span></div>
             <h2 style={{ fontSize:'clamp(22px,3.5vw,34px)',fontWeight:900,letterSpacing:'-2px',marginBottom:12 }}>Real people. Real money. Wallet to wallet.</h2>
-            <p style={{ fontSize:13,color:'rgba(255,255,255,.48)',lineHeight:1.8,maxWidth:580,margin:'0 auto' }}>Donors fund a public XRPL treasury. A person reviews and decides every application. Approved grants go directly to recipients&apos; wallets — 100% verifiable on the XRP Ledger.</p>
+            <p style={{ fontSize:13,color:'rgba(255,255,255,.48)',lineHeight:1.8,maxWidth:580,margin:'0 auto' }}>Donors fund a public XRPL treasury. A person reviews and decides every application. Approved grants go directly to recipients&apos; wallets, and every payment in and out is visible on the XRP Ledger.{!GRANT_APPLICATIONS_OPEN && ' Applications are currently paused until the treasury is funded.'}</p>
           </div>
           <TreasuryStatsBar />
           <div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(300px,1fr))',gap:20 }}>
@@ -2229,16 +2317,19 @@ export default function XRPLHubHome() {
             {/* Apply */}
             <div style={{ background:'linear-gradient(135deg,rgba(139,92,246,.08),rgba(6,6,22,.8))',border:'1px solid rgba(139,92,246,.2)',borderRadius:22,padding:'30px 26px',backdropFilter:'blur(20px)' }}>
               <div style={{ fontSize:40,marginBottom:14,animation:'float 4s ease-in-out infinite',animationDelay:'1s' }}>❤️</div>
-              <h3 style={{ fontSize:21,fontWeight:900,marginBottom:10 }}>Apply for a Grant</h3>
-              <p style={{ fontSize:13,color:'rgba(255,255,255,.48)',lineHeight:1.8,marginBottom:18 }}>Need help? Apply for $25–$100. A person reviews every application and makes the decision, then funds are released to your XRPL wallet.</p>
+              <h3 style={{ fontSize:21,fontWeight:900,marginBottom:10 }}>{GRANT_APPLICATIONS_OPEN ? 'Apply for a Grant' : GRANTS_PAUSED_TITLE}</h3>
+              <p style={{ fontSize:13,color:'rgba(255,255,255,.48)',lineHeight:1.8,marginBottom:18 }}>{GRANT_APPLICATIONS_OPEN ? 'Need help? Apply for $25–$100. A person reviews every application and makes the decision, then funds are released to your XRPL wallet.' : GRANTS_PAUSED_MESSAGE}</p>
               <div style={{ display:'flex',flexDirection:'column',gap:7,marginBottom:20 }}>
-                {['Submit a short application','A person reviews and decides','Approved funds go direct to your wallet','No bank account, no ID required'].map(f=>(
+                {(GRANT_APPLICATIONS_OPEN
+                  ? ['Submit a short application','A person reviews and decides','Approved funds go direct to your wallet','No bank account, no ID required']
+                  : ['Grants are $25–$100 when applications reopen','A person reviews every application','Approved grants are paid from the public treasury','Donations are open and working now']
+                ).map(f=>(
                   <div key={f} style={{ display:'flex',alignItems:'center',gap:8,fontSize:12,color:'rgba(255,255,255,.52)' }}>
                     <span style={{ color:'#8b5cf6',fontSize:11 }}>✓</span>{f}
                   </div>
                 ))}
               </div>
-              <button onClick={()=>setShowGrant(true)} style={{ ...Btn('color','#8b5cf6',{width:'100%',padding:'14px',fontSize:15}) }}>Apply for a Grant →</button>
+              <button onClick={()=>setShowGrant(true)} style={{ ...Btn('color','#8b5cf6',{width:'100%',padding:'14px',fontSize:15}) }}>{GRANT_APPLICATIONS_OPEN ? 'Apply for a Grant →' : 'Read the update →'}</button>
             </div>
 
           </div>

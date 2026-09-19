@@ -14,8 +14,8 @@
 //
 // NINETEEN TOOLS:
 //   1. check_xrpl_score        — free 300–850 wallet creditworthiness score
-//   2. list_xrpl_services      — the 35 build_xrpl_transaction actions + their params
-//   3. build_xrpl_transaction  — ready-to-sign txjson for any of 35 XRPL actions
+//   2. list_xrpl_services      — every build_xrpl_transaction action + its params
+//   3. build_xrpl_transaction  — ready-to-sign txjson for any listed XRPL action
 //   4. issue_score_credential  — paid signed, verifiable score certificate (1 XRP/RLUSD)
 //   5. submit_grant_application — apply for a 1–100 RLUSD community micro-grant
 //   6. donate_to_community_fund — donate XRP or RLUSD to the XRPLHub treasury
@@ -39,7 +39,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { buildServiceTx } from '@/app/api/execute/txBuilder';
 import { buildContextFromView, mptRegimeFor, permanenceNotice } from '@/lib/mptPermanence';
-import { SERVICE_CATALOG, SERVICE_IDS, serviceParamLines } from '@/app/api/execute/serviceCatalog';
+import { SERVICE_CATALOG, SERVICE_COUNT, BUILDABLE_SERVICE_IDS, serviceParamLines } from '@/app/api/execute/serviceCatalog';
 import { prisma } from '@/lib/xrplscore-db';
 import { screenOfac, NoSnapshotError } from '@/lib/screen';
 import { isValidXrplAddress } from '@/lib/engine';
@@ -62,7 +62,7 @@ export const MCP_SERVER_INFO = {
   name: 'xrplhub',
   version: '1.11.0',
   description:
-    'Free XRPL wallet creditworthiness scores · ready-to-sign txjson for 35 XRPL actions (incl. MPT ' +
+    'Free XRPL wallet creditworthiness scores · ready-to-sign txjson for ' + SERVICE_COUNT + ' XRPL actions (incl. MPT ' +
     'issuance with a plain-English flag guide + on-ledger backing declaration) · verifiable score ' +
     'credential · credential + permissioned domain explorer · MPT issuer risk + backing declarations · ' +
     'OFAC SDN screening attestation (process, not ground truth) · XLS-66 cross-broker lending exposure & ' +
@@ -243,7 +243,7 @@ export const TOOLS = [
   {
     name: 'list_xrpl_services',
     description:
-      'List all 35 XRPL actions that build_xrpl_transaction can produce. For each you get: id, ' +
+      'List all ' + SERVICE_COUNT + ' XRPL actions that build_xrpl_transaction can produce. For each you get: id, ' +
       'plain-English label, category, safety tier, and every parameter (name, type, required, ' +
       'example). Call this FIRST so you pass the right product_id and params in one shot instead ' +
       'of guessing and getting a missing-params error. No parameters. Free, no signup.',
@@ -252,9 +252,9 @@ export const TOOLS = [
   {
     name: 'build_xrpl_transaction',
     description:
-      'Get a ready-to-sign transaction JSON for any of 35 XRPL actions — no XRPL coding. Returns the ' +
+      'Get a ready-to-sign transaction JSON for any of ' + SERVICE_COUNT + ' XRPL actions — no XRPL coding. Returns the ' +
       'exact txjson plus a safety tier; the wallet owner signs it in their own wallet (this never ' +
-      'signs for anyone). Call list_xrpl_services first for all 35 ids and every parameter with examples. ' +
+      'signs for anyone). Call list_xrpl_services first for all ' + SERVICE_COUNT + ' ids and every parameter with examples. ' +
       'Params: product_id (required — e.g. checkcreate, escrow, trustline, nftmint, dexorder, multisig), ' +
       'wallet_address (r... signer, required), params (object, per-service). Free, no signup.',
     inputSchema: {
@@ -262,7 +262,7 @@ export const TOOLS = [
       properties: {
         product_id: {
           type: 'string',
-          enum: SERVICE_IDS,
+          enum: BUILDABLE_SERVICE_IDS,
           description:
             'Which XRPL action to build. Call list_xrpl_services for the full catalogue with ' +
             'each id\'s label, tier and parameters.',
@@ -788,11 +788,11 @@ async function toolCheckDomainEligibility(args: Record<string, unknown>): Promis
 
 function toolListXrplServices(): string {
   return JSON.stringify({
-    count: SERVICE_CATALOG.length,
+    count: SERVICE_COUNT,
     note: 'Pass one of these `id` values as product_id to build_xrpl_transaction, ' +
           'plus a params object with the listed fields. This tool builds txjson only — ' +
           'the wallet owner signs it. Free, no signup.',
-    services: SERVICE_CATALOG.map((s) => ({
+    services: SERVICE_CATALOG.filter((s) => s.tier !== 'blocked').map((s) => ({
       id: s.id,
       label: s.label,
       category: s.category,
@@ -806,7 +806,7 @@ function toolListXrplServices(): string {
         example: p.example,
       })),
     })),
-    poweredBy: 'XRPLHub.io — 35 Done-For-You XRPL Services © 2026',
+    poweredBy: 'XRPLHub.io — ' + SERVICE_COUNT + ' Done-For-You XRPL Services © 2026',
   }, null, 2);
 }
 
@@ -863,7 +863,7 @@ async function toolBuildXrplTransaction(
         'Present this transaction object to the wallet holder. They must sign it ' +
         'using their Xaman wallet — the transaction cannot be submitted without ' +
         'their cryptographic signature. Never sign on behalf of a user.',
-      poweredBy: 'XRPLHub.io — 35 Done-For-You XRPL Services © 2026',
+      poweredBy: 'XRPLHub.io — ' + SERVICE_COUNT + ' Done-For-You XRPL Services © 2026',
     }, null, 2);
   } catch (e) {
     return JSON.stringify({ error: `Build failed: ${e instanceof Error ? e.message : 'unknown'}` });
@@ -1122,7 +1122,7 @@ export async function GET() {
       name:        'XRPLHub MCP Server',
       version:     MCP_SERVER_INFO.version,
       description: 'XRPLHub as AI-agent tools: free 300–850 wallet creditworthiness scores, ' +
-                   'ready-to-sign txjson for 35 XRPL actions, a paid verifiable score credential, ' +
+                   'ready-to-sign txjson for ' + SERVICE_COUNT + ' XRPL actions, a paid verifiable score credential, ' +
                    'community micro-grants, and charitable donations. No signup; paid actions settle in XRP or RLUSD.',
       serverCard:  '/.well-known/mcp/server-card.json',
       tools: TOOLS.map(t => ({

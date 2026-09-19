@@ -29,6 +29,7 @@ export const LSF = {
   NO_FREEZE: 0x00200000,
   GLOBAL_FREEZE: 0x00400000,
   DEFAULT_RIPPLE: 0x00800000,
+  DEPOSIT_AUTH: 0x01000000,
 } as const;
 
 export interface AccountSummary {
@@ -90,6 +91,25 @@ export async function ammExists(a: Asset, b: Asset): Promise<boolean | null> {
   if (r.error === "actNotFound" || r.error === "ammNotFound") return false;
   if (r.error) return null;
   return Boolean(r.amm);
+}
+
+export interface AmmInfo {
+  account: string;
+  /** currency code of the pool's LP token (a trust-line currency on the holder's account) */
+  lpCurrency: string;
+}
+
+/** The AMM's account and LP-token currency; false = no such pool, null = unreachable/unknown. */
+export async function getAmm(a: Asset, b: Asset): Promise<AmmInfo | false | null> {
+  const r = await call("amm_info", { asset: a, asset2: b });
+  if (!r) return null;
+  if (r.error === "actNotFound" || r.error === "ammNotFound") return false;
+  if (r.error) return null;
+  const amm = r.amm as Obj | undefined;
+  if (!amm) return false;
+  const lp = amm.lp_token as { currency?: string } | undefined;
+  if (typeof amm.account !== "string" || !lp?.currency) return null;
+  return { account: amm.account, lpCurrency: lp.currency };
 }
 
 export interface PathAlternative {

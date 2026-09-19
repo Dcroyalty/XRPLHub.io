@@ -3,6 +3,7 @@
 
 import { NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
+import { GRANT_APPLICATIONS_OPEN, GRANTS_PAUSED_MESSAGE } from '@/lib/grantsStatus';
 
 const prisma = new PrismaClient();
 
@@ -15,6 +16,11 @@ const urgencyFor = (cat: string): string => {
 };
 
 export async function POST(req: Request) {
+  // Applications are paused (src/lib/grantsStatus.ts). Enforced here, not just in the UI, so posting
+  // to this endpoint directly can't add to the queue either.
+  if (!GRANT_APPLICATIONS_OPEN) {
+    return NextResponse.json({ error: 'grant_applications_paused', message: GRANTS_PAUSED_MESSAGE }, { status: 503 });
+  }
   try {
     const body = await req.json().catch(() => ({}));
     // The frontend still sends these field names — we map them to DB columns here.

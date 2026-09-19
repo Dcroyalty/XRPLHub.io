@@ -5,7 +5,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "node scripts/check-attestation-freshness.mjs && prisma generate && next build",
+    "build": "node scripts/check-attestation-freshness.mjs && node scripts/check-service-parity.mjs && prisma generate && next build",
+    "check:parity": "node scripts/check-service-parity.mjs",
     "start": "next start",
     "postinstall": "prisma generate",
     "db:generate": "prisma generate",
@@ -16,7 +17,6 @@
     "test:score": "node scripts/test-ledgerscore.js"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.24.3",
     "@coinbase/x402": "1.0.1",
     "@crossmarkio/sdk": "0.4.0",
     "@gemwallet/api": "3.8.0",

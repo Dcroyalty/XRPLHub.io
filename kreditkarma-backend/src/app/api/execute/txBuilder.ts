@@ -150,7 +150,6 @@ const builders: Record<string, Builder> = {
     const pays = paysCur === 'XRP' || !paysCur ? xrpToDrops(Number(paysVal)) : { currency: paysCur, issuer: paysIss, value: paysVal };
     return SAFE({ TransactionType: 'OfferCreate', Account: account, TakerGets: gets, TakerPays: pays }, 'DEX Order (OfferCreate)');
   },
-  dextrade: (account, p) => builders.dexorder(account, p),
   ammlaunch: (account, p) => {
     const aCur = str(p.assetCurrency), aVal = str(p.assetValue), aIss = str(p.assetIssuer);
     const bCur = str(p.asset2Currency), bVal = str(p.asset2Value), bIss = str(p.asset2Issuer);
@@ -209,7 +208,6 @@ const builders: Record<string, Builder> = {
     if (!checkId) return NEED(['checkId']);
     return SAFE({ TransactionType: 'CheckCancel', Account: account, CheckID: checkId }, 'Cancel Check');
   },
-  desttagreq: (account) => SAFE({ TransactionType: 'AccountSet', Account: account, SetFlag: 1 }, 'Require Destination Tags'),
   escrow: (account, p) => {
     const dest = str(p.destination), amount = str(p.amount), finishAfter = Number(p.finishAfter);
     if (!dest || !amount || !finishAfter) return NEED(['destination', 'amount', 'finishAfter']);

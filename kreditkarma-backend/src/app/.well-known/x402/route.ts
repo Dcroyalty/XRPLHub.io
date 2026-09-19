@@ -21,7 +21,7 @@ import {
   PRICE_PER_TX_PRODUCT_RLUSD,
   TREASURY_ADDRESS,
 } from "@/lib/paycall";
-import { BUILDABLE_SERVICE_IDS } from "@/app/api/execute/serviceCatalog";
+import { BUILDABLE_SERVICE_IDS, SERVICE_COUNT } from "@/app/api/execute/serviceCatalog";
 import { BASE_PAY_TO, BASE_NETWORK, USDC_BASE_ASSET, CDP_FACILITATOR_URL, PRICE_PER_SCORE_USDC, PRICE_PER_MPT_USDC, PRICE_PER_SCREEN_USDC, PRICE_PER_EXPOSURE_USDC, PRICE_PER_UNDERWRITE_USDC } from "@/lib/x402Base";
 import { UNDERWRITE_DISCLAIMER } from "@/lib/underwriteCanon";
 import {
@@ -288,7 +288,7 @@ export async function GET(req: Request) {
       name: "XRPLHub — XRPLScore",
       description:
         "On-chain creditworthiness scoring for the XRP Ledger. A 300–850 score from 8 signals, " +
-        "full risk reports, and ready-to-sign prebuilt XRPL transactions for 35 actions. " +
+        "full risk reports, and ready-to-sign prebuilt XRPL transactions for " + SERVICE_COUNT + " actions. " +
         "Pay per call in RLUSD — no account, no API key, no signup.",
       provider: { name: "XRPLHub.io", url: origin, contact: "support@xrplhub.io" },
       facilitator: FACILITATOR_URL,
@@ -323,7 +323,7 @@ export async function GET(req: Request) {
         {
           resource: `${origin}/api/x402/tx`,
           method: "GET",
-          name: "Prebuilt XRPL transaction (35 actions)",
+          name: "Prebuilt XRPL transaction (" + SERVICE_COUNT + " actions)",
           description: TX_SCHEMA.description,
           ...common,
           amount: PRICE_PER_TX_PRODUCT_RLUSD.toFixed(6),

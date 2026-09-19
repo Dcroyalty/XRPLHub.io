@@ -9,7 +9,7 @@
 // step 1 and later steps are built by id (ctx.planIds).
 
 import { createHash } from 'crypto';
-import { LSF, ammExists, findPaths, getAccount, getLines } from '@/lib/serviceChain';
+import { LSF, ammExists, findPaths, getAccount, getAmm, getLines } from '@/lib/serviceChain';
 import {
   BAD, CAUTION, CAUTION_STEPS, NEED, SAFE, SAFE_STEPS,
   amountOf, assetFrom, currencyCode, hexOf, isAddr, isDomain, positiveDecimal, str, truthy,
@@ -24,6 +24,9 @@ const TF_SET_NO_RIPPLE = 0x00020000; // TrustSet
 const TF_CLEAR_NO_RIPPLE = 0x00040000; // TrustSet
 const TF_SINGLE_ASSET = 0x00080000; // AMMDeposit
 const TF_TWO_ASSET = 0x00100000; // AMMDeposit
+const TF_WITHDRAW_ALL = 0x00020000; // AMMWithdraw (tfWithdrawAll)
+const TF_W_SINGLE_ASSET = 0x00080000; // AMMWithdraw (tfSingleAsset)
+const TF_W_TWO_ASSET = 0x00100000; // AMMWithdraw (tfTwoAsset)
 
 const LEDGER_UNREACHABLE =
   'could not read your account from the ledger just now — try again in a moment (this transaction is not built blind).';
@@ -284,5 +287,72 @@ export const richBuilders: Record<string, Builder> = {
       { id: 'trustset', label: 'Set your trust line', txjson: { TransactionType: 'TrustSet', Account: account, LimitAmount: { currency: cur, issuer, value: limit } } },
       { id: 'payment', label: `Send ${amount} to the destination`, txjson: { TransactionType: 'Payment', Account: account, Destination: dest, Amount: { currency: cur, issuer, value: amount } } },
     ], 'Trust Line + Send Currency (2 steps)');
+  },
+
+  // ── Deposit Preauthorization (DepositPreauth) ──────────────────────────────
+  // With Deposit Authorization on (the Deposit Auth Guard service), an account rejects payments
+  // from everyone EXCEPT accounts it has preauthorized. This creates (or removes) one such
+  // preauthorization. Each entry counts toward the owner reserve (0.2 XRP).
+  depositpreauth: async (account, p) => {
+    const sender = str(p.sender);
+    if (!sender) return NEED(['sender']);
+    if (!isAddr(sender)) return BAD('invalid sender address');
+    if (sender === account) return BAD('you cannot preauthorize your own account');
+    const remove = ['remove', 'unauthorize', 'revoke'].includes(str(p.action).toLowerCase());
+
+    if (!remove) {
+      const target = await getAccount(sender);
+      if (target && !target.found) return BAD('that sender account is not activated on XRPL mainnet, so it cannot be preauthorized yet');
+    }
+    const mine = await getAccount(account);
+    const authOn = mine ? (mine.flags & LSF.DEPOSIT_AUTH) !== 0 : null;
+    const label = remove
+      ? 'Revoke a deposit preauthorization'
+      : authOn === false
+        ? 'Preauthorize a sender (Deposit Auth is not on yet — it takes effect once you enable it)'
+        : 'Preauthorize a sender for Deposit Auth';
+    return SAFE({ TransactionType: 'DepositPreauth', Account: account, [remove ? 'Unauthorize' : 'Authorize']: sender }, label);
+  },
+
+  // ── AMM Liquidity Exit (AMMWithdraw) ───────────────────────────────────────
+  // Take liquidity back out of an AMM pool. mode "all" redeems ALL your LP tokens for both assets
+  // (tfWithdrawAll); "single" withdraws an amount of one asset (tfSingleAsset); "two" withdraws
+  // amounts of both (tfTwoAsset). Asset + Asset2 identify the pool. We check on the ledger that the
+  // pool exists and that you actually hold its LP tokens.
+  ammwithdraw: async (account, p) => {
+    if (!str(p.asset2Currency)) return NEED(['asset2Currency']);
+    const a = assetFrom(str(p.assetCurrency) || 'XRP', str(p.assetIssuer));
+    if (!a.ok) return BAD(a.error);
+    const b = assetFrom(str(p.asset2Currency), str(p.asset2Issuer));
+    if (!b.ok) return BAD(b.error);
+    if (a.asset.currency === b.asset.currency && a.asset.issuer === b.asset.issuer) return BAD('the two pool assets must be different');
+
+    const mode = ['single', 'two'].includes(str(p.mode).toLowerCase()) ? str(p.mode).toLowerCase() : 'all';
+    const aVal = str(p.assetValue);
+    const bVal = str(p.asset2Value);
+    const tx: Record<string, unknown> = { TransactionType: 'AMMWithdraw', Account: account, Asset: a.asset, Asset2: b.asset };
+    if (mode === 'all') {
+      tx.Flags = TF_WITHDRAW_ALL;
+    } else if (mode === 'single') {
+      if (!aVal) return NEED(['assetValue']);
+      if (!positiveDecimal(aVal)) return BAD('the amount must be a positive number');
+      tx.Amount = amountOf(a.asset, aVal);
+      tx.Flags = TF_W_SINGLE_ASSET;
+    } else {
+      if (!aVal || !bVal) return NEED(['assetValue', 'asset2Value']);
+      if (!positiveDecimal(aVal) || !positiveDecimal(bVal)) return BAD('amounts must be positive numbers');
+      tx.Amount = amountOf(a.asset, aVal);
+      tx.Amount2 = amountOf(b.asset, bVal);
+      tx.Flags = TF_W_TWO_ASSET;
+    }
+
+    const amm = await getAmm(a.asset, b.asset);
+    if (amm === false) return BAD('there is no AMM pool for that pair');
+    if (amm) {
+      const lines = await getLines(account, amm.account);
+      if (lines && !lines.some((l) => l.currency.toUpperCase() === amm.lpCurrency.toUpperCase() && Number(l.balance) > 0))
+        return BAD('you hold no LP tokens for that pool, so there is nothing to withdraw');
+    }
+    return SAFE(tx, mode === 'all' ? 'AMM Liquidity Exit (withdraw everything)' : mode === 'single' ? 'AMM Liquidity Exit (one asset)' : 'AMM Liquidity Exit (both assets)');
   },
 };

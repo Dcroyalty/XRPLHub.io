@@ -57,7 +57,7 @@ export const xamanProvider: WalletProvider = {
         handle.deepLink = data.deepLink ?? null;
         return { via: "xaman", uuid: data.uuid };
       }
-      // one of the 35 products
+      // one of the storefront products
       res = await fetch("/api/create-payment", {
         method: "POST",
         headers: { "content-type": "application/json" },

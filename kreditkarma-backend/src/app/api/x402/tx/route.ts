@@ -1,5 +1,5 @@
 // src/app/api/x402/tx/route.ts
-// Prebuilt XRPL transaction (35 actions) over the official x402 v2 protocol.
+// Prebuilt XRPL transaction (every buildable service) over the official x402 v2 protocol.
 //
 // AGENT-SAFE (serveX402Paid): schema in the 402; the txjson is BUILT in the
 // handler, before settlement — a missing-param or unknown-product failure

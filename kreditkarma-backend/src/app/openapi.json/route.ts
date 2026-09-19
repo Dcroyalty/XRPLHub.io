@@ -11,7 +11,7 @@ import {
   PRICE_PER_PRODUCT_RLUSD,
   PRICE_PER_TX_PRODUCT_RLUSD,
 } from "@/lib/paycall";
-import { BUILDABLE_SERVICE_IDS } from "@/app/api/execute/serviceCatalog";
+import { BUILDABLE_SERVICE_IDS, SERVICE_COUNT } from "@/app/api/execute/serviceCatalog";
 import { SCREEN_OFAC_OUTPUT_SCHEMA, SCREEN_OFAC_OUTPUT_EXAMPLE } from "@/lib/screen";
 import { LENDING_EXPOSURE_OUTPUT_SCHEMA } from "@/lib/lendingExposure";
 
@@ -138,7 +138,7 @@ export async function GET(req: Request) {
       description:
         "Pay-per-call XRP Ledger services for AI agents, settled in RLUSD. " +
         "A 300–850 wallet creditworthiness score from 8 signals, full risk reports, and " +
-        "ready-to-sign prebuilt XRPL transactions for 35 actions. No account, no API key, no signup. " +
+        "ready-to-sign prebuilt XRPL transactions for " + SERVICE_COUNT + " actions. No account, no API key, no signup. " +
         "A free (unauthenticated) score is also at GET /api/score/{wallet}.\n\n" +
         "AGENT SAFETY on /api/x402/{score,report,tx}: the on-ledger payment settles ONLY after the paid " +
         "work returns success — a handler failure returns `error: \"handler_failed\"` and does NOT charge " +
@@ -283,9 +283,9 @@ export async function GET(req: Request) {
       "/api/x402/tx": {
         get: {
           operationId: "x402Tx",
-          summary: "Prebuilt XRPL transaction — 35 actions (x402 exact scheme)",
+          summary: "Prebuilt XRPL transaction — " + SERVICE_COUNT + " actions (x402 exact scheme)",
           description:
-            "Get a ready-to-sign transaction JSON for any of 35 XRPL actions (CheckCreate, Escrow, " +
+            "Get a ready-to-sign transaction JSON for any of " + SERVICE_COUNT + " XRPL actions (CheckCreate, Escrow, " +
             "TrustSet, NFT mint/sell/burn, AMM create/deposit, DEX order, MPT issue/send, multisig, " +
             "DID, credentials, permissioned domains, and more). The wallet owner signs the returned " +
             "txjson — this never signs for anyone. No signup.",

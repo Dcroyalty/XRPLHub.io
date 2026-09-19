@@ -4,7 +4,7 @@
 // document describe the SAME thing. Every `description` here is < 480 chars.
 
 import { walletProp, SCORE_OUTPUT_SCHEMA, SCORE_OUTPUT_EXAMPLE } from "./scoreSchema";
-import { BUILDABLE_SERVICE_IDS } from "@/app/api/execute/serviceCatalog";
+import { BUILDABLE_SERVICE_IDS, SERVICE_COUNT } from "@/app/api/execute/serviceCatalog";
 
 export interface X402ResourceSchema {
   input: Record<string, unknown>;
@@ -79,7 +79,7 @@ export const REPORT_SCHEMA: X402ResourceSchema = {
 
 export const TX_SCHEMA: X402ResourceSchema = {
   description:
-    "A ready-to-sign XRPL transaction JSON for any of 35 actions (CheckCreate, Escrow, TrustSet, NFT, " +
+    "A ready-to-sign XRPL transaction JSON for any of " + SERVICE_COUNT + " actions (CheckCreate, Escrow, TrustSet, NFT, " +
     "AMM, DEX order, MPT, multisig, DID, credentials, permissioned domains, and more). The wallet owner " +
     "signs it — this never signs for anyone. Params per action: /api/mcp list_xrpl_services.",
   input: {

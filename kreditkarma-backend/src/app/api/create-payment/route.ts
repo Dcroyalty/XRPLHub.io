@@ -24,7 +24,7 @@ const NAMES: Record<string, string> = {
   mptissue:'Multi-Purpose Token Issuance', mptsend:'Send MPT', trustsend:'Trust Line + Send Currency',
   globalfreeze:'Global Freeze', freezeline:'Freeze a Trust Line',
   checkcreate:'Create a Check', checkcash:'Cash a Check', checkcancel:'Cancel a Check',
-  desttagreq:'Require Destination Tags', dextrade:'DEX Trade Execution', tickets:'Ticket Batch Setup',
+  depositpreauth:'Deposit Preauthorization', ammwithdraw:'AMM Liquidity Exit', tickets:'Ticket Batch Setup',
   credentialissue:'Issue a Credential', permdomain:'Permissioned Domain',
   credential:'XRPLScore Verified Credential (90 days)',
   donate:'Community Grant treasury donation',

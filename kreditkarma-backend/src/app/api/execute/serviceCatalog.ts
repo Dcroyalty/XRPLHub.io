@@ -1,5 +1,5 @@
 // src/app/api/execute/serviceCatalog.ts
-// Machine-readable catalogue of the 35 build_xrpl_transaction services: what
+// Machine-readable catalogue of the build_xrpl_transaction services: what
 // each one produces, its safety tier, and every parameter with type + example.
 // Consumed by the MCP server (list_xrpl_services + build_xrpl_transaction docs),
 // llms.txt, and the OpenAPI doc so an agent never has to guess params.
@@ -153,13 +153,17 @@ export const SERVICE_CATALOG: ServiceDef[] = [
       P("takerPaysCurrency", "string", false, "Currency you want (default XRP)", "USD"),
       P("takerPaysIssuer", "address", false, "Issuer if not XRP", "rIssuer..."),
     ] },
-  { id: "dextrade", label: "DEX trade execution", category: "DeFi", tier: "safe",
-    gives: "An OfferCreate txjson (same shape as dexorder).",
+  { id: "ammwithdraw", label: "AMM liquidity exit", category: "DeFi", tier: "safe",
+    gives:
+      "An AMMWithdraw txjson taking liquidity back out of an AMM pool. mode=all redeems ALL your LP tokens for both assets (tfWithdrawAll); single withdraws an amount of asset 1 (tfSingleAsset); two withdraws amounts of both (tfTwoAsset). Checked against the ledger: the pool must exist and you must hold its LP tokens.",
     params: [
-      P("takerGetsValue", "string", true, "Amount you give", "10"),
-      P("takerPaysValue", "string", true, "Amount you want", "10"),
-      P("takerPaysCurrency", "string", false, "Currency you want (default XRP)", "USD"),
-      P("takerPaysIssuer", "address", false, "Issuer if not XRP", "rIssuer..."),
+      P("asset2Currency", "string", true, "Asset 2 currency (identifies the pool)", "RLUSD"),
+      P("asset2Issuer", "address", false, "Asset 2 issuer if not XRP", "rIssuer..."),
+      P("assetCurrency", "string", false, "Asset 1 currency (default XRP)", "XRP"),
+      P("assetIssuer", "address", false, "Asset 1 issuer if not XRP", "rIssuer..."),
+      P("mode", "string", false, "all (default), single, or two", "all"),
+      P("assetValue", "string", false, "Amount of asset 1 to withdraw (single / two modes)", "10"),
+      P("asset2Value", "string", false, "Amount of asset 2 to withdraw (two mode)", "14"),
     ] },
   { id: "smartswap", label: "Smart swap router (path payment)", category: "DeFi", tier: "safe",
     gives:
@@ -241,8 +245,13 @@ export const SERVICE_CATALOG: ServiceDef[] = [
   { id: "checkcancel", label: "Cancel a check", category: "Payments", tier: "safe",
     gives: "A CheckCancel txjson.",
     params: [P("checkId", "string", true, "Check object ID", "C4B900F...ledgerObjectHash")] },
-  { id: "desttagreq", label: "Require destination tags", category: "Payments", tier: "safe",
-    gives: "An AccountSet txjson requiring a destination tag on incoming payments.", params: [] },
+  { id: "depositpreauth", label: "Deposit preauthorization", category: "Wallet security", tier: "safe",
+    gives:
+      "A DepositPreauth txjson that preauthorizes (or revokes) ONE sender account for Deposit Authorization. With asfDepositAuth on (the Deposit Auth service), only preauthorized senders can pay you. Each entry counts toward your owner reserve (0.2 XRP).",
+    params: [
+      P("sender", "address", true, "The account to preauthorize (or to revoke)", "rSender..."),
+      P("action", "string", false, "authorize (default) or remove", "authorize"),
+    ] },
   { id: "escrow", label: "Create escrow", category: "Payments", tier: "safe",
     gives: "An EscrowCreate txjson time-locking XRP until finishAfter.",
     params: [
@@ -289,6 +298,9 @@ export const SERVICE_IDS = SERVICE_CATALOG.map((s) => s.id);
 
 /** Buildable service ids — everything except the blocked ones (e.g. lockdown). */
 export const BUILDABLE_SERVICE_IDS = SERVICE_CATALOG.filter((s) => s.tier !== "blocked").map((s) => s.id);
+
+/** How many services the storefront sells. EVERY count shown anywhere is derived from this — never typed by hand. */
+export const SERVICE_COUNT = BUILDABLE_SERVICE_IDS.length;
 
 /** Compact one-line-per-service reference for embedding in tool descriptions. */
 export function serviceParamLines(): string {

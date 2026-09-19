@@ -2,7 +2,7 @@
 
 **On-chain creditworthiness for the XRP Ledger.** XRPLHub gives any XRPL wallet a
 300–850 credit-style score (**XRPLScore**) computed from 8 public-ledger signals,
-sells ready-to-sign prebuilt XRPL transactions for 35 actions, issues signed
+sells ready-to-sign prebuilt XRPL transactions for 34 actions, issues signed
 verifiable score credentials, and runs an on-chain community micro-grant fund.
 
 - **Live app:** https://www.xrplhub.io
@@ -56,8 +56,8 @@ claude mcp add xrplhub --url https://www.xrplhub.io/api/mcp
 | Tool | What you get | Cost |
 |---|---|---|
 | `check_xrpl_score` | 300–850 score, grade, percentile, 8-signal breakdown, tips. Param: `wallet_address`. | free |
-| `list_xrpl_services` | All 35 `build_xrpl_transaction` actions, each with params + examples. No params. | free |
-| `build_xrpl_transaction` | Ready-to-sign txjson for one of 35 XRPL actions. Params: `product_id`, `wallet_address`, `params`. | free |
+| `list_xrpl_services` | All 34 `build_xrpl_transaction` actions, each with params + examples. No params. | free |
+| `build_xrpl_transaction` | Ready-to-sign txjson for one of 34 XRPL actions. Params: `product_id`, `wallet_address`, `params`. | free |
 | `issue_score_credential` | Signed, tamper-evident score certificate + public verify URL, 90 days. Params: `wallet_address`, `currency`, `uuid`. | 1 XRP / 1 RLUSD |
 | `submit_grant_application` | Apply for a 1–100 RLUSD community micro-grant. Params: `wallet_address`, `category`, `amount`, `description`. | free |
 | `donate_to_community_fund` | Donate XRP or RLUSD to the grant treasury. Params: `amount`, `currency`, `donor_wallet`, `message`. | free |
@@ -71,7 +71,7 @@ their own wallet. XRPLHub never signs for anyone.
 - OpenAPI 3.1: https://www.xrplhub.io/openapi.json
 - `GET /api/x402/score?wallet=r...` — 300–850 score + 8 signals
 - `GET /api/x402/report?wallet=r...` — score + risk flags + recommendations + on-chain snapshot
-- `GET /api/x402/tx?productId=<id>&account=r...` — one prebuilt XRPL transaction (35 actions)
+- `GET /api/x402/tx?productId=<id>&account=r...` — one prebuilt XRPL transaction (34 actions)
 
 ### llms.txt
 
@@ -91,7 +91,7 @@ curl -H "Authorization: Bearer xrs_live_..." \
 
 | Plan | Price | Included | Rate limit |
 |---|---|---|---|
-| Free | $0 | 500 scored calls/mo | 15 req/min |
+| Free | $0 | 200 scored calls/mo | 10 req/min |
 | Starter | $29/mo | 10,000 | 60 req/min |
 | Growth | $149/mo | 100,000 (overage billed) | 300 req/min |
 | Scale | $499/mo | 1,000,000 (overage billed) | 1,000 req/min |
@@ -100,10 +100,12 @@ curl -H "Authorization: Bearer xrs_live_..." \
 
 ## Community grants
 
-Donate XRP or RLUSD to the treasury; anyone can apply for a 1–100 RLUSD
-micro-grant (rent, utilities, groceries, medical, transport, childcare). AI
-triages each application, a human approves, and approved funds go straight to the
-applicant's wallet. Every donation and payout is on-ledger.
+Donate XRP or RLUSD to the treasury. When applications are open, anyone can apply
+for a $25–$100 micro-grant (rent, utilities, groceries, medical, transport,
+childcare); a person reviews every application — nothing is decided or paid
+automatically — and approved funds go straight to the applicant's wallet. Every
+donation and payout is on-ledger. **Applications are currently paused** until the
+treasury is funded (`GRANT_APPLICATIONS_OPEN` in `src/lib/grantsStatus.ts`).
 
 Treasury: `rs59g3amo5iT6T64Cg96XXMAWuw3WPQcLF` ·
 [view on XRPScan](https://xrpscan.com/account/rs59g3amo5iT6T64Cg96XXMAWuw3WPQcLF)

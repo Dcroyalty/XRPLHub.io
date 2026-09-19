@@ -5,7 +5,7 @@
 // Two flows, both server-verified:
 //   proveControl  -> SignIn / free-key claim. Resolves to the exact JSON body
 //                    to POST to /api/free-key/claim.
-//   submitPayment -> checkout + the 35 products. Resolves to what the payment
+//   submitPayment -> checkout + the storefront products. Resolves to what the payment
 //                    status endpoints need to confirm on-ledger.
 
 export type WalletId = "xaman" | "crossmark" | "gemwallet";
@@ -41,14 +41,14 @@ export interface ProveHandle {
 export interface PaymentContext {
   /** what is being paid — exactly one is set */
   invoiceId?: string;               // checkout
-  productId?: string;               // one of the 35 services
+  productId?: string;               // one of the storefront services
 
   to: string;                       // treasury
   amount: string;                   // decimal string, in `currency` units
   currency: "XRP" | "RLUSD";
   issuer?: string | null;           // RLUSD issuer (RLUSD only)
   currencyHex?: string | null;      // 40-char hex for RLUSD
-  destinationTag?: number | null;   // checkout invoices; omitted for the 35 products
+  destinationTag?: number | null;   // checkout invoices; omitted for the storefront products
 }
 
 export interface PaymentHandle {
@@ -66,7 +66,7 @@ export interface WalletProvider extends WalletMeta {
   proveControl(ctx: ProveContext): ProveHandle;
   /** convenience: build + submit a Payment to the treasury */
   submitPayment(ctx: PaymentContext): PaymentHandle;
-  /** sign + submit an arbitrary txjson (the 35 service transactions).
+  /** sign + submit an arbitrary txjson (the storefront service transactions).
    *  Xaman: not supported here — the server builds its own payload. */
   submitTx?(txjson: Record<string, unknown>): Promise<{ txHash: string }>;
 }
