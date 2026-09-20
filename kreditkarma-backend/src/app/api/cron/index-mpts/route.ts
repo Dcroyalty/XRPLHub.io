@@ -12,7 +12,8 @@ import { prisma } from "@/lib/xrplscore-db";
 import { runMptIndexerPass, maybeAnchor } from "@/lib/mptIndexer";
 import { isAdmin } from "@/lib/adminAuth";
 import { healthProbe } from "@/lib/health";
-import { notifyError } from "@/lib/notify";
+import { notifyError, pingHealthcheck } from "@/lib/notify";
+import { recordHeartbeat, runWatchdog } from "@/lib/watchdog";
 import { forceFlushXrplCounters } from "@/lib/xrplCounters";
 
 export const runtime = "nodejs";
@@ -32,7 +33,8 @@ export async function GET(req: Request) {
   try {
     // Leave headroom under the 60s ceiling for the anchor + health steps
     // (connect + autofill + submitAndWait ~= 8-12s when an anchor is due).
-    const progress = await runMptIndexerPass(prisma, { budgetMs: 32_000 });
+    // (32s -> 24s: the watchdog below needs a few seconds; the indexer is resumable, so nothing is lost.)
+    const progress = await runMptIndexerPass(prisma, { budgetMs: 24_000 });
     const anchor = await maybeAnchor(prisma);
 
     // Daily "is the money path working" sweep — alert on anything red.
@@ -46,7 +48,18 @@ export async function GET(req: Request) {
     }
 
     forceFlushXrplCounters(prisma); // catch-all: land any counters this pass accrued
-    return NextResponse.json({ ...progress, anchor, health: { overall: health.overall, reds: health.reds, ambers: health.ambers } });
+
+    // Unattended-operation watchdog: expiries (domains, TLS, XNS names, credentials), running-out (DB size, anchor
+    // wallet), stopped jobs (OFAC refresh, anchors, monitoring), revoked keys — plus the other cron's heartbeat and
+    // a weekly "still alive" message. See docs/AUTONOMY.md.
+    await recordHeartbeat(prisma, "cron-mpts");
+    const watchdog = await runWatchdog(prisma, { otherCrons: ["cron-credentials"], full: true, sendWeekly: true }).catch(async (e) => {
+      await notifyError("cron/index-mpts watchdog", e);
+      return null;
+    });
+    await pingHealthcheck();
+
+    return NextResponse.json({ ...progress, anchor, health: { overall: health.overall, reds: health.reds, ambers: health.ambers }, watchdog: watchdog ? { alerted: watchdog.alerted, recovered: watchdog.recovered, weeklySent: watchdog.weeklySent, open: watchdog.findings.filter((f) => f.level !== "ok").map((f) => f.key) } : null });
   } catch (err) {
     await notifyError("cron/index-mpts", err);
     console.error("[cron/index-mpts]", err);

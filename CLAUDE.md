@@ -39,6 +39,18 @@ The live production app is a single Next.js project in **`kreditkarma-backend/`*
 - **B2B API** — the scoring/report API sold to businesses, **billed in RLUSD**
   (see `src/lib/rlusd.ts`, x402 payment flow in `src/lib/x402.ts`).
 
+- **Continuous monitoring** — `/api/monitor/*`: watched wallets, HMAC-signed webhooks, sparse attested
+  observations (canon `monitor-observation-v1`). Layered on top of underwriting, never a replacement; no default
+  probability, no default score-drop threshold, consumer-use (FCRA/ECOA) acknowledgement required. See
+  `kreditkarma-backend/docs/MONITORING.md`. A score in an observation must be fresh (never `scoreCache`).
+
+## Running unattended
+
+`kreditkarma-backend/docs/AUTONOMY.md` is the source of truth for what runs on its own, exact renewal dates
+(XRPNS names do NOT auto-renew), the watchdog (`src/lib/watchdog.ts`, run by both daily crons), and what to
+check first after a long absence. All amendment gates read the ledger at request time — never add a
+build-time activation flag.
+
 ## Deploy gotchas
 
 1. **Vercel build cache must be UNCHECKED** when deploying. Stale cache produces

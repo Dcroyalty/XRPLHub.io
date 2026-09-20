@@ -14,7 +14,10 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/xrplscore-db";
 import { runIndexerPass } from "@/lib/credentialIndexer";
 import { isAdmin } from "@/lib/adminAuth";
-import { notifyError } from "@/lib/notify";
+import { notifyError, pingHealthcheck } from "@/lib/notify";
+import { runMonitorPass } from "@/lib/monitorEngine";
+import { maybeAnchorMonitorObservations } from "@/lib/monitorAnchor";
+import { recordHeartbeat, runWatchdog } from "@/lib/watchdog";
 import { refreshSdnSnapshot } from "@/lib/ofac";
 import { maybeAnchorScreeningReceipts } from "@/lib/screenAnchor";
 import { maybeAnchorLendingReceipts } from "@/lib/lendingAnchor";
@@ -52,11 +55,23 @@ export async function GET(req: Request) {
         ? await runIndexerPass(prisma, { budgetMs: 12_000 })
         : { census: "disabled" as const };
 
-    const sdn = await refreshSdnSnapshot(prisma).catch((e) => ({
-      action: "blocked-error" as const,
-      listName: "OFAC-SDN",
-      detail: e instanceof Error ? e.message : "refresh threw",
-    }));
+    const sdn = await refreshSdnSnapshot(prisma).catch(async (e) => {
+      // refreshSdnSnapshot alerts on fetch/parse/integrity failures itself; this catches anything ELSE it throws
+      // (database, unexpected) — that must not pass silently either.
+      await notifyError("cron/index-credentials sdn-refresh", e);
+      return {
+        action: "blocked-error" as const,
+        listName: "OFAC-SDN",
+        detail: e instanceof Error ? e.message : "refresh threw",
+      };
+    });
+
+    // Continuous monitoring: after the SDN refresh (so a new list is visible to sanctions checks), before the
+    // sweep and the anchors. Bounded by a deadline; anything not reached stays due and goes first next run.
+    const monitor = await runMonitorPass(prisma, { deadlineMs: t0 + 30_000, deliverUntilMs: t0 + 37_000 }).catch(async (e) => {
+      await notifyError("cron/index-credentials monitor", e);
+      return { ran: false as const, reason: "monitor pass threw" };
+    });
 
     // Re-observe every known borrower so the attested history has no gaps.
     const lendingSweep = await runLendingSweep(prisma, { deadlineMs: t0 + 42_000 }).catch((e) => {
@@ -79,8 +94,26 @@ export async function GET(req: Request) {
       return { attempted: false, submitted: false, reason: "anchor threw", leafCount: 0 };
     });
 
+    // Monitoring observations: anchored last, and only if there is time left — resumable (they stay unanchored).
+    const monitorAnchor =
+      Date.now() < t0 + 44_000
+        ? await maybeAnchorMonitorObservations(prisma).catch(async (e) => {
+            await notifyError("cron/index-credentials monitor-anchor", e);
+            return { attempted: false, submitted: false, reason: "anchor threw", leafCount: 0 };
+          })
+        : { attempted: false, submitted: false, reason: "skipped: cron time budget", leafCount: 0 };
+
     forceFlushXrplCounters(prisma); // catch-all for any counters this pass accrued
-    return NextResponse.json({ ...progress, sdn, lendingSweep, screeningAnchor, lendingAnchor, underwriteAnchor });
+
+    // Dead-man's switch pair: this cron records a heartbeat and checks the OTHER cron's; the external
+    // HEALTHCHECK_PING_URL (optional) covers both dying at once.
+    await recordHeartbeat(prisma, "cron-credentials");
+    const watchdog = await runWatchdog(prisma, { otherCrons: ["cron-mpts"], full: false }).catch(async (e) => {
+      await notifyError("cron/index-credentials watchdog", e);
+      return null;
+    });
+    await pingHealthcheck();
+    return NextResponse.json({ ...progress, sdn, monitor, lendingSweep, screeningAnchor, lendingAnchor, underwriteAnchor, monitorAnchor, watchdog: watchdog ? { alerted: watchdog.alerted, recovered: watchdog.recovered } : null });
   } catch (err) {
     await notifyError("cron/index-credentials", err);
     console.error("[cron/index-credentials]", err);

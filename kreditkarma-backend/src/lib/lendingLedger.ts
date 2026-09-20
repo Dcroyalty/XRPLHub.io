@@ -118,7 +118,15 @@ export type ResolvedAsset =
   | { kind: "MPT"; key: string; mptIssuanceId: string }
   | { kind: "unknown"; key: "unknown" };
 
-/** Every Loan object in the borrower's owner directory (all brokers). Paginated. */
+/** Thrown when the ledger could not be read — callers must treat it as a failed read, never as zero loans. */
+export class LendingLedgerUnavailableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "LendingLedgerUnavailableError";
+  }
+}
+
+/** Every Loan object in the borrower's owner directory (all brokers). Paginated. Throws LendingLedgerUnavailableError if a page cannot be read. */
 export async function fetchBorrowerLoans(borrower: string): Promise<RawLoan[]> {
   const loans: RawLoan[] = [];
   let marker: unknown = undefined;
@@ -132,7 +140,9 @@ export async function fetchBorrowerLoans(borrower: string): Promise<RawLoan[]> {
       delete params.type;
       r = await rpc("account_objects", params);
     }
-    if (!r) break;
+    // An unreadable ledger is NOT "no loans": returning a partial/empty list here would let the
+    // exposure attestation and the monitoring service treat a failed read as an all-clear.
+    if (!r) throw new LendingLedgerUnavailableError("could not read the borrower's Loan objects from any XRPL node");
     const objs = (r.account_objects as Array<Record<string, unknown>>) ?? [];
     for (const o of objs) {
       if (o.LedgerEntryType !== "Loan") continue;

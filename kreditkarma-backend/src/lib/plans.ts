@@ -20,6 +20,7 @@ export interface Plan {
                            // false = 429 at quota
   overageRlusdPer1k: number; // price per 1,000 calls over quota (if overage)
   cacheTtlSeconds: number; // score cache lifetime for this tier
+  watchSlots: number;      // wallets one key may keep under continuous monitoring (/api/monitor)
   blurb: string;
   features: string[];
 }
@@ -34,8 +35,10 @@ export const PLANS: Record<PlanId, Plan> = {
     overage: false,
     overageRlusdPer1k: 0,
     cacheTtlSeconds: 300,
+    watchSlots: 3,
     blurb: "Score real wallets, no card. Claim a key by connecting Xaman.",
     features: [
+      "3 monitored wallets (daily change alerts by webhook)",
       "200 scored calls / month",
       "10 requests / minute",
       "300–850 score + full signal breakdown",
@@ -51,8 +54,10 @@ export const PLANS: Record<PlanId, Plan> = {
     overage: false,
     overageRlusdPer1k: 0,
     cacheTtlSeconds: 180,
+    watchSlots: 25,
     blurb: "~$0.003 per check — a fraction of legacy credit APIs.",
     features: [
+      "25 monitored wallets",
       "10,000 scored calls / month",
       "60 requests / minute",
       "Full signal breakdown + insights",
@@ -69,8 +74,10 @@ export const PLANS: Record<PlanId, Plan> = {
     overage: true,
     overageRlusdPer1k: 2,
     cacheTtlSeconds: 120,
+    watchSlots: 250,
     blurb: "More volume than competitors' Pro tier, for less.",
     features: [
+      "250 monitored wallets",
       "100,000 scored calls / month",
       "300 requests / minute",
       "Overage billing — never cut off mid-spike",
@@ -87,8 +94,10 @@ export const PLANS: Record<PlanId, Plan> = {
     overage: true,
     overageRlusdPer1k: 1,
     cacheTtlSeconds: 60,
+    watchSlots: 2500,
     blurb: "Serious infrastructure. Cheapest per-call at volume, period.",
     features: [
+      "2,500 monitored wallets (subject to the shared monitoring capacity)",
       "1,000,000 scored calls / month",
       "1,000 requests / minute",
       "Lowest overage rate",
@@ -98,6 +107,9 @@ export const PLANS: Record<PlanId, Plan> = {
   },
 };
 
+// Monitoring is capped by what two daily cron runs can honestly keep up with, so every plan's slots are a
+// per-key CEILING and the shared platform limit (MONITOR_MAX_TOTAL_SUBJECTS, default 500 watched wallets across all
+// customers) applies first. See docs/MONITORING.md.
 export const PLAN_ORDER: PlanId[] = ["free", "starter", "growth", "scale"];
 
 // A paid key is minted with expiresAt = paidAt + this many days. On XRPL rails

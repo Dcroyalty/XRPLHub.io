@@ -376,6 +376,17 @@ export const TOOLS = [
     },
   },
   {
+    name: 'get_monitoring_info',
+    description:
+      "Describe XRPLHub's continuous-monitoring service so an agent can decide whether to use it: what it watches for a list of wallets " +
+      "(score drops against a threshold YOU set, OFAC SDN list hits, and — once XLS-66 activates — first loan / overdue / impaired / defaulted), " +
+      "how it is delivered (HMAC-signed webhooks, once-a-day checks, attested Merkle-anchored history), per-plan watch slots, the shared capacity limit, " +
+      "the consumer-use acknowledgement text that subscribing requires (no FCRA/ECOA consumer credit, insurance, employment or housing decisions) and the " +
+      "endpoints. Layered on top of underwriting, never a replacement; no recommendation, no probability of default. Subscribing needs an API key over " +
+      "HTTP (POST /api/monitor/subscribe), not this tool. No params. Free.",
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
     name: 'verify_attestation',
     description:
       "Given a queryId from screen_address_ofac OR get_lending_exposure, return everything needed to verify " +
@@ -922,7 +933,7 @@ async function toolSubmitGrantApplication(
       amountRequested: `${amount} ${currency}`,
       category,
       nextSteps:
-        'Application submitted. A person reviews every application and makes every decision — allow 24–48 hours. ' +
+        'Application submitted. A person reviews every application and makes every decision; no decision time is promised. ' +
         'If approved, funds are sent directly to the wallet address — no further action required from the applicant.',
       poweredBy: 'XRPLHub.io Community Grants — wallet-to-wallet, no middleman © 2026',
     }, null, 2);
@@ -1229,6 +1240,9 @@ export async function POST(req: NextRequest) {
         output = await toolCheckServiceHealth();
       } else if (toolName === 'screen_address_ofac') {
         output = await toolScreenAddressOfac(toolArgs);
+      } else if (toolName === 'get_monitoring_info') {
+        const { describeMonitoring } = await import('@/lib/monitorApi');
+        output = JSON.stringify(await describeMonitoring(), null, 2);
       } else if (toolName === 'verify_attestation') {
         output = await toolVerifyAttestation(toolArgs);
       } else if (toolName === 'get_lending_exposure') {

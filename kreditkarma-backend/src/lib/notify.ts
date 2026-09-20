@@ -53,6 +53,51 @@ export async function notifyError(
   }
 }
 
+/**
+ * A non-error message through the same webhook (recoveries, "XLS-66 is now active", the weekly
+ * "I'm alive" heartbeat). Never throws. Silence from THIS is itself a signal: the weekly heartbeat
+ * stopping means the crons, the database or the webhook died.
+ */
+export async function notifyInfo(route: string, message: string, context?: Record<string, unknown>): Promise<void> {
+  try {
+    console.log(`[info] ${route}: ${message}`, context ? JSON.stringify(context) : "");
+  } catch {
+    /* ignore */
+  }
+  const hook = process.env.ERROR_WEBHOOK_URL;
+  if (!hook || !/^https:\/\//.test(hook)) return;
+  try {
+    const isDiscord = /discord(app)?\.com\//.test(hook);
+    const ctx = context ? "\n```" + JSON.stringify(context).slice(0, 1200) + "```" : "";
+    const body = isDiscord
+      ? { content: `ℹ️ **XRPLHub** \`${route}\`\n${message.slice(0, 1500)}${ctx}` }
+      : { text: `ℹ️ XRPLHub \`${route}\`: ${message}${ctx}` };
+    await fetch(hook, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(5000),
+    }).catch(() => {});
+  } catch {
+    /* the logger must never break the caller */
+  }
+}
+
+/**
+ * Optional dead-man's switch. If HEALTHCHECK_PING_URL is set (e.g. a free healthchecks.io check), each cron
+ * pings it when a run completes. If BOTH crons — or Vercel itself, the database, or the alert webhook —
+ * die, the pings stop and that external service emails you. Nothing inside this app can report its own death.
+ */
+export async function pingHealthcheck(suffix = ""): Promise<void> {
+  const url = process.env.HEALTHCHECK_PING_URL;
+  if (!url || !/^https:\/\//.test(url)) return;
+  try {
+    await fetch(url.replace(/\/$/, "") + suffix, { method: "GET", signal: AbortSignal.timeout(5000) }).catch(() => {});
+  } catch {
+    /* never break the caller */
+  }
+}
+
 /** True when an alerting webhook is configured. Shown by /api/health. */
 export function alertingArmed(): boolean {
   const hook = process.env.ERROR_WEBHOOK_URL;

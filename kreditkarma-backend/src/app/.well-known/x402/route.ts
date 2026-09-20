@@ -361,6 +361,11 @@ export async function GET(req: Request) {
         lendingExposureAggregateWithApiKey: `${origin}/api/lending/exposure?borrower={wallet}`,
         lendingHistoryWithApiKey: `${origin}/api/lending/history?borrower={wallet}`,
         lendingAttestationVerify: `${origin}/api/attest/verify?queryId={queryId}`,
+        // Continuous monitoring is API-key based (not pay-per-call x402): a key + a consumer-use acknowledgement + a webhook.
+        monitoringInfo: `${origin}/api/monitor`,
+        monitoringSubscribeWithApiKey: `${origin}/api/monitor/subscribe`,
+        monitoringHistoryWithApiKey: `${origin}/api/monitor/history?subject={wallet}`,
+        monitoringEventsWithApiKey: `${origin}/api/monitor/events`,
       },
       // Stable machine-readable error codes returned by the RLUSD/t54 paid
       // routes. `error` is always one of these keys; the value describes it.

@@ -1026,6 +1026,82 @@ export async function GET(req: Request) {
         },
       },
 
+      "/api/monitor": {
+        get: {
+          operationId: "monitoringInfo",
+          summary: "Continuous monitoring: what it does, its limits and its honest capacity (no key)",
+          description:
+            "Continuous monitoring is layered on top of underwriting, not a replacement. Underwriting judges structural risk before signing; " +
+            "monitoring reports OBSERVED behavioral changes in public XRP Ledger data after — once a day, for wallets you choose. Not real-time. " +
+            "Returns the event types, per-plan watch slots (free 3, starter 25, growth 250, scale 2,500 — per-key ceilings), the shared platform " +
+            "limit (what two daily cron runs can keep current), the consumer-use acknowledgement text + version, webhook signing rules and the disclaimer.",
+          tags: ["Monitoring"],
+          responses: { "200": { description: "Capabilities, limits, capacity statement, acknowledgement text." } },
+        },
+      },
+      "/api/monitor/subscribe": {
+        post: {
+          operationId: "monitorSubscribe",
+          summary: "Watch up to 25 wallets and register one webhook (API key; a free key works, 3 wallets)",
+          description:
+            "Body: { addresses: string[≤25], webhookUrl (https, port 443, public hostname), scoreDropPoints? (1–550; omit = no score_drop events — there is NO default threshold), " +
+            "subscriptionId? (add to an existing subscription), acknowledgement: { accepted: true, version } } — the consumer-use acknowledgement (no use for consumer credit/insurance/" +
+            "employment/housing decisions under FCRA/ECOA) is REQUIRED and stored with a timestamp. A test ping is sent first; if it is not answered 2xx nothing is created. " +
+            "The signing secret (X-XRPLHub-Signature: v1=HMAC-SHA256 over '<timestamp>.<body>') is returned ONCE. Events: score_drop, sanctions_hit, sanctions_delisted, " +
+            "first_loan_observed, loan_overdue, loan_impaired, loan_defaulted (the loan events are dormant until XLS-66 activates, then fire automatically) and monitoring_degraded. " +
+            "Attested observations are sparse (baseline / change / event / weekly heartbeat) under the frozen monitor-observation-v1 canon; a score is included only when freshly computed.",
+          tags: ["Monitoring"],
+          responses: {
+            "201": { description: "Subscription, one-time webhookSecret, per-wallet baseline status, capabilities, limits." },
+            "400": { description: "acknowledgement_required, batch_too_large, bad_webhook_url, webhook_ping_failed, bad_request." },
+            "401": { description: "Missing or invalid API key." },
+            "403": { description: "watch_slots_exceeded." },
+            "503": { description: "monitoring_capacity_reached (shared platform limit)." },
+          },
+        },
+      },
+      "/api/monitor/subscriptions": {
+        get: {
+          operationId: "monitorSubscriptions",
+          summary: "This key's subscriptions and watchlists (API key)",
+          tags: ["Monitoring"],
+          responses: { "200": { description: "Subscriptions with per-wallet lastCheckedAt / nextCheckAt; the secret is never returned." } },
+        },
+      },
+      "/api/monitor/subscriptions/{id}": {
+        patch: {
+          operationId: "monitorUpdate",
+          summary: "Change webhook / threshold, add or remove wallets, rotate the secret (API key)",
+          tags: ["Monitoring"],
+          responses: { "200": { description: "Updated subscription; a rotated secret is shown once." } },
+        },
+        delete: {
+          operationId: "monitorDelete",
+          summary: "Stop monitoring and remove the watchlist (history is retained)",
+          tags: ["Monitoring"],
+          responses: { "200": { description: "Deleted." } },
+        },
+      },
+      "/api/monitor/history": {
+        get: {
+          operationId: "monitorHistory",
+          summary: "Attested time series for one watched wallet (API key)",
+          description:
+            "Sparse observations — baseline / change / event / weekly heartbeat — each with its leaf hash and, after the daily Merkle anchor, the on-ledger anchor " +
+            "(verify at /api/attest/verify?queryId={observationId}). Shows observation points, not proof of continuous coverage. Params: subject (required), limit, before.",
+          tags: ["Monitoring"],
+          responses: { "200": { description: "Observations + coverage note." }, "404": { description: "not_watched" } },
+        },
+      },
+      "/api/monitor/events": {
+        get: {
+          operationId: "monitorEvents",
+          summary: "The events a webhook would push, readable back (API key)",
+          tags: ["Monitoring"],
+          responses: { "200": { description: "Events with delivery state." } },
+        },
+      },
+
       "/api/x402/lending/exposure": {
         get: {
           operationId: "x402LendingExposure",

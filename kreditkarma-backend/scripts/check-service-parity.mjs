@@ -101,6 +101,14 @@ for (const f of ["src/app/page.tsx", "src/app/layout.tsx", "src/app/llms.txt/rou
   read(f).split("\n").forEach((line, i) => { if (AI_CLAIM.test(line)) fail(`${f}:${i + 1}: AI claim (there is no LLM in the shipped code): ${line.trim().slice(0, 110)}`); });
 }
 
+// ── no unsupported decision-time promise anywhere in shipped source ──
+for (const f of walk("src")) {
+  if (!/\.(ts|tsx)$/.test(f)) continue;
+  read(f).split("\n").forEach((line, i) => {
+    if (/24\s*[–-]\s*48\s*hours/i.test(line)) fail(`${f}:${i + 1}: unsupported "24–48 hours" decision time: ${line.trim().slice(0, 110)}`);
+  });
+}
+
 if (problems.length) {
   console.error(`\n✖ service parity check FAILED (${problems.length} problem${problems.length === 1 ? "" : "s"}):`);
   for (const p of problems) console.error("  - " + p);

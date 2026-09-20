@@ -1,8 +1,8 @@
 // src/app/api/attest/verify/route.ts
 // GET /api/attest/verify?queryId=<uuid>
 //
-// Product-aware. A queryId is either an OFAC screening receipt or an XLS-66
-// lending-exposure snapshot. Either way this returns the canonical leaf, its
+// Product-aware. A queryId is an OFAC screening receipt, an XLS-66 lending-exposure snapshot,
+// an underwrite bundle, or a continuous-monitoring observation. Either way this returns the canonical leaf, its
 // Merkle inclusion proof (rebuilt from the anchored batch), the on-ledger anchor
 // tx + ledger close time, and the source data hash — everything an auditor needs
 // to verify WITHOUT trusting XRPLHub.
@@ -26,6 +26,7 @@ import { LENDING_MEMO_TYPE } from "@/lib/lendingAnchor";
 import { LENDING_DISCLAIMER } from "@/lib/lendingExposure";
 import { UNDERWRITE_CANON_SPEC, canonUnderwriteLeaf, underwriteLeafHash, UNDERWRITE_DISCLAIMER, type UnderwriteLeaf } from "@/lib/underwriteCanon";
 import { UNDERWRITE_MEMO_TYPE } from "@/lib/underwriteAnchor";
+import { MONITOR_CANON_SPEC, MONITOR_DISCLAIMER, MONITOR_MEMO_TYPE, canonMonitorJson, monitorLeafHash, type MonitorLeaf } from "@/lib/monitorCanon";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -47,8 +48,11 @@ export async function GET(req: Request) {
   const bundle = await prisma.underwriteBundleReceipt.findUnique({ where: { queryId } });
   if (bundle) return verifyUnderwrite(queryId);
 
+  const observation = await prisma.monitorObservation.findUnique({ where: { observationId: queryId } });
+  if (observation) return verifyMonitor(queryId);
+
   return NextResponse.json(
-    { error: "not_found", message: "No screening, lending-exposure, or underwrite-bundle record with that queryId." },
+    { error: "not_found", message: "No screening, lending-exposure, underwrite-bundle, or monitoring-observation record with that queryId." },
     { status: 404 }
   );
 }
@@ -337,6 +341,55 @@ async function verifyUnderwrite(queryId: string) {
         "2. leafHash = SHA-256( 0x00 || utf8(leafJson) ) — must equal `leaf.leafHash`.",
         "3. Fold `anchor.inclusionProof`; the result must equal `anchor.merkleRoot`, which must be the `root` in tx `anchor.txHash` MemoData (MemoType " + UNDERWRITE_MEMO_TYPE + ").",
         "4. The bundle commits to the component leaf hashes. Verify each component separately: componentVerify.exposure and componentVerify.screening.",
+      ],
+    },
+    { headers: { "Cache-Control": "public, max-age=30" } }
+  );
+}
+
+// ── Continuous-monitoring observation ────────────────────────────────────────
+async function verifyMonitor(queryId: string) {
+  const o = (await prisma.monitorObservation.findUnique({ where: { observationId: queryId } }))!;
+  const leaf = o.recordJson as unknown as MonitorLeaf;
+  const canonicalJson = canonMonitorJson(leaf);
+  const recomputedLeafHash = monitorLeafHash(leaf);
+
+  const base = {
+    product: "monitoring-observation",
+    queryId,
+    canonVersion: o.canonVersion,
+    engineVersion: o.engineVersion,
+    observation: leaf,
+    leaf: { canonicalJson, leafHash: recomputedLeafHash, storedLeafHash: o.leafHash, leafHashMatches: recomputedLeafHash === o.leafHash },
+    canonicalisation: MONITOR_CANON_SPEC,
+    disclaimer: MONITOR_DISCLAIMER,
+  };
+
+  if (!o.anchorId) {
+    return NextResponse.json(
+      { ...base, status: "pending", anchor: null, note: "Recorded but not yet anchored on-ledger. The daily Merkle anchor will include it. The observation itself is immutable from the moment it was written." },
+      { headers: { "Cache-Control": "no-store" } }
+    );
+  }
+
+  const anchor = await prisma.monitorAnchor.findUnique({ where: { id: o.anchorId } });
+  const batch = await prisma.monitorObservation.findMany({ where: { anchorId: o.anchorId }, orderBy: { observationId: "asc" }, select: { observationId: true, leafHash: true } });
+  const idx = batch.findIndex((b) => b.observationId === queryId);
+  const leafHashes = batch.map((b) => b.leafHash);
+  const proof = idx >= 0 ? merkleInclusionProof(leafHashes, idx) : [];
+  const recomputedRoot = merkleRootFromLeafHashes(leafHashes);
+  return NextResponse.json(
+    {
+      ...base,
+      status: anchor?.status === "anchored" ? "anchored" : anchor?.status ?? "unknown",
+      anchor: anchorBlock(anchor, recomputedRoot, proof, idx, MONITOR_MEMO_TYPE),
+      recipe: [
+        "1. Rebuild the leaf JSON from `observation` using canonicalisation.record.keys order (eventTypes sorted). JSON.stringify, no whitespace.",
+        "2. leafHash = SHA-256( 0x00 || utf8(leafJson) ) — must equal `leaf.leafHash`.",
+        "3. Fold `anchor.inclusionProof`: h = SHA-256( 0x01 || (step.position=='left' ? step.hash||h : h||step.hash) ).",
+        "4. The result must equal `anchor.merkleRoot`.",
+        "5. Fetch tx `anchor.txHash`; it is an AccountSet from `anchor.account`; decode MemoData from hex; its `root` must equal `anchor.merkleRoot`, MemoType hex must decode to " + MONITOR_MEMO_TYPE + ".",
+        "6. A non-null `observation.xrplScore` was computed fresh during this observation; a null score with scoreStatus 'not_rescored' points at `scoreObservationRef` instead of repeating a stale number.",
       ],
     },
     { headers: { "Cache-Control": "public, max-age=30" } }

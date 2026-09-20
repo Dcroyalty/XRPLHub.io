@@ -23,6 +23,10 @@ const ATTESTATION_MODULES = [
   "src/lib/credentials.ts",
   "src/lib/screen.ts",
   "src/lib/screenCanon.ts",
+  "src/lib/monitorEngine.ts",
+  "src/lib/monitorCanon.ts",
+  "src/lib/monitorAnchor.ts",
+  "src/lib/monitorWebhook.ts",
 ];
 
 const FORBIDDEN = /from\s+["'][^"']*scoreCache["']|require\(\s*["'][^"']*scoreCache["']|getScoreCached/;

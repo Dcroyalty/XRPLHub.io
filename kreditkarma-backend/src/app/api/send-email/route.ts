@@ -7,7 +7,7 @@ export async function POST(req: NextRequest) {
     const subject = type === 'purchase' ? `XRPLHub — Service Activated` : `XRPLHub — Grant Application Received`
     const html = type === 'purchase'
       ? `<h2>Service Activated</h2><p>Your payment of ${amount} ${currency} has been verified on XRPL mainnet.</p><p>TX: ${txHash}</p><p><a href="https://xrpscan.com/tx/${txHash}">View on XRPScan</a></p>`
-      : `<h2>Grant Application Received</h2><p>Hi ${name || 'there'}, your $${amount} grant application has been received. A person reviews every application. Please allow 24–48 hours for a decision.</p>${wallet ? `<p>Wallet: ${wallet}</p>` : ''}`
+      : `<h2>Grant Application Received</h2><p>Hi ${name || 'there'}, your ${amount} grant application has been received. A person reviews every application.</p>${wallet ? `<p>Wallet: ${wallet}</p>` : ''}`
     const res = await fetch('https://api.resend.com/emails', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.RESEND_API_KEY}` }, body: JSON.stringify({ from: 'XRPLHub <noreply@xrplhub.io>', to: [to], subject, html }) })
     const data = await res.json()
     return NextResponse.json({ ok: res.ok, id: data?.id })

@@ -657,3 +657,131 @@ model LendingExposureAnchor {
   @@index([status])
   @@index([createdAt])
 }
+
+// ─── Continuous monitoring (src/lib/monitorEngine.ts) ─────────────────────────
+// A subscription = one webhook endpoint + a watchlist of wallets (MonitorSubject).
+// Observations are SPARSE (baseline / change / event / weekly heartbeat) and
+// APPEND-ONLY: each carries a frozen-canon leaf (src/lib/monitorCanon.ts) that is
+// later frozen into a Merkle root by MonitorAnchor. Nothing here is ever pruned.
+
+model MonitorSubscription {
+  id                 String    @id @default(cuid())
+  apiKeyId           String
+  webhookUrl         String
+  webhookSecret      String                              // random, shown to the caller ONCE; signs deliveries (HMAC-SHA256)
+  status             String    @default("active")        // active | webhook_disabled | deleted
+  scoreDropPoints    Int?                                // null = score_drop events off (no default: no basis for one)
+  consumerAckAt      DateTime                            // when the caller ticked the consumer-use acknowledgement
+  consumerAckVersion String                              // which acknowledgement text they accepted
+  webhookFailures    Int       @default(0)               // consecutive failed delivery ATTEMPTS
+  webhookDisabledAt  DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  subjects           MonitorSubject[]
+  events             MonitorEvent[]
+
+  @@index([apiKeyId])
+  @@index([status])
+}
+
+model MonitorSubject {
+  id                     String    @id @default(cuid())
+  subscriptionId         String
+  subscription           MonitorSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  address                String
+  createdAt              DateTime  @default(now())
+
+  nextCheckAt            DateTime  @default(now())
+  lastCheckedAt          DateTime?
+  lastObservationAt      DateTime?
+  lastSeenFingerprint    String?                         // newest account_tx hash at the last successful check
+  scoredFingerprint      String?                         // the fingerprint the last FRESH score was computed at
+  lastScoredAt           DateTime?
+  lastScore              Int?
+  lastMethodology        String?
+  scorePeak              Int?                            // highest fresh score since subscribe / last score_drop alert
+  peakMethodology        String?
+  lastScoredObservationId String?
+  sanctionListed         Boolean?
+  lastSanctions          Json?                           // { listed, list, vintage, sha256, receiptQueryId, screenedAt } from the last screen
+  lastScreenSnapshotId   String?
+  everHadLoan            Boolean   @default(false)
+  loanStates             Json?                           // { <loanId>: <status> } as of the last successful loan read
+  consecutiveFailures    Int       @default(0)
+  degradedNotifiedAt     DateTime?
+
+  @@unique([subscriptionId, address])
+  @@index([nextCheckAt])
+  @@index([address])
+}
+
+// One immutable, attested observation. `recordJson` is the canonical leaf as an object;
+// `canonicalJson` the exact bytes hashed. Never updated except `anchorId`.
+model MonitorObservation {
+  observationId String   @id                            // UUIDv4 — also the queryId for /api/attest/verify
+  apiKeyId      String
+  subject       String
+  kind          String                                  // baseline | change | event | heartbeat
+  ledgerIndex   Int      @default(0)
+  ledgerCloseAt DateTime?
+  recordJson    Json
+  canonicalJson String
+  leafHash      String
+  canonVersion  String
+  engineVersion String
+  anchorId      String?
+  anchor        MonitorAnchor? @relation(fields: [anchorId], references: [id])
+  createdAt     DateTime @default(now())
+
+  @@index([apiKeyId, subject, createdAt])
+  @@index([subject, createdAt])
+  @@index([anchorId])
+}
+
+// One daily Merkle anchor over a batch of monitor observations. Same wallet + scheme as
+// ScreeningAnchor / MptAnchor; separate memo type + batch.
+model MonitorAnchor {
+  id           String   @id @default(cuid())
+  canonVersion String
+  merkleRoot   String
+  leafCount    Int
+  rangeStart   DateTime?
+  rangeEnd     DateTime?
+  memo         String
+  txHash       String?  @unique
+  ledgerIndex  Int?
+  account      String?
+  feeDrops     String?
+  closeTime    DateTime?
+  status       String   @default("pending")          // pending | anchored | failed | misconfigured | superseded
+  error        String?
+  createdAt    DateTime @default(now())
+  anchoredAt   DateTime?
+
+  observations MonitorObservation[]
+
+  @@index([status])
+  @@index([createdAt])
+}
+
+// The webhook outbox. One row per event; delivery state lives on the row.
+model MonitorEvent {
+  id             String   @id @default(cuid())
+  subscriptionId String
+  subscription   MonitorSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  subject        String
+  type           String                                 // score_drop | sanctions_hit | sanctions_delisted | first_loan_observed | loan_overdue | loan_impaired | loan_defaulted | monitoring_degraded
+  payload        Json
+  observationId  String?
+  createdAt      DateTime @default(now())
+  state          String   @default("pending")           // pending | delivered | failed
+  attempts       Int      @default(0)
+  nextAttemptAt  DateTime @default(now())
+  deliveredAt    DateTime?
+  lastStatus     Int?
+  lastError      String?
+
+  @@index([subscriptionId, createdAt])
+  @@index([state, nextAttemptAt])
+}

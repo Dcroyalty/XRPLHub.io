@@ -38,7 +38,7 @@ export default function SupportPage() {
         <div style={{ background:'rgba(255,255,255,.03)', border:'1px solid rgba(255,255,255,.07)', borderRadius:16, padding:'24px 28px', marginBottom:52 }}>
           <div style={{ fontSize:11, fontWeight:700, color:'#10b981', letterSpacing:'.12em', textTransform:'uppercase', marginBottom:16 }}>Response Times</div>
           <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))', gap:12 }}>
-            {[['General Support','Within 24 hours'],['Legal Inquiries','Within 3 business days'],['Privacy & Data Requests','Within 30 days'],['Grant Applications','Human review within 24–48 hours']].map(([t,d]) => (
+            {[['General Support','Within 24 hours'],['Legal Inquiries','Within 3 business days'],['Privacy & Data Requests','Within 30 days'],['Grant Applications','Paused until the treasury is funded; human review when open']].map(([t,d]) => (
               <div key={t} style={{ padding:'12px 0', borderBottom:'1px solid rgba(255,255,255,.05)' }}>
                 <div style={{ fontSize:12, fontWeight:700, color:'rgba(255,255,255,.7)', marginBottom:3 }}>{t}</div>
                 <div style={{ fontSize:11, color:'#10b981', fontWeight:600 }}>{d}</div>
@@ -56,7 +56,7 @@ export default function SupportPage() {
             ['How do I connect my wallet?', 'Tap "Connect Wallet" on the homepage, then approve the sign-in request in your wallet. No transaction is sent and no funds leave your wallet. Your wallet address is stored locally in your browser.'],
             ['My payment went through but the service didn\'t activate — what do I do?', 'Email support@xrplhub.io with your transaction hash (from your wallet\'s history). We\'ll verify it on-chain and activate your service, typically within 24 hours.'],
             ['Is XRPLHub a bank?', 'No. XRPLHub.io is a financial technology platform on the XRP Ledger. We are not a bank, broker-dealer, investment advisor, credit bureau, insurer, or FDIC-insured institution.'],
-            ['I need emergency help — how do I apply for a grant?', 'Click "Apply for Grant" on the homepage. Fill out the form with your XRPL wallet address and describe your need. A person reviews every application and makes every decision. Allow 24–48 hours. Approved funds go directly to your wallet.'],
+            ['I need emergency help — how do I apply for a grant?', 'Grant applications are currently paused until the treasury is funded (see the homepage for status). When they reopen, use "Apply for Grant" on the homepage with your XRPL wallet address and a description of your need. A person reviews every application and makes every decision; no decision time is promised. Approved funds go directly to your wallet.'],
           ].map(([q, a]) => (
             <div key={q} style={{ background:'rgba(255,255,255,.03)', border:'1px solid rgba(255,255,255,.07)', borderRadius:14, padding:'18px 20px' }}>
               <div style={{ fontWeight:700, fontSize:14, marginBottom:8 }}>{q}</div>
