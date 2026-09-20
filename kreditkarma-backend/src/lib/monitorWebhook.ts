@@ -114,6 +114,21 @@ export interface PostResult {
 
 export type Poster = (url: string, body: string, headers: Record<string, string>) => Promise<PostResult>;
 
+/**
+ * A `dns.lookup`-compatible function that always answers with the one address we validated. Node calls it with
+ * `{ all: true }` when address auto-selection is on (the default since Node 20) and then expects an ARRAY of
+ * `{ address, family }`; with `all` unset it expects `(err, address, family)`. Answering the wrong shape fails
+ * the connection with "Invalid IP address: undefined".
+ */
+export function makePinnedLookup(address: string, family: 4 | 6) {
+  return (_host: string, options: unknown, cb: unknown): void => {
+    const callback = (typeof options === "function" ? options : cb) as (...a: unknown[]) => void;
+    const opts = (typeof options === "object" && options !== null ? options : {}) as { all?: boolean };
+    if (opts.all) callback(null, [{ address, family }]);
+    else callback(null, address, family);
+  };
+}
+
 /** POST to a validated webhook, connecting to the address we validated. Never follows redirects. */
 export const postWebhook: Poster = async (rawUrl, body, headers) => {
   if (Buffer.byteLength(body) > WEBHOOK_MAX_BODY) return { ok: false, status: null, error: "payload too large" };
@@ -137,7 +152,7 @@ export const postWebhook: Poster = async (rawUrl, body, headers) => {
         headers: { ...headers, "content-length": String(Buffer.byteLength(body)) },
         timeout: WEBHOOK_TIMEOUT_MS,
         // connect to the address we validated, whatever DNS says now
-        lookup: (_h, _o, cb) => (cb as unknown as (e: Error | null, a: string, f: number) => void)(null, pinned.address, pinned.family),
+        lookup: makePinnedLookup(pinned.address, pinned.family),
       },
       (res) => {
         let got = 0;
