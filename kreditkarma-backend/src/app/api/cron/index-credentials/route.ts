@@ -43,7 +43,14 @@ export async function GET(req: Request) {
     // then SDN refresh, then the daily lending sweep, then the anchors LAST so
     // the sweep's fresh snapshots are anchored the same day. Every step is
     // budget/deadline-aware so both anchors still fit under the 60s ceiling.
-    const progress = await runIndexerPass(prisma, { budgetMs: 12_000 });
+    //
+    // The census step is OFF unless CREDENTIAL_CENSUS_ENABLED=true. At 12s/day and 200 objects a
+    // page it had covered ~1.7% of the keyspace in 15 days; the ledger holds ~20M objects, so it
+    // could never finish. The SDN refresh, sweep and anchors below still run daily.
+    const progress =
+      process.env.CREDENTIAL_CENSUS_ENABLED === "true"
+        ? await runIndexerPass(prisma, { budgetMs: 12_000 })
+        : { census: "disabled" as const };
 
     const sdn = await refreshSdnSnapshot(prisma).catch((e) => ({
       action: "blocked-error" as const,
