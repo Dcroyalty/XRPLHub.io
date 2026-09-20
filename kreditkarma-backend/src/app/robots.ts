@@ -9,7 +9,7 @@ export default function robots(): MetadataRoute.Robots {
         disallow:  ['/admin', '/api/'],
       },
     ],
-    sitemap: 'https://xrplhub.io/sitemap.xml',
-    host:    'https://xrplhub.io',
+    sitemap: 'https://www.xrplhub.io/sitemap.xml',
+    host:    'https://www.xrplhub.io',
   };
 }

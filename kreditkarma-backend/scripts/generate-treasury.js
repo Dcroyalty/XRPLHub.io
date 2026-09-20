@@ -6,7 +6,7 @@
 const { Wallet } = require("xrpl");
 
 console.log("═══════════════════════════════════════════════════════════");
-console.log("   KreditKarma.us — Treasury Multi-Sig Key Generation");
+console.log("   XRPLHub.io — Treasury Multi-Sig Key Generation");
 console.log("═══════════════════════════════════════════════════════════\n");
 
 // Treasury address (the "bank account" — holds funds)

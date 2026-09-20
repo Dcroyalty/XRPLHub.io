@@ -66,7 +66,7 @@ version segment a methodology change would silently redefine what every live
 integration already trusts.
 
 **`v1` = XRPLScore methodology v1.x** — the `scoreWallet()` engine in
-`src/lib/xrplscore.ts`. As of the first mainnet issuance this is **v1.1**
+`src/lib/xrplscore.ts`. As of the mainnet issuance (tx `3C5D2EE4C905B82F85930496374CB4AE1580F330E1EB8A8D95ED9162B5C51286`) this is **v1.1**
 (`METHODOLOGY` const: "XRPLHub XRPLScore v1.1 — 8-signal native on-chain
 behavioral scoring, absolute scale"; calibration in
 `docs/XRPLSCORE-CALIBRATION.md`).
@@ -211,8 +211,9 @@ Credentials are immutable; the only lever is `CredentialDelete`.
 - **Wrong `CredentialType` or issuer address:** delete every affected credential
   (one `CredentialDelete` each, ~10 drops, reserve returned), then re-issue with
   the corrected value. Cost is linear in the number issued.
-- This is why mainnet rollout issues the **first credential to a
-  self-controlled wallet** (issuer→issuer, or issuer→a team wallet) and only
-  starts issuing to real external subjects after the type strings and issuer
-  address in this file are final and reviewed. A mistake caught at that stage is
-  a one-transaction fix.
+- This is why the planned rollout was to issue an initial credential to a
+  self-controlled wallet (issuer→issuer, or issuer→a team wallet) and only
+  start issuing to external subjects once the type strings and issuer address in
+  this file are final and reviewed. A mistake caught at that stage is a
+  one-transaction fix. (In practice the mainnet credential above was issued to
+  an external public wallet, unsolicited and unaccepted; see the disclosure in §5.)

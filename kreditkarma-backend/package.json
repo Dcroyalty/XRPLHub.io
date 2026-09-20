@@ -1,7 +1,7 @@
 {
   "name": "kreditkarma-backend",
   "version": "0.1.0",
-  "description": "KreditKarma.us — XRPL credit scoring + micro grants backend",
+  "description": "XRPLHub.io — XRPL transaction services, XRPLScore and community grants",
   "private": true,
   "scripts": {
     "dev": "next dev",
