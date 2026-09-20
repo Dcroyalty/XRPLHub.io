@@ -499,9 +499,10 @@ async function buildContext(prisma: PrismaClient, scoreBudget: number): Promise<
   return { now: new Date(), ledger, currentSnapshot: snap ? { id: snap.id, vintage: snap.vintage, sha256: snap.sha256 } : null, loansActive: await lendingProtocolActive(), scoreBudget: { remaining: scoreBudget } };
 }
 
-async function persistOne(prisma: PrismaClient, row: SubjectRow, res: CheckResult, deps: MonitorDeps, ctx: CheckContext, tally: { events: number; observations: number; degradedRaised: number }): Promise<void> {
+async function persistOne(prisma: PrismaClient, row: SubjectRow, res: CheckResult, deps: MonitorDeps, ctx: CheckContext, tally: { events: number; observations: number; degradedRaised: number }, recordFailures = true): Promise<void> {
   const sub = row.subscription;
   if (res.outcome === "failed") {
+    if (!recordFailures) return; // an in-request retry round: only the final round counts toward monitoring_degraded
     const failures = row.consecutiveFailures + 1;
     const raise = failures >= DEGRADED_AFTER_FAILURES && !row.degradedNotifiedAt;
     const ops: Prisma.PrismaPromise<unknown>[] = [
@@ -596,7 +597,7 @@ async function processSubjects(
   rows: SubjectRow[],
   ctx: CheckContext,
   deps: MonitorDeps,
-  opts: { deadlineMs: number; concurrency: number }
+  opts: { deadlineMs: number; concurrency: number; recordFailures?: boolean }
 ): Promise<{ checked: number; failed: number; observations: number; events: number; degradedRaised: number; unprocessed: number }> {
   const tally = { events: 0, observations: 0, degradedRaised: 0 };
   let checked = 0;
@@ -610,7 +611,7 @@ async function processSubjects(
       const row = rows[idx];
       try {
         const res = await evaluateSubject(toState(row), { scoreDropPoints: row.subscription.scoreDropPoints }, deps, ctx);
-        await persistOne(prisma, row, res, deps, ctx, tally);
+        await persistOne(prisma, row, res, deps, ctx, tally, opts.recordFailures ?? true);
         if (res.outcome === "checked") checked++;
         else failed++;
       } catch (e) {
@@ -664,16 +665,26 @@ export async function runMonitorPass(
   };
 }
 
-/** Baseline newly-added subjects immediately (synchronous, at subscribe time). */
+/**
+ * Baseline newly-added subjects immediately (synchronous, at subscribe time). A baseline needs a fresh score
+ * (seven parallel XRPL reads); a transient node/rate-limit blip must not leave a new subscriber waiting a day,
+ * so a subject that fails is retried up to two more times inside this request. Only the final round counts a
+ * failure toward monitoring_degraded. Still-failing subjects stay 'pending' and the next daily run completes them.
+ */
 export async function baselineSubjects(
   prisma: PrismaClient,
   subjectIds: string[],
-  opts: { deadlineMs: number; deps?: MonitorDeps; concurrency?: number }
-): Promise<{ ran: boolean; reason?: string }> {
+  opts: { deadlineMs: number; deps?: MonitorDeps; concurrency?: number; retryDelaysMs?: number[] }
+): Promise<{ ran: boolean; reason?: string; pending: number }> {
   const ctx = await buildContext(prisma, 1000);
-  if (!ctx) return { ran: false, reason: "validated ledger unreadable" };
-  const rows = await prisma.monitorSubject.findMany({ where: { id: { in: subjectIds } }, include: { subscription: true } });
+  if (!ctx) return { ran: false, reason: "validated ledger unreadable", pending: subjectIds.length };
   const deps = opts.deps ?? realDeps(prisma, "monitor");
-  await processSubjects(prisma, rows, ctx, deps, { deadlineMs: opts.deadlineMs, concurrency: opts.concurrency ?? 4 });
-  return { ran: true };
+  const delays = opts.retryDelaysMs ?? [2_000, 5_000];
+  let rows = await prisma.monitorSubject.findMany({ where: { id: { in: subjectIds } }, include: { subscription: true } });
+  for (let round = 0; round <= delays.length && rows.length && Date.now() < opts.deadlineMs; round++) {
+    if (round > 0) await new Promise((r) => setTimeout(r, delays[round - 1]));
+    await processSubjects(prisma, rows, ctx, deps, { deadlineMs: opts.deadlineMs, concurrency: opts.concurrency ?? 2, recordFailures: round === delays.length });
+    rows = await prisma.monitorSubject.findMany({ where: { id: { in: rows.map((r) => r.id) }, lastCheckedAt: null }, include: { subscription: true } });
+  }
+  return { ran: true, pending: rows.length };
 }
