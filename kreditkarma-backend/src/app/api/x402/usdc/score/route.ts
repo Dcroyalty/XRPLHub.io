@@ -49,7 +49,7 @@ const handler = async (req: NextRequest): Promise<NextResponse<unknown>> => {
   }
 };
 
-export const POST = withX402(
+const paidPOST = withX402(
   handler,
   BASE_PAY_TO,
   {
@@ -71,3 +71,22 @@ export const POST = withX402(
   },
   cdpFacilitator
 );
+
+// A MISTYPED address is refused BEFORE the payment challenge: no 402 to pay against, no receipt, no attestation, no charge.
+// A bare request (no address) still gets the 402 challenge, so x402 discovery crawlers can index the route.
+// (The handler above re-checks it too; that check alone runs only after the payment was verified.)
+async function readWallet(req: NextRequest): Promise<string> {
+  const body = (await req.clone().json().catch(() => null)) as { wallet?: unknown } | null;
+  return typeof body?.wallet === "string" ? body.wallet.trim() : "";
+}
+
+export const POST = async (req: NextRequest) => {
+  const supplied = await readWallet(req);
+  if (supplied && !isValidXrplAddress(supplied)) {
+    return NextResponse.json(
+      { error: "bad_request", message: 'Provide a valid XRPL wallet as JSON {"wallet":"r..."} — an r-address whose checksum verifies. Nothing was screened, priced or charged.' },
+      { status: 400 }
+    );
+  }
+  return paidPOST(req);
+};

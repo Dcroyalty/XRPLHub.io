@@ -100,7 +100,7 @@ const handler = async (req: NextRequest): Promise<NextResponse<unknown>> => {
   }
 };
 
-export const GET = withX402(
+const paidGET = withX402(
   handler,
   BASE_PAY_TO,
   {
@@ -115,3 +115,17 @@ export const GET = withX402(
   },
   cdpFacilitator
 );
+
+// A MISTYPED address is refused BEFORE the payment challenge: no 402 to pay against, no receipt, no attestation, no charge.
+// A bare request (no address) still gets the 402 challenge, so x402 discovery crawlers can index the route.
+// (The handler above re-checks it too; that check alone runs only after the payment was verified.)
+export const GET = async (req: NextRequest) => {
+  const supplied = (req.nextUrl.searchParams.get("borrower") ?? "").trim();
+  if (supplied && !isValidXrplAddress(supplied)) {
+    return NextResponse.json(
+      { error: "bad_request", message: "Provide a valid XRPL borrower (?borrower=r...) — an r-address whose checksum verifies. Nothing was screened, priced or charged." },
+      { status: 400 }
+    );
+  }
+  return paidGET(req);
+};
