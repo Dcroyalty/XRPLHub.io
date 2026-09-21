@@ -178,7 +178,7 @@ function GrantRow({ g, fmtDate, statusColor }: { g:GrantApp; fmtDate:(s?:string)
     <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center',padding:'12px 0',borderBottom:'1px solid rgba(255,255,255,.05)',gap:10,flexWrap:'wrap' }}>
       <div style={{ flex:1,minWidth:160 }}>
         <div style={{ fontSize:13,fontWeight:700,color:'#fff' }}>{g.category} · ${g.amount}</div>
-        <div style={{ fontSize:11,color:'rgba(255,255,255,.4)',marginTop:2 }}>{fmtDate(g.createdAt)}{g.aiRecommendation?` · AI: ${g.aiRecommendation}`:''}</div>
+        <div style={{ fontSize:11,color:'rgba(255,255,255,.4)',marginTop:2 }}>{fmtDate(g.createdAt)}</div>
       </div>
       <span style={{ fontSize:10,fontWeight:800,color:statusColor(g.status),background:statusColor(g.status)+'18',border:`1px solid ${statusColor(g.status)}40`,borderRadius:99,padding:'3px 10px',textTransform:'uppercase',letterSpacing:'.1em' }}>{g.status}</span>
     </div>

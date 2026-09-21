@@ -1531,13 +1531,6 @@ function GrantModal({ show, onClose, connectedWallet, user }: { show:boolean; on
       await fetch(`${API_URL}/api/grants/submit`, {
         method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(form),
       });
-      // 2) email acknowledgement (best-effort)
-      if (form.email) {
-        await fetch(`${API_URL}/api/send-email`, {
-          method:'POST', headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({ to:form.email, type:'grant', name:form.name, amount:form.amount, wallet:form.wallet }),
-        });
-      }
     } catch {}
     setStep('success');
   };

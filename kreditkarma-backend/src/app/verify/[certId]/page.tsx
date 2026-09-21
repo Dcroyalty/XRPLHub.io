@@ -13,7 +13,6 @@ export const dynamic = 'force-dynamic';
 
 function signPayload(data: Record<string, unknown>): string {
   const canonical = JSON.stringify(data, Object.keys(data).sort());
-  if (!SIGNING_SECRET) return 'UNSIGNED-DEV-' + crypto.createHash('sha256').update(canonical).digest('hex').slice(0, 32);
   return crypto.createHmac('sha256', SIGNING_SECRET).update(canonical).digest('hex');
 }
 
@@ -62,14 +61,15 @@ export default async function VerifyPage({ params }: { params: Promise<{ certId:
     issuedAt: cred.issuedAt.toISOString(),
     expiresAt: cred.expiresAt.toISOString(),
   });
-  const signatureValid =
+  // No key => nothing can be checked: never report a match from an unsigned comparison.
+  const signatureValid = !!SIGNING_SECRET &&
     expected.length === cred.signature.length &&
     crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(cred.signature));
   const expired = cred.expiresAt.getTime() < Date.now();
   const valid = signatureValid && !expired && !cred.revoked;
 
   const accent = valid ? '#10b981' : expired ? '#f59e0b' : '#f87171';
-  const headline = valid ? 'Verified Credential' : expired ? 'Expired Credential' : 'Invalid Credential';
+  const headline = valid ? 'Issued by XRPLHub — record intact' : expired ? 'Expired Credential' : 'Invalid Credential';
   const icon = valid ? '✅' : expired ? '⏳' : '❌';
 
   return (
@@ -97,7 +97,7 @@ export default async function VerifyPage({ params }: { params: Promise<{ certId:
         <Row label="Certificate ID" value={cred.certId} mono />
         <Row label="Issued" value={cred.issuedAt.toISOString().slice(0, 10)} />
         <Row label="Valid until" value={cred.expiresAt.toISOString().slice(0, 10)} />
-        <Row label="Signature" value={signatureValid ? 'Cryptographically valid' : 'MISMATCH — do not trust'} />
+        <Row label="Signature" value={signatureValid ? "Matches XRPLHub's issued record" : 'MISMATCH — do not trust'} />
         {cred.txHash && (
           <div style={{ marginTop: 16 }}>
             <a href={`https://xrpscan.com/tx/${cred.txHash}`} target="_blank" rel="noopener noreferrer"
@@ -107,11 +107,11 @@ export default async function VerifyPage({ params }: { params: Promise<{ certId:
           </div>
         )}
 
-        {!SIGNING_SECRET && (
-          <p style={{ marginTop: 18, fontSize: 11, color: '#f59e0b', lineHeight: 1.6 }}>
-            Note: the issuer signing key is not configured, so this credential is not cryptographically binding.
-          </p>
-        )}
+        <p style={{ marginTop: 18, fontSize: 11, color: '#f59e0b', lineHeight: 1.6 }}>
+          {SIGNING_SECRET
+            ? "Checked by XRPLHub itself (an HMAC under a key only XRPLHub holds). This is XRPLHub's own attestation — a third party cannot verify the signature independently. The buyer was not required to control this wallet."
+            : 'Note: the signing key is not configured, so this page cannot check the signature.'}
+        </p>
 
         <p style={{ marginTop: 22, fontSize: 11, color: 'rgba(255,255,255,.3)', lineHeight: 1.7, textAlign: 'center' }}>
           Scores are computed from public XRP Ledger data. A credential attests to the score at its issuance date —

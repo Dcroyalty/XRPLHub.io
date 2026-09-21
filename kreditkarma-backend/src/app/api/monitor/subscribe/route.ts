@@ -12,7 +12,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/xrplscore-db";
 import { isValidXrplAddress } from "@/lib/xrplscore";
-import { authKey, err, ackRequired, ackOk, capabilities, slotUsage, BATCH_CAP, SUBSCRIBES_PER_HOUR } from "@/lib/monitorApi";
+import { authKey, err, ackRequired, ackOk, capabilities, slotUsage, capacityRefusal, BATCH_CAP, SUBSCRIBES_PER_HOUR } from "@/lib/monitorApi";
 import { CONSUMER_ACK_VERSION, MONITOR_DISCLAIMER } from "@/lib/monitorCanon";
 import { baselineSubjects, maxTotalSubjects } from "@/lib/monitorEngine";
 import { checkWebhookUrl, generateWebhookSecret, sendPing } from "@/lib/monitorWebhook";
@@ -76,9 +76,8 @@ export async function POST(req: Request) {
     return err(403, "watch_slots_exceeded", `Your ${key.plan.name} plan allows ${slotMax} monitored wallets; ${usage.used} in use, ${fresh.length} requested.`, { slotsMax: slotMax, slotsUsed: usage.used, upgrade: "https://www.xrplhub.io/pricing" });
   }
   const cap = maxTotalSubjects();
-  if (usage.total + fresh.length > cap) {
-    return err(503, "monitoring_capacity_reached", `Monitoring is capped at ${cap} watched wallets platform-wide (what two daily runs can honestly keep current) and is full. Try again later.`, { sharedLimit: cap, currentlyWatched: usage.total }, );
-  }
+  const refusal = await capacityRefusal(key, usage.total, fresh.length);
+  if (refusal) return refusal;
 
   // ── webhook: validate + test ping BEFORE anything is created ──
   const secret = generateWebhookSecret();

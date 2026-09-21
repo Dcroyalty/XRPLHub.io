@@ -13,11 +13,15 @@ import { getPayloadStatus, xummConfigured, XummRateLimitError } from '@/lib/xumm
 import { verifyPayment, registerPayment } from '@/lib/paymentGate'
 import { prismaPurchaseStore } from '@/lib/paymentStore'
 import { db } from '@/lib/db'
+import { rateLimit, rateLimited } from '@/lib/rateLimit'
 
 /** create-payment stamps every Xaman payload with identifier xrplhub_<productId>_<timestamp>. */
 const PRODUCT_FROM_IDENTIFIER = /^xrplhub_([a-z0-9]+)_\d+$/
 
 export async function GET(req: NextRequest) {
+  // Polled every ~3 s by the checkout (20/min per buyer); each call can hit Xaman, XRPL nodes and the database.
+  const rl = rateLimit(req, 'check-payment', 90, 60_000)
+  if (!rl.ok) return rateLimited(rl)
   try {
     const p          = req.nextUrl.searchParams
     const uuid       = p.get('uuid')

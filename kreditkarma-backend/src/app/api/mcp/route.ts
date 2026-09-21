@@ -5,7 +5,6 @@
 // Compatible with:
 //   • Claude Desktop   → add to claude_desktop_config.json
 //   • Claude Code      → claude mcp add xrplhub --url https://www.xrplhub.io/api/mcp
-//   • XRPL AI Starter Kit (Ripple/Anthropic, 2026)
 //   • Any MCP-compatible agent framework
 //
 // Implements MCP Streamable HTTP transport (spec 2024-11-05).
@@ -76,8 +75,9 @@ export const TOOLS = [
   {
     name: 'issue_score_credential',
     description:
-      "Get a signed, tamper-evident certificate of a wallet's XRPLScore that any counterparty can " +
-      "verify without trusting the holder — the free score isn't provable to a third party, this is. " +
+      "Get a certificate of a wallet's XRPLScore, signed by XRPLHub, with the score computed fresh at issuance. " +
+      "A counterparty checks it by asking XRPLHub's verify URL — the signature is an HMAC under a key only XRPLHub holds, " +
+      "so this is XRPLHub's own attestation, not independently verifiable proof, and the buyer need not control the wallet. " +
       'Two calls: first returns a Xaman payment request (1 XRP or 1 RLUSD, valid 90 days); ' +
       'call again with the same wallet_address + returned uuid after signing to get certId and verifyUrl. ' +
       'Params: wallet_address (r..., required), currency (XRP|RLUSD, default XRP), uuid (2nd call only). No signup.',
@@ -469,7 +469,7 @@ async function toolCheckXrplScore(
   args: Record<string, unknown>
 ): Promise<string> {
   const wallet = String(args.wallet_address || '').trim();
-  if (!wallet.startsWith('r') || wallet.length < 25 || wallet.length > 35) {
+  if (!isValidXrplAddress(wallet)) {
     return JSON.stringify({ error: 'Invalid XRPL wallet address. Must start with r and be 25–35 characters.' });
   }
   try {
@@ -524,7 +524,7 @@ async function toolGetAccountCredentials(args: Record<string, unknown>): Promise
   const wallet = String(args.wallet_address || '').trim();
   const issuer = String(args.issuer || '').trim();
   const credType = String(args.credential_type || '').trim();
-  if (!wallet.startsWith('r') || wallet.length < 25 || wallet.length > 35) {
+  if (!isValidXrplAddress(wallet)) {
     return JSON.stringify({ error: 'Invalid XRPL wallet address. Must start with r and be 25–35 characters.' });
   }
   try {
@@ -545,7 +545,7 @@ async function toolGetAccountCredentials(args: Record<string, unknown>): Promise
 
 async function toolGetIssuerCredentials(args: Record<string, unknown>): Promise<string> {
   const issuer = String(args.issuer_address || '').trim();
-  if (!issuer.startsWith('r') || issuer.length < 25 || issuer.length > 35) {
+  if (!isValidXrplAddress(issuer)) {
     return JSON.stringify({ error: 'Invalid XRPL issuer address. Must start with r and be 25–35 characters.' });
   }
   try {
@@ -591,7 +591,7 @@ async function toolSearchMpts(args: Record<string, unknown>): Promise<string> {
 
 async function toolGetIssuerMpts(args: Record<string, unknown>): Promise<string> {
   const issuer = String(args.issuer_address || '').trim();
-  if (!issuer.startsWith('r') || issuer.length < 25 || issuer.length > 35) {
+  if (!isValidXrplAddress(issuer)) {
     return JSON.stringify({ error: 'Invalid XRPL issuer address. Must start with r and be 25–35 characters.' });
   }
   try {
@@ -678,7 +678,7 @@ async function toolVerifyAttestation(args: Record<string, unknown>): Promise<str
 
 async function toolGetLendingExposure(args: Record<string, unknown>): Promise<string> {
   const borrower = String(args.borrower || '').trim();
-  if (!borrower.startsWith('r') || borrower.length < 25 || borrower.length > 35) {
+  if (!isValidXrplAddress(borrower)) {
     return JSON.stringify({ error: 'Invalid XRPL address. Must start with r and be 25–35 characters.' });
   }
   try {
@@ -729,7 +729,7 @@ async function toolGetLendingExposure(args: Record<string, unknown>): Promise<st
 
 async function toolGetUnderwritingInputs(args: Record<string, unknown>): Promise<string> {
   const borrower = String(args.borrower || '').trim();
-  if (!borrower.startsWith('r') || borrower.length < 25 || borrower.length > 35) {
+  if (!isValidXrplAddress(borrower)) {
     return JSON.stringify({ error: 'Invalid XRPL address. Must start with r and be 25–35 characters.' });
   }
   // Paid x402 call — no free tier. Return the payment resource so an agent with a
@@ -758,7 +758,7 @@ async function toolGetUnderwritingInputs(args: Record<string, unknown>): Promise
 
 async function toolGetLendingHistory(args: Record<string, unknown>): Promise<string> {
   const borrower = String(args.borrower || '').trim();
-  if (!borrower.startsWith('r') || borrower.length < 25 || borrower.length > 35) {
+  if (!isValidXrplAddress(borrower)) {
     return JSON.stringify({ error: 'Invalid XRPL address. Must start with r and be 25–35 characters.' });
   }
   try {
@@ -778,7 +778,7 @@ async function toolGetLendingHistory(args: Record<string, unknown>): Promise<str
 async function toolCheckDomainEligibility(args: Record<string, unknown>): Promise<string> {
   const wallet = String(args.wallet_address || '').trim();
   const domainId = String(args.domain_id || '').trim();
-  if (!wallet.startsWith('r') || wallet.length < 25 || wallet.length > 35) {
+  if (!isValidXrplAddress(wallet)) {
     return JSON.stringify({ error: 'Invalid XRPL wallet address. Must start with r and be 25–35 characters.' });
   }
   if (!/^[0-9A-Fa-f]{64}$/.test(domainId)) {
@@ -828,7 +828,7 @@ async function toolBuildXrplTransaction(
   const wallet    = String(args.wallet_address || '').trim();
   const params    = (args.params as Record<string, string | number | boolean | undefined>) || {};
 
-  if (!wallet.startsWith('r') || wallet.length < 25 || wallet.length > 35) {
+  if (!isValidXrplAddress(wallet)) {
     return JSON.stringify({ error: 'Invalid XRPL wallet address.' });
   }
   if (!productId) {
@@ -892,7 +892,7 @@ async function toolSubmitGrantApplication(
 
   const VALID_CATS = ['RENT','UTILITIES','GROCERIES','MEDICAL','TRANSPORT','CHILDCARE','OTHER'];
 
-  if (!wallet.startsWith('r') || wallet.length < 25 || wallet.length > 35) {
+  if (!isValidXrplAddress(wallet)) {
     return JSON.stringify({ error: 'Invalid XRPL wallet address.' });
   }
   if (!VALID_CATS.includes(category)) {
@@ -961,27 +961,9 @@ async function toolDonateToFund(
     return JSON.stringify({ error: 'Currency must be XRP or RLUSD.' });
   }
 
-  // Build the donation record in our system
-  let donationRecord = null;
-  try {
-    const res = await fetch(`${API_URL}/api/donate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        fromAddress: donorWallet || 'AI-initiated',
-        amount,
-        currency,
-        txHash:  `pending-${Date.now()}`,
-        message: message || 'AI agent donation to XRPLHub Community Grants',
-      }),
-      signal: AbortSignal.timeout(8_000),
-    });
-    donationRecord = await res.json().catch(() => null);
-  } catch { /* non-blocking — return payment info regardless */ }
-
   // Build the payment transaction if donor wallet is provided
   let transaction = null;
-  if (donorWallet && donorWallet.startsWith('r') && donorWallet.length >= 25) {
+  if (donorWallet && isValidXrplAddress(donorWallet)) {
     if (currency === 'XRP') {
       transaction = {
         TransactionType: 'Payment',
@@ -1018,7 +1000,7 @@ async function toolDonateToFund(
 
   return JSON.stringify({
     success: true,
-    impact: `Your ${amount} ${currency} donation funds direct wallet-to-wallet grants to people in genuine need — rent, food, medical bills, utilities. No middleman. Every cent tracked on-chain.`,
+    impact: `Your ${amount} ${currency} donation goes to the public XRPLHub treasury address, which pays community micro-grants that a person reviews and approves. Grant applications are currently paused while already-approved grants wait for funds. Every payment is publicly verifiable on XRPScan.`,
     treasuryAddress: TREASURY,
     treasuryName:    'XRPLHub Community Grants Treasury (xrplhub.xrp)',
     donationAmount:  `${amount} ${currency}`,
@@ -1026,9 +1008,8 @@ async function toolDonateToFund(
     transaction:     transaction || null,
     signingNote:     transaction
       ? 'Sign this transaction in Xaman to complete your donation. The funds go directly to the community treasury on-chain.'
-      : 'To donate, send ${amount} ${currency} directly to ' + TREASURY + ' from any XRPL wallet or Xaman.',
+      : `To donate, send ${amount} ${currency} directly to ${TREASURY} from any XRPL wallet or Xaman.`,
     onChainVerification: `Every donation and every payout is publicly verifiable at https://xrpscan.com/account/${TREASURY}`,
-    donationRecord:  donationRecord?.id ? { id: donationRecord.id } : null,
     poweredBy: 'XRPLHub.io Community Grants — wallet-to-wallet, no middleman © 2026',
   }, null, 2);
 }
@@ -1039,7 +1020,7 @@ async function handleIssueScoreCredential(args: Record<string, unknown>): Promis
   const currency = args.currency === 'RLUSD' ? 'RLUSD' : 'XRP';
   const uuid = String(args.uuid || '').trim();
 
-  if (!wallet.startsWith('r') || wallet.length < 25) {
+  if (!isValidXrplAddress(wallet)) {
     return JSON.stringify({ error: 'A valid XRPL wallet address (starting with r) is required.' }, null, 2);
   }
 
@@ -1091,7 +1072,7 @@ async function handleIssueScoreCredential(args: Record<string, unknown>): Promis
     }
     return JSON.stringify({
       step: 'payment_required',
-      whatThisBuys: 'A signed, tamper-evident credential attesting to this wallet\'s XRPLScore, with a public URL any third party can verify. Valid 90 days.',
+      whatThisBuys: 'A certificate, signed by XRPLHub, of this wallet\'s XRPLScore computed fresh at issuance, with a public URL where anyone can ask XRPLHub to confirm it (XRPLHub\'s own attestation — not independently verifiable). Valid 90 days.',
       price: data.price,
       wallet,
       paymentUuid: data.uuid,
@@ -1155,7 +1136,6 @@ export async function GET() {
           },
         },
         claudeCode:  'claude mcp add xrplhub --url https://www.xrplhub.io/api/mcp',
-        xrplStarter: 'Compatible with the XRPL AI Starter Kit (Ripple/Anthropic, 2026)',
         directAPI:   'POST https://www.xrplhub.io/api/mcp — JSON-RPC 2.0',
       },
       links: {

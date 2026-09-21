@@ -4,6 +4,7 @@
 import { NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
 import { GRANT_APPLICATIONS_OPEN, GRANTS_PAUSED_MESSAGE } from '@/lib/grantsStatus';
+import { isValidXrplAddress } from "@/lib/address";
 
 const prisma = new PrismaClient();
 
@@ -29,7 +30,7 @@ export async function POST(req: Request) {
     if (!wallet || !need || !category) {
       return NextResponse.json({ error: 'wallet, category, and need are required' }, { status: 400 });
     }
-    if (!String(wallet).startsWith('r') || String(wallet).length < 25) {
+    if (!isValidXrplAddress(String(wallet))) {
       return NextResponse.json({ error: 'invalid XRPL wallet' }, { status: 400 });
     }
 

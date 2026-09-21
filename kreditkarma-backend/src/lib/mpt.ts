@@ -45,9 +45,16 @@ function parseMetadata(hex: string | undefined): unknown {
   try { return JSON.parse(s); } catch { return s; }
 }
 
+/** Shipped inside every MPT risk view (free route, paid x402 route, MCP tool) — a judgment never travels without it. */
+export const MPT_DISCLAIMER =
+  "Automated read of public XRP Ledger data (the issuance object, its issuer's account and the issuer's XRPLScore), as of the time of the request. " +
+  "It shows what the issuer's on-ledger powers allow — it is not a rating, a recommendation, or a statement that the token is safe or unsafe, " +
+  "and it does not verify anything the issuer declares (backing, reserves, redemption). Not legal, financial or compliance advice. No warranty.";
+
 export interface MptRisk {
   issuanceId: string;
   found: boolean;
+  disclaimer: string;
   source: {
     ledger: string;
     bithompIndex: string;
@@ -150,6 +157,7 @@ export async function getMptRisk(issuanceId: string, opts: { full?: boolean } = 
     return {
       issuanceId: id,
       found: false,
+      disclaimer: MPT_DISCLAIMER,
       tier: full ? "full" : "basic",
       source: {
         ledger: "not present on the validated ledger",
@@ -228,7 +236,7 @@ export async function getMptRisk(issuanceId: string, opts: { full?: boolean } = 
 
   if (!full) {
     return {
-      issuanceId: id, found: true, tier: "basic",
+      issuanceId: id, found: true, disclaimer: MPT_DISCLAIMER, tier: "basic",
       source: { ledger: "MPTokenIssuance present on the validated ledger (live read)", bithompIndex: bithompStr, interpretation: "exists" },
       issuer, issuance, issuerPowers, backingDeclaration, confidential, mutability,
       issuerRisk: { xrplScore, grade: gradeStr },
@@ -257,7 +265,7 @@ export async function getMptRisk(issuanceId: string, opts: { full?: boolean } = 
   if (credList.length > 0) related.push(credentialsAccountLink(issuer));
 
   return {
-    issuanceId: id, found: true, tier: "full",
+    issuanceId: id, found: true, disclaimer: MPT_DISCLAIMER, tier: "full",
     source: { ledger: "MPTokenIssuance present on the validated ledger (live read)", bithompIndex: bithompStr, interpretation: "exists" },
     issuer, issuance, issuerPowers, backingDeclaration, confidential, mutability,
     issuerRisk: {

@@ -3,8 +3,12 @@
 // tx hash here so we can attach a message and keep a donor record alongside the
 // on-chain TreasuryStatsBar count.
 //
-// GET  -> { treasuryAddress, network }
-// POST -> { fromAddress, txHash, amount, currency, message? } -> Donation row
+// GET  -> { treasuryAddress, network }                                   (public)
+// POST -> { fromAddress, txHash, amount, currency, message? } -> Donation row   (ADMIN-ONLY, ADMIN_API_TOKEN)
+//
+// POST used to be open: anyone could file a donation row with an invented hash/amount, or overwrite the message on
+// someone else's hash. A donation is a payment on the public ledger — the ledger is the record; this table is only an
+// operator's notebook, so only the operator can write it.
 //
 // The handler used to write columns that don't exist on the Donation model
 // (email/wallet/note, string amount, null txHash) so EVERY call failed the DB
@@ -14,19 +18,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/xrplscore-db";
 import { notifyError } from "@/lib/notify";
+import { isAdmin, adminUnauthorized } from "@/lib/adminAuth";
+import { isValidXrplAddress } from "@/lib/address";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const TREASURY = process.env.TREASURY_ADDRESS || "rs59g3amo5iT6T64Cg96XXMAWuw3WPQcLF";
 const TX_RE = /^[0-9A-Fa-f]{64}$/;
-const ADDR_RE = /^r[1-9A-HJ-NP-Za-km-z]{24,34}$/;
 
 export async function GET() {
   return NextResponse.json({ treasuryAddress: TREASURY, network: "xrpl-mainnet" });
 }
 
 export async function POST(req: NextRequest) {
+  if (!isAdmin(req)) return adminUnauthorized();
   const b = (await req.json().catch(() => ({}))) as {
     fromAddress?: string;
     txHash?: string;
@@ -42,7 +48,7 @@ export async function POST(req: NextRequest) {
   const currency = String(b.currency ?? "XRP").toUpperCase();
   const message = (b.message ?? b.note) ? String(b.message ?? b.note).slice(0, 500) : null;
 
-  if (!ADDR_RE.test(fromAddress)) {
+  if (!isValidXrplAddress(fromAddress)) {
     return NextResponse.json({ ok: false, error: "fromAddress must be a valid XRPL address" }, { status: 400 });
   }
   if (!TX_RE.test(txHash)) {

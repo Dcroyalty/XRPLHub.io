@@ -129,7 +129,10 @@ export default function CheckoutFlow({ plan }: { plan: string }) {
   const poll = useCallback(async () => {
     if (!invoice) return;
     try {
-      const res = await fetch(invoice.statusUrl);
+      // Pass the Xaman payload uuid when we have one: the server reads the exact tx hash from the payload we created
+      // for THIS invoice instead of searching the ledger for it.
+      const uuid = xamanUuid.current;
+      const res = await fetch(uuid ? `${invoice.statusUrl}&uuid=${encodeURIComponent(uuid)}` : invoice.statusUrl);
       const data = await res.json();
       if (data.status === "paid") {
         setStatus("paid");

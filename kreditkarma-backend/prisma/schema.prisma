@@ -70,7 +70,8 @@ model GrantRequest {
   description       String
   urgency           String        // LOW / MEDIUM / HIGH / EMERGENCY
 
-  // AI Underwriting
+  // Legacy review columns from a discontinued automated triage. Nothing writes them any more; they stay so historical
+  // rows remain readable. Grants are reviewed and decided by a person.
   aiScore           Float?
   aiReasoning       String?
   riskFlags         String?       // JSON array of flags
@@ -88,7 +89,7 @@ model GrantRequest {
   ledgerScoreId     String?
   ledgerScore       LedgerScore?  @relation(fields: [ledgerScoreId], references: [id])
   scoreSnapshot     Int?
-  reviewedBy        String?       // "AI" or admin address
+  reviewedBy        String?       // admin address (historical rows may hold a legacy value)
   rejectionReason   String?
 
   createdAt         DateTime      @default(now())

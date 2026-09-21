@@ -115,7 +115,7 @@ export const X402_ERROR_CODES = {
   handler_failed: "The paid work failed AFTER verification but BEFORE settlement. You were NOT charged. Retry with the same PAYMENT-SIGNATURE within maxTimeoutSeconds, or fetch a new challenge.",
   account_not_found: "The wallet is not an activated account on XRPL mainnet. You were NOT charged.",
   xrpl_unavailable: "One or more XRPL calls could not be read (rate-limit / timeout / upstream error). No result was produced and you were NOT charged. Retry shortly — see `message` for which calls failed.",
-  settlement_pending: "The result is delivered and correct; on-ledger settlement is still being retried. You were NOT double-charged.",
+  settlement_failed: "The result was computed and is returned, but on-ledger settlement FAILED (after one inline retry): no payment was collected and none will be retried automatically. The response says x402.success:false and x402.settled:false. You were NOT charged.",
   idempotent_replay: "This Idempotency-Key (or invoiceId) was already processed — the original response is returned unchanged.",
   request_in_progress: "A request with this Idempotency-Key (or invoiceId) is still being processed. Retry shortly.",
   retired: "This endpoint is retired. Use the endpoint named in `useInstead`.",
@@ -262,12 +262,17 @@ export async function recordPaidInvoice(
 // GUARANTEE: settlement fires ONLY after the paid work returns success — the
 // same "never charge for a failure" contract x402-next/CDP gives. On a handler
 // failure the caller's signed payment is untouched and can be retried. On a
-// settle failure AFTER a successful handler, the caller still gets the result
-// (they did their part) and settlement is retried in the background.
+// settle failure AFTER a successful handler there is ONE inline retry and nothing
+// more: the caller still gets the result, the response says plainly that settlement
+// failed (x402.success:false), the operator is alerted, and the payment is NOT
+// retried later. (Delivering the result anyway is a deliberate trade-off: a facilitator
+// outage should not cost a customer their answer — but it means a payer who spends
+// the funds mid-request gets one result unpaid.)
 //
-// IDEMPOTENCY: keyed on the `Idempotency-Key` header, else the payload
-// invoiceId. A retried request returns the stored response verbatim — an agent
-// can never pay twice.
+// IDEMPOTENCY: keyed on the `Idempotency-Key` header (else the payload invoiceId)
+// TOGETHER WITH the exact request (resource + method + normalised query/body). A retried
+// identical request returns the stored response verbatim — an agent can never pay twice —
+// and a key reused for a different request is treated as a new request.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export type HandlerResult =
@@ -288,6 +293,23 @@ export interface ServeX402Opts {
 }
 
 const IN_PROGRESS_TTL_MS = 120_000;
+
+/** Method + path + sorted query (+ the body for non-GET), so two requests fingerprint alike only if they ask for the same thing. */
+export async function requestFingerprint(req: Request): Promise<string> {
+  const u = new URL(req.url);
+  const query = [...u.searchParams.entries()].sort(([a, av], [b, bv]) => (a === b ? av.localeCompare(bv) : a.localeCompare(b))).map(([k, v]) => `${k}=${v}`).join("&");
+  let body = "";
+  if (req.method !== "GET" && req.method !== "HEAD") {
+    body = (await req.clone().text().catch(() => "")).slice(0, 10_000);
+    try { body = JSON.stringify(sortKeys(JSON.parse(body))); } catch { /* not JSON: use the raw text */ }
+  }
+  return [req.method, u.pathname, query, body].join("\n");
+}
+function sortKeys(v: unknown): unknown {
+  if (Array.isArray(v)) return v.map(sortKeys);
+  if (v && typeof v === "object") return Object.fromEntries(Object.entries(v as Record<string, unknown>).sort(([a], [b]) => a.localeCompare(b)).map(([k, x]) => [k, sortKeys(x)]));
+  return v;
+}
 
 export async function serveX402Paid(opts: ServeX402Opts): Promise<NextResponse> {
   const { req, prisma, resource, plan, amountRlusd } = opts;
@@ -311,7 +333,11 @@ export async function serveX402Paid(opts: ServeX402Opts): Promise<NextResponse> 
   const invoiceId = payload.accepted?.extra?.invoiceId;
   if (!invoiceId) return errJson("invoice_binding_missing", 400);
 
-  const idemKey = (req.headers.get("Idempotency-Key") || invoiceId).slice(0, 200);
+  // The idempotency row is keyed on the caller's key AND on the exact request (resource + method + normalised
+  // query/body). A key reused for a DIFFERENT request therefore finds no row and is processed (and paid) on its own —
+  // it can never be answered with another request's stored result.
+  const callerKey = (req.headers.get("Idempotency-Key") || invoiceId).slice(0, 200);
+  const idemKey = createHash("sha256").update([resource, await requestFingerprint(req), callerKey].join("\n"), "utf8").digest("hex");
 
   // 3) Idempotency.
   const prior = await prisma.x402PaidRequest.findUnique({ where: { key: idemKey } }).catch(() => null);
@@ -386,13 +412,14 @@ export async function serveX402Paid(opts: ServeX402Opts): Promise<NextResponse> 
     void notifyError(`x402 settle-after-delivery ${resource}`, new Error("settlement failed after a successful handler — result delivered, money uncollected"), { invoiceId });
   }
 
+  // success mirrors what actually happened to the money — never "true" for a settlement that failed.
   const paymentResponse = {
-    success: true,
+    success: settledOk,
     settled: settledOk,
     transaction: txHash,
     network: process.env.X402_NETWORK ?? "xrpl",
     payer,
-    ...(settledOk ? {} : { note: X402_ERROR_CODES.settlement_pending }),
+    ...(settledOk ? {} : { errorReason: "settlement_failed", note: X402_ERROR_CODES.settlement_failed }),
   };
   return finish(
     { data: result, x402: paymentResponse },

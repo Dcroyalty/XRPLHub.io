@@ -10,11 +10,10 @@
 import { NextResponse } from "next/server";
 import { isAdmin, adminUnauthorized } from "@/lib/adminAuth";
 import { createPayload, xummConfigured, XummRateLimitError } from "@/lib/xumm";
+import { isValidXrplAddress } from "@/lib/address";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-const R_ADDR = /^r[1-9A-HJ-NP-Za-km-z]{24,34}$/;
 
 export async function POST(req: Request) {
   if (!isAdmin(req)) return adminUnauthorized();
@@ -31,7 +30,7 @@ export async function POST(req: Request) {
   };
 
   const destination = String(body.destination ?? "").trim();
-  if (!R_ADDR.test(destination)) {
+  if (!isValidXrplAddress(destination)) {
     return NextResponse.json({ error: "bad_request", message: "destination must be a valid r-address" }, { status: 400 });
   }
   const drops = String(body.drops ?? "").trim();

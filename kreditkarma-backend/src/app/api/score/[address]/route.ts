@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
 import { AccountNotFoundError, XrplUnavailableError, COPYRIGHT } from '@/lib/xrplscore';
 import { getScoreCached, SCORE_CACHE_TTL_MS } from '@/lib/scoreCache';
+import { isValidXrplAddress } from "@/lib/address";
 
 const prisma = new PrismaClient();
 
@@ -16,7 +17,7 @@ export async function GET(
   const { address: rawAddress } = await params;
   const address = decodeURIComponent(rawAddress);
 
-  if (!address || !address.startsWith('r') || address.length < 25 || address.length > 35) {
+  if (!address || !isValidXrplAddress(address)) {
     return NextResponse.json({ error: 'Invalid XRPL address format' }, { status: 400 });
   }
 

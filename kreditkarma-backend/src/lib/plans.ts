@@ -16,9 +16,9 @@ export interface Plan {
   priceRlusd: number;      // charged per month via RLUSD checkout (0 = free)
   monthlyQuota: number;    // scored API calls included per calendar month
   rateLimitPerMin: number; // hard per-minute ceiling
-  overage: boolean;        // true = keep serving past quota and bill it;
-                           // false = 429 at quota
-  overageRlusdPer1k: number; // price per 1,000 calls over quota (if overage)
+  overage: boolean;        // ALWAYS false today: there is no overage billing anywhere, so every plan is a HARD monthly
+                           // quota (429 at quota). Do not set true until something actually invoices the overage.
+  overageRlusdPer1k: number; // reserved; 0 while overage billing does not exist
   cacheTtlSeconds: number; // score cache lifetime for this tier
   watchSlots: number;      // wallets one key may keep under continuous monitoring (/api/monitor)
   blurb: string;
@@ -71,8 +71,8 @@ export const PLANS: Record<PlanId, Plan> = {
     priceRlusd: 149,
     monthlyQuota: 100_000,
     rateLimitPerMin: 300,
-    overage: true,
-    overageRlusdPer1k: 2,
+    overage: false,
+    overageRlusdPer1k: 0,
     cacheTtlSeconds: 120,
     watchSlots: 250,
     blurb: "More volume than competitors' Pro tier, for less.",
@@ -80,7 +80,7 @@ export const PLANS: Record<PlanId, Plan> = {
       "250 monitored wallets",
       "100,000 scored calls / month",
       "300 requests / minute",
-      "Overage billing — never cut off mid-spike",
+      "Hard monthly quota: calls past 100,000 are refused (429) until next month or you upgrade",
       "Priority support",
       "30-day key term — buy again to continue (no card, no auto-renew)",
     ],
@@ -91,8 +91,8 @@ export const PLANS: Record<PlanId, Plan> = {
     priceRlusd: 499,
     monthlyQuota: 1_000_000,
     rateLimitPerMin: 1000,
-    overage: true,
-    overageRlusdPer1k: 1,
+    overage: false,
+    overageRlusdPer1k: 0,
     cacheTtlSeconds: 60,
     watchSlots: 2500,
     blurb: "Serious infrastructure. Cheapest per-call at volume, period.",
@@ -100,14 +100,14 @@ export const PLANS: Record<PlanId, Plan> = {
       "2,500 monitored wallets (subject to the shared monitoring capacity)",
       "1,000,000 scored calls / month",
       "1,000 requests / minute",
-      "Lowest overage rate",
+      "Hard monthly quota: calls past 1,000,000 are refused (429) until next month",
       "Priority support + integration help",
       "30-day key term — buy again to continue (no card, no auto-renew)",
     ],
   },
 };
 
-// Monitoring is capped by what two daily cron runs can honestly keep up with, so every plan's slots are a
+// Monitoring is capped by what the ONE daily monitoring run (the 06:00 UTC cron) can honestly keep up with, so every plan's slots are a
 // per-key CEILING and the shared platform limit (MONITOR_MAX_TOTAL_SUBJECTS, default 500 watched wallets across all
 // customers) applies first. See docs/MONITORING.md.
 export const PLAN_ORDER: PlanId[] = ["free", "starter", "growth", "scale"];

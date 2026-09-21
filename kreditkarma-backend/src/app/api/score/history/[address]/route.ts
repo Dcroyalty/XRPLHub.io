@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
 import { SCORE_DISCLAIMER } from '@/lib/xrplscore';
+import { isValidXrplAddress } from "@/lib/address";
 
 const prisma = new PrismaClient();
 
@@ -12,7 +13,7 @@ export async function GET(
   const { address: rawAddress } = await params;
   const address = decodeURIComponent(rawAddress);
 
-  if (!address || !address.startsWith('r') || address.length < 25) {
+  if (!address || !isValidXrplAddress(address)) {
     return NextResponse.json({ error: 'Invalid XRPL address' }, { status: 400 });
   }
 

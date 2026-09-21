@@ -12,13 +12,14 @@ import { buildContextFromView, mptRegimeFor, permanenceNotice } from "@/lib/mptP
 import { BUILDABLE_SERVICE_IDS } from "@/app/api/execute/serviceCatalog";
 import { rlusdRequirements, serveX402Paid, type HandlerResult } from "@/lib/x402";
 import { TX_SCHEMA } from "@/lib/x402Schemas";
+import { isValidXrplAddress } from "@/lib/address";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const RESOURCE = "/api/x402/tx";
 const KNOWN = new Set(BUILDABLE_SERVICE_IDS);
-const isAddr = (v: string) => v.startsWith("r") && v.length >= 25 && v.length <= 35;
+const isAddr = (v: string) => isValidXrplAddress(v);
 
 function extractParams(url: URL): Record<string, string> {
   const out: Record<string, string> = {};

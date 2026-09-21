@@ -1034,7 +1034,7 @@ export async function GET(req: Request) {
             "Continuous monitoring is layered on top of underwriting, not a replacement. Underwriting judges structural risk before signing; " +
             "monitoring reports OBSERVED behavioral changes in public XRP Ledger data after — once a day, for wallets you choose. Not real-time. " +
             "Returns the event types, per-plan watch slots (free 3, starter 25, growth 250, scale 2,500 — per-key ceilings), the shared platform " +
-            "limit (what two daily cron runs can keep current), the consumer-use acknowledgement text + version, webhook signing rules and the disclaimer.",
+            "limit (what the one daily monitoring run can keep current) with the free-tier ceiling, the consumer-use acknowledgement text + version, webhook signing rules and the disclaimer.",
           tags: ["Monitoring"],
           responses: { "200": { description: "Capabilities, limits, capacity statement, acknowledgement text." } },
         },

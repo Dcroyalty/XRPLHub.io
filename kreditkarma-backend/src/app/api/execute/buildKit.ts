@@ -2,6 +2,7 @@
 // Shared types and helpers for the service builders (txBuilder.ts, serviceBuilders.ts).
 
 import type { BuildContext } from '@/lib/mptPermanence';
+import { isValidXrplAddress } from "@/lib/address";
 
 export type SafetyTier = 'safe' | 'caution' | 'blocked';
 
@@ -30,7 +31,7 @@ export interface Params { [k: string]: string | number | boolean | undefined }
 export type Builder = (account: string, p: Params, ctx?: BuildContext) => BuildResult | Promise<BuildResult>;
 
 export const str = (v: unknown) => (v === undefined || v === null ? '' : String(v)).trim();
-export const isAddr = (v: string) => /^r[1-9A-HJ-NP-Za-km-z]{24,34}$/.test(v);
+export const isAddr = (v: string) => isValidXrplAddress(v);
 export const xrpToDrops = (xrp: number) => String(Math.round(xrp * 1_000_000));
 export const truthy = (v: unknown) => v === true || v === 'true' || v === 'on' || v === 'yes' || v === 1 || v === '1';
 

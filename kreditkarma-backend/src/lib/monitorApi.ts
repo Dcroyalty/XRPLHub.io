@@ -11,6 +11,14 @@ import { lendingProtocolActive } from "@/lib/lendingLedger";
 
 export const BATCH_CAP = 25;
 export const SUBSCRIBES_PER_HOUR = 10;
+/**
+ * The most of the shared capacity FREE-plan keys may hold between them. Free keys are cheap to farm (one per
+ * activated wallet), so without a ceiling a handful of them could fill the whole platform cap and lock paying
+ * customers out. Paid keys may use everything free keys have not taken; at least (1 - this) of the cap is
+ * therefore always reserved for them.
+ */
+export const FREE_CAPACITY_SHARE = 0.4;
+export const freeTierCap = () => Math.floor(maxTotalSubjects() * FREE_CAPACITY_SHARE);
 
 export function err(status: number, code: string, message: string, extra: Record<string, unknown> = {}): NextResponse {
   return NextResponse.json({ error: code, message, ...extra }, { status, headers: { "Cache-Control": "no-store" } });
@@ -60,6 +68,37 @@ export async function slotUsage(apiKeyId: string): Promise<{ used: number; total
   return { used, total };
 }
 
+/** Watched wallets held by FREE-plan keys. Subscriptions carry only apiKeyId, so resolve the plans in two small steps. */
+export async function freeTierUsage(): Promise<number> {
+  const subs = await prisma.monitorSubscription.findMany({ where: { status: { not: "deleted" } }, select: { apiKeyId: true }, distinct: ["apiKeyId"] });
+  if (!subs.length) return 0;
+  const free = await prisma.apiKey.findMany({ where: { id: { in: subs.map((x) => x.apiKeyId) }, plan: "free" }, select: { id: true } });
+  if (!free.length) return 0;
+  return prisma.monitorSubject.count({ where: { subscription: { apiKeyId: { in: free.map((k) => k.id) }, status: { not: "deleted" } } } });
+}
+
+/**
+ * Would adding `adding` wallets (and removing `removing`) breach the shared cap or, for a free key, the free-tier
+ * ceiling? Returns the refusal to send, or null. (Checked read-then-write, so two simultaneous requests can overshoot
+ * by a few wallets; the daily pass tolerates that and the next subscribe is refused.)
+ */
+export async function capacityRefusal(key: ResolvedKey, totalUsed: number, adding: number, removing = 0): Promise<NextResponse | null> {
+  const cap = maxTotalSubjects();
+  if (totalUsed - removing + adding > cap) {
+    return err(503, "monitoring_capacity_reached", `Monitoring is capped at ${cap} watched wallets platform-wide (what the daily monitoring run can keep current) and is full. Try again later.`, { sharedLimit: cap, currentlyWatched: totalUsed });
+  }
+  if (key.planId === "free") {
+    const fc = freeTierCap();
+    const freeUsed = await freeTierUsage();
+    if (freeUsed - removing + adding > fc) {
+      return err(503, "monitoring_free_capacity_reached", `Free-tier monitoring is capped at ${fc} watched wallets platform-wide so that ${cap - fc} of the ${cap} slots always stay available to paid plans, and that pool is full. A paid plan can still add wallets.`, {
+        freeTierLimit: fc, freeTierWatched: freeUsed, sharedLimit: cap, upgrade: "https://www.xrplhub.io/pricing",
+      });
+    }
+  }
+  return null;
+}
+
 export async function describeMonitoring(): Promise<Record<string, unknown>> {
   const total = await prisma.monitorSubject.count({ where: { subscription: { status: { not: "deleted" } } } }).catch(() => null);
   const cap = maxTotalSubjects();
@@ -75,10 +114,13 @@ export async function describeMonitoring(): Promise<Record<string, unknown>> {
       `${DEFAULT_SCORE_BUDGET} fresh scores.`,
     capacity: {
       statement:
-        `Monitoring is capped at ${cap} watched wallets across ALL customers because two daily cron runs can honestly keep that many current. ` +
+        `Monitoring is capped at ${cap} watched wallets across ALL customers, sized for the ONE daily monitoring run (06:00 UTC). ` +
+        `Free-plan keys can hold at most ${freeTierCap()} of those between them, so ${cap - freeTierCap()} slots always stay available to paid plans. ` +
         "Plan slots below are per-key ceilings; the shared limit applies first. If more wallets are due than one run can score, the stalest " +
         "are checked first and the rest roll to the next run — each watched wallet exposes lastCheckedAt / nextCheckAt so you can see it.",
       sharedLimit: cap,
+      freeTierLimit: freeTierCap(),
+      reservedForPaid: cap - freeTierCap(),
       currentlyWatched: total,
       freshScoresPerRun: DEFAULT_SCORE_BUDGET,
       rescoreAtLeastEveryDays: RESCORE_AFTER_MS / 86_400_000,

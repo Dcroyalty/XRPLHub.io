@@ -4,7 +4,7 @@
 // the health check itself can never throw.
 
 import { prisma } from "@/lib/xrplscore-db";
-import { xummConfigured } from "@/lib/xumm";
+import { xummConfigured, xummPing } from "@/lib/xumm";
 import { facilitatorSupported } from "@/lib/x402";
 import { alertingArmed } from "@/lib/notify";
 
@@ -24,6 +24,19 @@ export interface HealthReport {
   at: string;
 }
 
+// The external probes (Xaman, t54, CDP) make a real call each time they run. This endpoint is public, so results are kept
+// per server instance for PROBE_TTL_MS: an uptime monitor gets a real answer at most once a minute per instance and a
+// stranger cannot turn this URL into a way to hammer those services. `force` (the cron, or an admin) bypasses the cache.
+const PROBE_TTL_MS = 60_000;
+const probeCache = new Map<string, { at: number; check: Check }>();
+async function probed(name: string, force: boolean, run: () => Promise<Check>): Promise<Check> {
+  const hit = probeCache.get(name);
+  if (!force && hit && Date.now() - hit.at < PROBE_TTL_MS) return hit.check;
+  const check = await run();
+  probeCache.set(name, { at: Date.now(), check });
+  return check;
+}
+
 async function timed<T>(fn: () => Promise<T>, ms = 8000): Promise<T> {
   return Promise.race([
     fn(),
@@ -40,16 +53,20 @@ async function checkDb(): Promise<Check> {
   }
 }
 
-function checkXumm(): Check {
-  // Config presence only — a live ping would burn the 429 budget. The loud
-  // "keys are actually bad" signal comes from lib/xumm createPayload -> notifyError.
-  return xummConfigured()
-    ? { name: "xumm", level: "ok", detail: "XUMM_API_KEY + SECRET set (live validity alerts via createPayload)" }
-    : { name: "xumm", level: "down", detail: "XUMM_API_KEY / XUMM_API_SECRET missing — every Xaman payment + free-key SignIn is down" };
+async function checkXumm(force: boolean): Promise<Check> {
+  if (!xummConfigured()) {
+    return { name: "xumm", level: "down", detail: "XUMM_API_KEY / XUMM_API_SECRET missing — every Xaman payment + free-key SignIn is down" };
+  }
+  return probed("xumm", force, async () => {
+    const r = await xummPing();
+    if (r.ok) return { name: "xumm", level: "ok", detail: `${r.detail} (live call)` };
+    // A refused key is an outage of every Xaman flow; an unreachable/odd answer is worth a look but is not proof.
+    return { name: "xumm", level: r.rejected ? "down" : "warn", detail: r.detail };
+  });
 }
 
-async function checkT54(deep: boolean): Promise<Check> {
-  if (!deep) return { name: "x402-t54", level: "ok", detail: "t54 facilitator (deep probe skipped — pass ?deep=1)" };
+async function checkT54(force: boolean): Promise<Check> {
+  return probed("x402-t54", force, async () => {
   try {
     const r = await timed(() => facilitatorSupported());
     if (r.ok) return { name: "x402-t54", level: "ok", detail: "t54 facilitator /supported OK" };
@@ -57,19 +74,19 @@ async function checkT54(deep: boolean): Promise<Check> {
   } catch (e) {
     return { name: "x402-t54", level: "down", detail: e instanceof Error ? e.message : "unreachable" };
   }
+  });
 }
 
-async function checkCdp(deep: boolean): Promise<Check> {
+async function checkCdp(force: boolean): Promise<Check> {
   const idSet = !!process.env.CDP_API_KEY_ID;
   const secretSet = !!process.env.CDP_API_KEY_SECRET;
   if (!idSet || !secretSet) {
     return { name: "x402-cdp", level: "down", detail: "CDP_API_KEY_ID / CDP_API_KEY_SECRET missing — USDC-on-Base checkout + x402 USDC routes can't settle" };
   }
-  if (!deep) return { name: "x402-cdp", level: "ok", detail: "CDP keys set (deep probe skipped — pass ?deep=1)" };
-  // Unauthenticated liveness of the CDP facilitator host. A 400/401/403 all
-  // mean "the service is up" (auth happens per-request inside withX402); only a
-  // network failure or 5xx is a real outage. Gated behind `deep` so a 1/min
-  // uptime monitor doesn't hammer CDP with rejected probes.
+  // Unauthenticated liveness of the CDP facilitator host. A 400/401/403 all mean "the service is up" (auth happens
+  // per-request inside withX402); only a network failure or 5xx is a real outage. NOTE this proves the host answers,
+  // not that our key is valid — the detail says so.
+  return probed("x402-cdp", force, async () => {
   try {
     const res = await timed(() =>
       fetch("https://api.cdp.coinbase.com/platform/v2/x402/verify", {
@@ -82,10 +99,11 @@ async function checkCdp(deep: boolean): Promise<Check> {
     if (res.status >= 500 || res.status === 0) {
       return { name: "x402-cdp", level: "down", detail: `CDP facilitator -> HTTP ${res.status}` };
     }
-    return { name: "x402-cdp", level: "ok", detail: `CDP keys set; facilitator reachable (HTTP ${res.status})` };
+    return { name: "x402-cdp", level: "ok", detail: `CDP keys set; facilitator host reachable (HTTP ${res.status}) — key validity is not probed` };
   } catch (e) {
     return { name: "x402-cdp", level: "down", detail: `CDP facilitator unreachable: ${e instanceof Error ? e.message : "error"}` };
   }
+  });
 }
 
 async function checkAnchor(): Promise<Check> {
@@ -185,8 +203,8 @@ async function checkLendingExposure(): Promise<Check> {
 
 function checkCredentialSigning(): Check {
   return process.env.CREDENTIAL_SIGNING_SECRET
-    ? { name: "credential-signing", level: "ok", detail: "CREDENTIAL_SIGNING_SECRET set — paid off-ledger certificates are cryptographically binding" }
-    : { name: "credential-signing", level: "down", detail: "CREDENTIAL_SIGNING_SECRET NOT set — paid signed certificates issue but are NOT binding" };
+    ? { name: "credential-signing", level: "ok", detail: "CREDENTIAL_SIGNING_SECRET set — paid off-ledger certificates can be issued and checked (HMAC under a server-held key: XRPLHub's own attestation, not independently verifiable)" }
+    : { name: "credential-signing", level: "down", detail: "CREDENTIAL_SIGNING_SECRET NOT set — the paid certificate route refuses to issue (it fails closed), so none can be sold" };
 }
 
 function checkCredentialIssuance(): Check {
@@ -211,15 +229,16 @@ function checkCron(): Check {
     : { name: "cron-auth", level: "down", detail: "CRON_SECRET not set — both cron jobs 401 and do nothing" };
 }
 
+/** `deep: true` forces fresh external probes (the cron, an admin); otherwise recent results (<60 s, this instance) are reused. */
 export async function healthProbe(opts: { deep?: boolean } = {}): Promise<HealthReport> {
-  const deep = opts.deep ?? false;
+  const force = opts.deep ?? false;
   const checks: Check[] = [];
-  const settled = await Promise.allSettled([checkDb(), checkT54(deep), checkCdp(deep), checkAnchor(), checkScreening(), checkLendingExposure()]);
+  const settled = await Promise.allSettled([checkDb(), checkXumm(force), checkT54(force), checkCdp(force), checkAnchor(), checkScreening(), checkLendingExposure()]);
   for (const s of settled) {
     if (s.status === "fulfilled") checks.push(s.value);
     else checks.push({ name: "unknown", level: "warn", detail: String(s.reason) });
   }
-  checks.push(checkXumm(), checkCredentialSigning(), checkCredentialIssuance(), checkAlerting(), checkCron());
+  checks.push(checkCredentialSigning(), checkCredentialIssuance(), checkAlerting(), checkCron());
 
   const reds = checks.filter((c) => c.level === "down");
   const ambers = checks.filter((c) => c.level === "warn");

@@ -16,7 +16,7 @@ export async function GET(
     return NextResponse.json({ error: "Grant not found" }, { status: 404 });
   }
 
-  // Sanitize sensitive AI internals from public response
+  // Public status view: only what the applicant needs. Internal review columns are never returned.
   return NextResponse.json({
     id: grant.id,
     status: grant.status,

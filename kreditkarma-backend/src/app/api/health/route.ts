@@ -2,7 +2,8 @@
 // GET /api/health — is the money path working? Reports DB, Xaman, both x402
 // facilitators (t54 + CDP), the anchor config, the credential signing secret,
 // alerting, and cron auth. Public (no secrets in the output), so an uptime
-// monitor can watch it. The daily cron (index-mpts) runs the same probe and
+// monitor can watch it. Xaman and both facilitators are PROBED with a real call (results reused for up to
+// 60 s per server instance, so this URL cannot be used to hammer them); nothing reports "ok" without checking. The daily cron (index-mpts) runs the same probe and
 // fires notifyError on anything red.
 //
 // 200 when overall is ok/warn, 503 when overall is down — so a monitor pages
@@ -17,7 +18,8 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 20;
 
 export async function GET(req: Request) {
-  const deep = new URL(req.url).searchParams.get("deep") === "1";
+  // ?deep=1 forces fresh probes, but only for an admin — a public caller always gets the (<=60 s old) cached probe.
+  const deep = new URL(req.url).searchParams.get("deep") === "1" && isAdmin(req);
   const report = await healthProbe({ deep });
   return NextResponse.json(report, {
     status: report.overall === "down" ? 503 : 200,

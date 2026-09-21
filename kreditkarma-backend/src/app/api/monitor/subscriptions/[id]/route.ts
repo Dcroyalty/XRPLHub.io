@@ -7,7 +7,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/xrplscore-db";
 import { isValidXrplAddress } from "@/lib/xrplscore";
-import { authKey, err, ackRequired, ackOk, slotUsage, BATCH_CAP } from "@/lib/monitorApi";
+import { authKey, err, ackRequired, ackOk, slotUsage, capacityRefusal, BATCH_CAP } from "@/lib/monitorApi";
 import { CONSUMER_ACK_VERSION } from "@/lib/monitorCanon";
 import { baselineSubjects, maxTotalSubjects } from "@/lib/monitorEngine";
 import { checkWebhookUrl, generateWebhookSecret, sendPing } from "@/lib/monitorWebhook";
@@ -84,9 +84,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (usage.used - removingHere + added.length > key.plan.watchSlots) {
       return err(403, "watch_slots_exceeded", `Your ${key.plan.name} plan allows ${key.plan.watchSlots} monitored wallets; ${usage.used} in use.`, { slotsMax: key.plan.watchSlots, slotsUsed: usage.used });
     }
-    if (usage.total - removingHere + added.length > maxTotalSubjects()) {
-      return err(503, "monitoring_capacity_reached", `Monitoring is capped at ${maxTotalSubjects()} watched wallets platform-wide and is full.`, { sharedLimit: maxTotalSubjects() });
-    }
+    const refusal = await capacityRefusal(key, usage.total, added.length, removingHere);
+    if (refusal) return refusal;
   }
   if (sub.consumerAckVersion !== CONSUMER_ACK_VERSION && ackOk(body)) {
     data.consumerAckAt = new Date();

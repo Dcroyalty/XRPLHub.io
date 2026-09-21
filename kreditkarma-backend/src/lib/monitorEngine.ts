@@ -47,7 +47,7 @@ export const RECHECK_AFTER_MS = 12 * 3600_000; // due again by the next daily cr
 export const DEGRADED_AFTER_FAILURES = 3;
 /** Fresh scores (≈300+ RPC units each) one pass will compute. A daily cron run is ≤60s shared with other jobs. */
 export const DEFAULT_SCORE_BUDGET = 100;
-/** Total watched wallets across ALL customers — what two daily crons can honestly keep up with. Env-overridable. */
+/** Total watched wallets across ALL customers — what the one daily monitoring run (06:00 UTC cron) can honestly keep up with. Env-overridable. */
 export function maxTotalSubjects(): number {
   const n = Number(process.env.MONITOR_MAX_TOTAL_SUBJECTS);
   return Number.isFinite(n) && n > 0 ? Math.floor(n) : 500;

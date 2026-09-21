@@ -77,6 +77,27 @@ export async function xummFetch(url: string, init: RequestInit = {}): Promise<Re
   throw lastErr instanceof Error ? lastErr : new Error("Xaman request failed");
 }
 
+/**
+ * One authenticated call to Xaman's platform ping — the cheapest call that proves the API key + secret are accepted.
+ * Never throws. `ok` means Xaman answered 2xx without an error body; `rejected` means it refused the credentials.
+ */
+export async function xummPing(): Promise<{ ok: boolean; rejected: boolean; status: number; detail: string }> {
+  try {
+    const res = await fetch("https://xumm.app/api/v1/platform/ping", {
+      headers: { "Content-Type": "application/json", ...authHeaders() },
+      signal: AbortSignal.timeout(7_000),
+    });
+    const body = (await res.json().catch(() => null)) as { error?: { code?: number; reference?: string } } | null;
+    if (res.status === 401 || res.status === 403) {
+      return { ok: false, rejected: true, status: res.status, detail: `Xaman rejected the API key/secret (HTTP ${res.status}${body?.error?.code ? `, code ${body.error.code}` : ""})` };
+    }
+    if (res.ok && !body?.error) return { ok: true, rejected: false, status: res.status, detail: "Xaman accepted the API key/secret" };
+    return { ok: false, rejected: false, status: res.status, detail: `Xaman ping returned HTTP ${res.status}` };
+  } catch (e) {
+    return { ok: false, rejected: false, status: 0, detail: `Xaman unreachable: ${e instanceof Error ? e.message : "error"}` };
+  }
+}
+
 export interface CreatedPayload {
   uuid: string;
   qrPng: string | null;

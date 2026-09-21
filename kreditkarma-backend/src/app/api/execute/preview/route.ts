@@ -23,11 +23,10 @@ import {
   mptRegimeFor,
 } from "@/lib/mptPermanence";
 import { BACKING_HARD_LINE, BACKING_TYPES, REDEEMABLE_VALUES, DEFAULT_BACKING } from "@/lib/mptBacking";
+import { isValidXrplAddress } from "@/lib/address";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-const ADDR_RE = /^r[1-9A-HJ-NP-Za-km-z]{24,34}$/;
 
 export async function POST(req: Request) {
   const body = (await req.json().catch(() => ({}))) as {
@@ -38,7 +37,7 @@ export async function POST(req: Request) {
   const productId = String(body.productId ?? "").trim();
   const account = String(body.account ?? "").trim();
   if (!productId) return NextResponse.json({ error: "productId is required" }, { status: 400 });
-  if (!ADDR_RE.test(account)) {
+  if (!isValidXrplAddress(account)) {
     return NextResponse.json({ error: "account must be a valid XRPL address (the issuer / signer)" }, { status: 400 });
   }
 

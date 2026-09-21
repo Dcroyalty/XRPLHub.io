@@ -101,6 +101,15 @@ for (const f of ["src/app/page.tsx", "src/app/layout.tsx", "src/app/llms.txt/rou
   read(f).split("\n").forEach((line, i) => { if (AI_CLAIM.test(line)) fail(`${f}:${i + 1}: AI claim (there is no LLM in the shipped code): ${line.trim().slice(0, 110)}`); });
 }
 
+// ── no AI residue in config examples, the schema, the MCP surface or the account page ──
+// (The AI_CLAIM scan above only covers a handful of public-copy files and phrases. A tracked .env.example advertising
+// "AI grant review" + an Anthropic key, and a page rendering "AI: <recommendation>", both got past it.)
+const AI_RESIDUE = /ANTHROPIC_API_KEY|XAI_API_KEY|GROK_API_KEY|AI grant review|AI Underwriting|AI Starter Kit|\bAI: \$\{|"AI" or admin/;
+for (const f of [".env.example", "prisma/schema.prisma", "src/app/api/mcp/route.ts", "src/app/account/page.tsx", "src/app/api/grants/[id]/route.ts", "src/app/donate/page.tsx"]) {
+  if (!fs.existsSync(path.join(root, f))) continue;
+  read(f).split("\n").forEach((line, i) => { if (AI_RESIDUE.test(line)) fail(`${f}:${i + 1}: AI residue (there is no LLM in the shipped code): ${line.trim().slice(0, 110)}`); });
+}
+
 // ── no unsupported decision-time promise anywhere in shipped source ──
 for (const f of walk("src")) {
   if (!/\.(ts|tsx)$/.test(f)) continue;

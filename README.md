@@ -3,7 +3,8 @@
 **On-chain creditworthiness for the XRP Ledger.** XRPLHub gives any XRPL wallet a
 300–850 credit-style score (**XRPLScore**) computed from 8 public-ledger signals,
 sells ready-to-sign prebuilt XRPL transactions for 34 actions, issues signed
-verifiable score credentials, and runs an on-chain community micro-grant fund.
+score certificates (XRPLHub's own attestation), and runs a community micro-grant fund
+(human-reviewed; applications currently paused).
 
 - **Live app:** https://www.xrplhub.io
 - **The wallet score is free and unauthenticated.** Paid actions settle in **XRP or RLUSD** — no account, no signup.
@@ -29,8 +30,9 @@ drifts with the population), from 8 signals:
 | Security config | Multisig, regular key, domain, escrow |
 | NFT activity | NFT portfolio + trading |
 
-The same number is returned everywhere: the public site, the free endpoint, the
-paid API, the x402 endpoints, and the MCP server.
+One engine computes the number for the public site, the free endpoint, the paid API,
+the x402 endpoints and the MCP server. Free and site lookups may be served from a
+15-minute cache; every response says whether it was (`fromCache`, `cacheAgeSeconds`).
 
 ```bash
 # Free, no key, any wallet:
@@ -58,8 +60,8 @@ claude mcp add xrplhub --url https://www.xrplhub.io/api/mcp
 | `check_xrpl_score` | 300–850 score, grade, percentile, 8-signal breakdown, tips. Param: `wallet_address`. | free |
 | `list_xrpl_services` | All 34 `build_xrpl_transaction` actions, each with params + examples. No params. | free |
 | `build_xrpl_transaction` | Ready-to-sign txjson for one of 34 XRPL actions. Params: `product_id`, `wallet_address`, `params`. | free |
-| `issue_score_credential` | Signed, tamper-evident score certificate + public verify URL, 90 days. Params: `wallet_address`, `currency`, `uuid`. | 1 XRP / 1 RLUSD |
-| `submit_grant_application` | Apply for a 1–100 RLUSD community micro-grant. Params: `wallet_address`, `category`, `amount`, `description`. | free |
+| `issue_score_credential` | Score certificate signed by XRPLHub (score computed fresh at issuance), with a URL where XRPLHub confirms it — XRPLHub's own attestation, not independently verifiable. 90 days. Params: `wallet_address`, `currency`, `uuid`. | 1 XRP / 1 RLUSD |
+| `submit_grant_application` | Apply for a community micro-grant. **Currently paused** — returns an error until applications reopen. Params: `wallet_address`, `category`, `amount`, `description`. | free |
 | `donate_to_community_fund` | Donate XRP or RLUSD to the grant treasury. Params: `amount`, `currency`, `donor_wallet`, `message`. | free |
 
 The transaction tools return an **unsigned txjson** — the wallet owner signs it in
@@ -93,8 +95,10 @@ curl -H "Authorization: Bearer xrs_live_..." \
 |---|---|---|---|
 | Free | $0 | 200 scored calls/mo | 10 req/min |
 | Starter | $29/mo | 10,000 | 60 req/min |
-| Growth | $149/mo | 100,000 (overage billed) | 300 req/min |
-| Scale | $499/mo | 1,000,000 (overage billed) | 1,000 req/min |
+| Growth | $149/mo | 100,000 | 300 req/min |
+| Scale | $499/mo | 1,000,000 | 1,000 req/min |
+
+Quotas are hard: past the monthly quota a key gets HTTP 429 until the next month (or an upgrade). There is no overage billing.
 
 ---
 

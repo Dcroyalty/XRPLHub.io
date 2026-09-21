@@ -1,8 +1,11 @@
 // src/lib/treasury.ts
 // ─────────────────────────────────────────────────────────────────────────────
-// Treasury Service
-// Multi-sig 2-of-3 treasury for grant payouts + donations
-// Supports both XRP and RLUSD payments
+// Treasury Service — the signing helpers below are NOT wired into the app.
+//
+// The on-ledger treasury (see TREASURY in src/lib/pricing.ts) has NO signer list: it is a single
+// master-key account. Nothing here may be described anywhere as multi-sig protection until a real
+// SignerList exists on that account. Only getRlusdConfig()/getTreasuryBalance() are used; no route calls
+// the send functions, and the signer seeds are not needed by any running code.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import {
@@ -94,7 +97,7 @@ export async function getTreasuryBalance(): Promise<{
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Send XRP from treasury (multi-sig)
+// Send XRP from treasury (multi-signs; only works if a SignerList exists on the account — none does today)
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function sendXrpFromTreasury(
@@ -160,7 +163,7 @@ export async function sendXrpFromTreasury(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Send RLUSD from treasury (multi-sig)
+// Send RLUSD from treasury (multi-signs; only works if a SignerList exists on the account — none does today)
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function sendRlusdFromTreasury(
@@ -224,7 +227,7 @@ export async function sendRlusdFromTreasury(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// One-time setup: Configure multi-sig on an existing treasury account
+// One-time setup helper: configure a SignerList on an account (NOT applied to the treasury — it has none)
 // Run via: node scripts/setup-multisig.js
 // ─────────────────────────────────────────────────────────────────────────────
 

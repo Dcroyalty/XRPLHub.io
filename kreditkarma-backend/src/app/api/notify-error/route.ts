@@ -1,11 +1,15 @@
 // src/app/api/notify-error/route.ts
-// Silent error sink. Any 500 anywhere in the codebase can POST here.
-// We forward to ERROR_WEBHOOK_URL (your Discord webhook, your Slack webhook, anything).
-// If ERROR_WEBHOOK_URL is not set, we just log to Vercel console — never breaks anything.
+// Error sink that forwards to ERROR_WEBHOOK_URL (Discord / Slack). ADMIN-ONLY (ADMIN_API_TOKEN, header only).
+// It used to be open to the internet, which let anyone post fake alerts into the one channel the operator
+// relies on. Server code alerts through src/lib/notify.ts (notifyError), which posts to the webhook directly and
+// never calls this route; this endpoint is only for an operator/tool that holds the admin token.
+// If ERROR_WEBHOOK_URL is not set, we just log to the Vercel console.
 
 import { NextRequest, NextResponse } from 'next/server';
+import { isAdmin, adminUnauthorized } from '@/lib/adminAuth';
 
 export async function POST(req: NextRequest) {
+  if (!isAdmin(req)) return adminUnauthorized();
   try {
     const { route, message, stack, context } = await req.json().catch(() => ({}));
     const payload = {

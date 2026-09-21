@@ -53,14 +53,15 @@ observation states which SDN snapshot it checked; an attested screening receipt 
 a wallet's listed-ness changes (OFAC publishes a new vintage almost daily; a receipt per wallet per vintage would
 not be sustainable).
 
-## Capacity — what two daily cron runs can honestly handle
+## Capacity — what the one daily monitoring run can honestly handle
 
-- One check per wallet per day (`nextCheckAt` = last check + 12 h; both crons run once a day).
+- One check per wallet per day (`nextCheckAt` = last check + 12 h). The monitoring pass runs ONCE a day, in the 06:00 UTC cron (`index-credentials`); the 07:00 cron (`index-mpts`) does not run it.
 - A cheap account-state read every check; a **fresh score only when the account changed, or at least weekly**, within a
   budget of ~100 fresh scores per run (a score is ~300+ RPC units; `xrplcluster` allows 2,000 units / 10 s).
 - **Shared platform limit: 500 watched wallets across all customers** (`MONITOR_MAX_TOTAL_SUBJECTS`); `subscribe`
   returns `503 monitoring_capacity_reached` beyond it. Plan slots (free 3, starter 25, growth 250, scale 2,500) are
   per-key **ceilings** — the shared limit applies first.
+- **Free keys are capped at 40% of the shared limit between them** (`FREE_CAPACITY_SHARE` in `monitorApi.ts`), so at least 60% of the slots always stay available to paid keys. A free key that hits the ceiling gets `503 monitoring_free_capacity_reached`; the shared cap still returns `503 monitoring_capacity_reached`.
 - If more wallets are due than one run can score, the stalest are checked first and the rest roll to the next run.
   The watchdog warns if any wallet is more than 3 days behind.
 - No external trigger yet: raising the limit means adding one (e.g. a scheduled GitHub Action calling the cron

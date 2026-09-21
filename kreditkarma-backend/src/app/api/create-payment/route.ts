@@ -8,6 +8,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createPayload, xummConfigured, XummRateLimitError } from '@/lib/xumm'
+import { rateLimit, rateLimited } from '@/lib/rateLimit'
 import {
   OPEN_AMOUNT_PRODUCTS, PricingError, RLUSD_HEX, RLUSD_ISSUER, TREASURY, quote, type PayCurrency,
 } from '@/lib/pricing'
@@ -35,6 +36,9 @@ const MAX_DONATION = 1_000_000
 const hex = (s: string) => Buffer.from(s, 'utf8').toString('hex').toUpperCase()
 
 export async function POST(req: NextRequest) {
+  // Each call can create a Xaman payload (a third-party API with its own quota): cap it per client.
+  const rl = rateLimit(req, 'create-payment', 12, 60_000)
+  if (!rl.ok) return rateLimited(rl)
   try {
     const { productId, currency, amount, email } = await req.json()
     const product = String(productId ?? '').trim()

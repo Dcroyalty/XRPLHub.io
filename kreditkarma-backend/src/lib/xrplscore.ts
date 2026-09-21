@@ -401,7 +401,5 @@ export async function scoreWallet(address: string): Promise<XrplScoreResult> {
   };
 }
 
-/** Cheap input gate so bad addresses fail before any network call. */
-export function isValidXrplAddress(addr: string): boolean {
-  return /^r[1-9A-HJ-NP-Za-km-z]{24,34}$/.test(addr);
-}
+/** Input gate so bad addresses fail before any network call. Base58check-verified (see src/lib/address.ts): a mistyped address is rejected, not looked up. */
+export { isValidXrplAddress } from "./address";

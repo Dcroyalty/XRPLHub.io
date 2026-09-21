@@ -3,9 +3,7 @@ import path from "path";
 
 const nextConfig: NextConfig = {
   outputFileTracingRoot: path.join(__dirname),
-  typescript: {
-    ignoreBuildErrors: true,
-  },
+  // TypeScript errors FAIL the build (they used to be ignored, so a type error shipped silently).
   eslint: {
     ignoreDuringBuilds: true,
   },
