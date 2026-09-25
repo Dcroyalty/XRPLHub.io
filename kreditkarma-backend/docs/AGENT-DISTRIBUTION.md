@@ -10,7 +10,7 @@ Agents sign with their own wallet (Ripple's XRPL AI Starter Kit has Wallet and P
 |---|---|---|
 | Official MCP Registry (`io.github.Dcroyalty/xrplhub`) | **1.13.0** (latest), description "Free XRPL scores + tx previews; pay per unsigned txjson via x402 (USDC/RLUSD). You sign; no keys." Older versions (1.12.0, 1.3.0) remain listed as non-latest. | Bump `server.json` `version`, `git tag vX.Y.Z && git push origin vX.Y.Z` (workflow `publish-mcp.yml`, GitHub OIDC). The `version` MUST change for the registry to accept it. |
 | Glama (`glama.ai/mcp/connectors/io.github.Dcroyalty/xrplhub`) | Auto-synced from the official registry; already shows the new description. **Unclaimed.** | Automatic. To claim (health checks, analytics): the page offers GitHub, HTTP-challenge or DNS — needs a human login. |
-| Smithery (`butterballslaw/XRPLHub`, ~768 uses) | **STALE**: shows 3 tools and "35 XRPL transaction builders"; we serve 20 tools. | Human, needs a Smithery login: `smithery mcp publish "https://www.xrplhub.io/api/mcp" -n butterballslaw/XRPLHub`. `/.well-known/mcp/server-card.json` is current (v1.12.0, 20 tools) and is what a scan falls back to. |
+| Smithery (`butterballslaw/XRPLHub`, ~768 uses) | **STALE**: shows 3 tools and "35 XRPL transaction builders"; we serve 21 tools. | Human, needs a Smithery login: `smithery mcp publish "https://www.xrplhub.io/api/mcp" -n butterballslaw/XRPLHub`. `/.well-known/mcp/server-card.json` is current (v1.13.0, 21 tools) and is what a scan falls back to. |
 | mcp.so | **Not listed.** Human-reviewed, submission is a GitHub issue on `chatmcp/mcpso` (needs a GitHub login). | Draft below. |
 | xrpl-ai.org (t54's XRPL x402 directory) | **Listed** as one merchant card ("XRPLHub — XRPLScore™", merchant = treasury, category Trust & Security). `POST https://xrpl-ai.org/api/verify {"url":"https://www.xrplhub.io"}` on 2026-09-25 reported `registeredCount: 7`. The 4 it rejected are Base-only resources (no PAYMENT-REQUIRED header), by design. The card's "endpoints" count may lag or count only endpoints with settlements **(inferred)**. | Re-run the same `POST /api/verify` (it is the public "List your service" form's endpoint) after any change to `/.well-known/x402`. |
 | ElizaOS registry | **Retired by elizaOS on 2026-09-23** (PR #32223 / issue #32219): third-party plugins and registry entries are out of scope and existing submissions were closed. | n/a — distribute via npm. See `plugins/plugin-xrplhub/README.md`. |
@@ -39,14 +39,15 @@ Title: `Submit: XRPLHub — XRPL wallet scores, OFAC screening & unsigned transa
 
 **MCP endpoint:** `https://www.xrplhub.io/api/mcp` (no auth)
 
-**Official MCP Registry:** `io.github.Dcroyalty/xrplhub`, version 1.12.0
+**Official MCP Registry:** `io.github.Dcroyalty/xrplhub`, version 1.13.0
 
 **Description:** XRP Ledger tools for agents. Free 300–850 wallet scores (XRPLScore), OFAC SDN screening receipts
 (process, not ground truth), MPT issuer risk, credential/permissioned-domain lookups, XLS-66 lending exposure, and
-UNSIGNED ready-to-sign transactions for 34 XRPL actions (trustlines, escrows, AMM, NFTs, multisig, MPT issuance…).
-XRPLHub never signs and never holds keys: the agent signs with its own wallet.
+free previews of 34 XRPL transactions (what they do, what is irreversible, price) and pay-per-transaction UNSIGNED txjson via x402
+(USDC on Base or RLUSD on XRPL): trustlines, escrows, AMM, NFTs, multisig, MPT issuance… XRPLHub never signs and never holds keys:
+the agent signs with its own wallet.
 
-**Tools:** check_xrpl_score, list_xrpl_services, build_xrpl_transaction, screen_address_ofac, check_mpt_risk,
+**Tools:** check_xrpl_score, list_xrpl_services, preview_xrpl_transaction, build_xrpl_transaction, screen_address_ofac, check_mpt_risk,
 search_mpts, get_issuer_mpts, verify_mpt_registry, verify_attestation, get_account_credentials, get_issuer_credentials,
 check_domain_eligibility, get_lending_exposure, get_lending_history, get_underwriting_inputs, get_monitoring_info,
 check_service_health, issue_score_credential, submit_grant_application, donate_to_community_fund
@@ -64,7 +65,7 @@ check_service_health, issue_score_credential, submit_grant_application, donate_t
 Not published yet. From `plugins/plugin-xrplhub`:
 
 1. `npm login` (an npm account that will own the unscoped name `plugin-xrplhub`; it was unclaimed on 2026-09-25; 2FA on).
-2. `npm run verify` (offline typecheck + 30 tests + build + surface check; `prepublishOnly` runs it again).
+2. `npm run verify` (offline typecheck + 34 tests + build + surface check; `prepublishOnly` runs it again).
 3. `npm publish` (`publishConfig.access` is already `public`).
 4. `git tag plugin-xrplhub-v0.1.0 && git push origin plugin-xrplhub-v0.1.0`.
 
