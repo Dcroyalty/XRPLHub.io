@@ -135,6 +135,21 @@ for (const f of walk("src")) {
   if (!/dualX402\(/.test(tx)) fail("src/app/api/x402/tx/route.ts must serve both x402 rails (dualX402)");
 }
 
+// ── one product, one price, every rail ───────────────────────────────────────────────────────────────────────────────
+// A resource payable on both x402 rails must cost the same face value on each (owner rule, 2026-09-25). The RLUSD constants live in
+// src/lib/paycall.ts and the USDC constants in src/lib/x402Base.ts; every pair must be equal. (x402Dual also fails closed per request.)
+{
+  const paycall = read("src/lib/paycall.ts");
+  const base = read("src/lib/x402Base.ts");
+  const num = (src, name) => { const m = new RegExp("export const " + name + "\\s*=\\s*([0-9.]+)").exec(src); return m ? Number(m[1]) : null; };
+  for (const k of ["SCORE", "SCREEN", "MPT", "EXPOSURE", "UNDERWRITE"]) {
+    const r = num(paycall, "PRICE_PER_" + k + "_RLUSD");
+    const u = num(base, "PRICE_PER_" + k + "_USDC");
+    if (r === null || u === null) fail("price pair PRICE_PER_" + k + "_{RLUSD,USDC} not found (paycall.ts / x402Base.ts)");
+    else if (r !== u) fail("PRICE_PER_" + k + ": RLUSD " + r + " != USDC " + u + " — one product, one price, every rail");
+  }
+}
+
 if (problems.length) {
   console.error(`\n✖ service parity check FAILED (${problems.length} problem${problems.length === 1 ? "" : "s"}):`);
   for (const p of problems) console.error("  - " + p);

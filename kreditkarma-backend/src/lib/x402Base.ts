@@ -38,7 +38,7 @@ export const USDC_BASE_ASSET = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" as c
 // Per-call agent pricing (distinct from the $29/$149/$499 human subscription
 // plans in src/lib/plans.ts) — market rate for agent-purchased API calls is
 // $0.002-$0.025; nothing at subscription pricing sells to an agent.
-export const PRICE_PER_SCORE_USDC = 0.01;
+export const PRICE_PER_SCORE_USDC = 0.02; // one XRPLScore; identical to PRICE_PER_SCORE_RLUSD (paycall.ts) — one product, one price, every rail
 export const PRICE_PER_MPT_USDC = 0.01; // full MPT issuer risk view
 export const PRICE_PER_SCREEN_USDC = 0.01; // one OFAC SDN screening attestation
 export const PRICE_PER_EXPOSURE_USDC = 0.01; // full XLS-66 cross-broker lending exposure

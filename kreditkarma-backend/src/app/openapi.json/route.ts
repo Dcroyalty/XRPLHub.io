@@ -1203,11 +1203,12 @@ export async function GET(req: Request) {
       "/api/x402/usdc/score": {
         post: {
           operationId: "x402UsdcScore",
-          summary: "XRPLScore — per-call, agent-priced (x402, $0.01 USDC on Base)",
+          summary: "XRPLScore — per-call, agent-priced (x402, $0.02 USDC on Base or RLUSD on XRPL)",
           description:
             "The same 300–850 score and 8-signal breakdown as /api/x402/score, priced for agents at " +
-            "$0.01 per call and settled in USDC on Base via the CDP x402 facilitator (not the RLUSD/t54 " +
-            "rail). POST a JSON body {\"wallet\":\"r...\"}. No signup.",
+            "$0.02 per call — the same price as GET /api/x402/score — payable on either rail: USDC on Base (x402 v1, X-PAYMENT) or " +
+            "RLUSD on the XRP Ledger (x402 v2 via t54: PAYMENT-REQUIRED header, retry with PAYMENT-SIGNATURE; response wrapped as { data, x402 }). " +
+            "POST a JSON body {\"wallet\":\"r...\"}. No signup.",
           tags: ["Scoring"],
           requestBody: {
             required: true,
@@ -1223,9 +1224,9 @@ export async function GET(req: Request) {
             },
           },
           "x-payment-info": {
-            price: { mode: "fixed", currency: "USD", amount: "0.010000" },
+            price: { mode: "fixed", currency: "USD", amount: "0.020000" },
             protocols: [{ x402: {} }],
-            description: "Per-call wallet score, USDC on Base via the CDP x402 facilitator.",
+            description: "Per-call wallet score, $0.02 in USDC on Base (CDP) or RLUSD on XRPL (t54), one price on every rail.",
           },
           responses: {
             "200": ok("Wallet score with the 8 signals, grade and percentile.", scoreSchema, scoreExample),

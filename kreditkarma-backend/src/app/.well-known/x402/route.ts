@@ -4,10 +4,11 @@
 // xrpl-ai.org / x402scan auto-discovery finds and lists all of them — each with
 // an inputSchema (every query param, its values, an example) and an
 // outputSchema + outputExample so a crawler knows exactly what it gets back.
-// Seven resources are XRPL-native: score, report, tx (XRPL only) and the four that are payable on BOTH rails
-// (mpt, screen/ofac, lending/exposure, lending/underwrite — see src/lib/x402Dual.ts). The dual ones appear twice:
-// once as the Base/USDC entry and once as the XRPL/RLUSD entry, for the SAME URL. The plan-purchase resources
-// (checkout/usdc/*) stay Base-only, and usdc/score's XRPL twin is /api/x402/score.
+// Eight resources are XRPL-native: score and report (XRPL only) and the six that are payable on BOTH rails
+// (tx, usdc/score, mpt, screen/ofac, lending/exposure, lending/underwrite — see src/lib/x402Dual.ts). The dual ones appear
+// twice: once as the Base/USDC entry and once as the XRPL/RLUSD entry, for the SAME URL, at the same price. The
+// plan-purchase resources (checkout/usdc/*) stay Base-only. One product, one price, every rail: POST usdc/score and
+// GET /api/x402/score are the same $0.02 score.
 
 import { NextResponse } from "next/server";
 import {
@@ -105,8 +106,8 @@ function usdcScoreResource(origin: string) {
     name: "XRPLScore — pay per call in USDC on Base",
     description:
       "Get a 300–850 on-chain creditworthiness score for one XRPL wallet from 8 signals (account age, " +
-      "tx history, financial health, tokens, DEX, AMM, security, NFTs). $0.01 in USDC on Base per call " +
-      '— the cheap entry point agents evaluate before a subscription plan. POST JSON body {"wallet":"r..."}.',
+      "tx history, financial health, tokens, DEX, AMM, security, NFTs). $0.02 per call, payable in USDC on Base or RLUSD " +
+      'on XRPL — the same price as GET /api/x402/score. POST JSON body {"wallet":"r..."}.',
     x402Version: 1,
     scheme: "exact",
     network: BASE_NETWORK,
@@ -117,7 +118,7 @@ function usdcScoreResource(origin: string) {
     facilitator: CDP_FACILITATOR_URL,
     noSignup: true,
     amount: PRICE_PER_SCORE_USDC.toFixed(6),
-    xrplEquivalent: "https://www.xrplhub.io/api/x402/score (same score, RLUSD on the XRP Ledger, $0.02)",
+    alsoPayableOnXrpl: "this same URL accepts RLUSD on the XRP Ledger (see the xrpl:0 entry); GET /api/x402/score is the same product at the same price",
     inputSchema: {
       type: "object",
       properties: { wallet: walletProp },
@@ -472,6 +473,19 @@ export async function GET(req: Request) {
           amendmentGated: "LendingProtocol (XLS-66) — 503 (error amendment_not_active, not charged) until enabled on mainnet",
           verify: `${origin}/api/attest/verify?queryId={queryId}`,
           disclaimer: UNDERWRITE_DISCLAIMER,
+        },
+        {
+          resource: `${origin}/api/x402/usdc/score`,
+          method: "POST",
+          name: "XRPLScore — wallet creditworthiness score (POST body)",
+          description:
+            "Get a 300–850 on-chain creditworthiness score for one XRPL wallet from 8 signals. $0.02 per call in RLUSD, the same " +
+            'price as GET /api/x402/score. POST JSON body {"wallet":"r..."}. No signup.',
+          ...common,
+          amount: PRICE_PER_SCORE_RLUSD.toFixed(6),
+          inputSchema: { type: "object", properties: { wallet: walletProp }, required: ["wallet"], description: "JSON request body." },
+          outputSchema: scoreOutputSchema,
+          outputExample: scoreOutputExample,
         },
         usdcScoreResource(origin),
         usdcMptResource(origin),

@@ -55,7 +55,7 @@ export function mptFullLink(issuanceId: string): RelatedLink {
   return {
     question: "Full issuer risk — account age, verified domain, credentials, Bithomp cross-check",
     url: `${origin()}/api/x402/usdc/mpt/${issuanceId}`,
-    price: "0.01 USDC (x402, Base)",
+    price: "0.01 USDC on Base or RLUSD on XRPL (x402)",
   };
 }
 

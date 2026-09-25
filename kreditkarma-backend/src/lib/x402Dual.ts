@@ -53,6 +53,8 @@ export interface DualOpts {
   base: (req: NextRequest) => Promise<Response>;
   /** The shared handler both rails run (the same function `base` wraps). Runs only after payment verification. */
   core: (req: NextRequest) => Promise<Response>;
+  /** XRPL rail only: reshape the shared handler's JSON body into the `data` of the { data, x402 } envelope (default: as is). */
+  xrplData?: (body: unknown) => unknown;
   /** Refuse a malformed request BEFORE any challenge (nothing to pay against). Return a Response to refuse. */
   refuse?: (req: NextRequest) => Response | null | Promise<Response | null>;
 }
@@ -71,9 +73,9 @@ function headerSchemas(s: DualSchemas): DualSchemas | undefined {
 const CODES = X402_ERROR_CODES as Record<string, string>;
 
 /** Adapt the shared handler's JSON response to the XRPL rail's HandlerResult. */
-async function toHandlerResult(res: Response): Promise<HandlerResult> {
+async function toHandlerResult(res: Response, reshape?: (body: unknown) => unknown): Promise<HandlerResult> {
   const body = (await res.json().catch(() => null)) as Record<string, unknown> | null;
-  if (res.status < 400) return { ok: true, data: body };
+  if (res.status < 400) return { ok: true, data: reshape ? reshape(body) : body };
   const err = typeof body?.error === "string" ? (body.error as string) : "";
   const message = typeof body?.message === "string" ? (body.message as string) : err || `handler returned HTTP ${res.status}`;
   let code: X402ErrorCode = "handler_failed";
@@ -118,7 +120,7 @@ export function dualX402(opts: DualOpts): (req: NextRequest) => Promise<Response
         amountRlusd,
         challengeDescription: opts.description.slice(0, 480),
         requirements,
-        handler: async () => toHandlerResult(await opts.core(req)),
+        handler: async () => toHandlerResult(await opts.core(req), opts.xrplData),
       });
     }
 

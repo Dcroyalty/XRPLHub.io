@@ -182,16 +182,16 @@ x402 pay-per-call (RLUSD, t54 facilitator, no signup):
   /api/v1/pay-per-score.
 
 x402 pay-per-call (USDC on Base, CDP facilitator, no signup):
-- POST ${origin}/api/x402/usdc/score — 300-850 score, $0.01
+- POST ${origin}/api/x402/usdc/score — 300-850 score, $0.02 (body {"wallet":"r..."}; same product and price as GET /api/x402/score)
 - GET ${origin}/api/x402/usdc/mpt/<48-hex id> — full MPT issuer risk, $0.01
 - GET ${origin}/api/x402/screen/ofac?address=r... — OFAC SDN screening attestation, $0.01 (process not ground truth; see the screening section above)
 - GET ${origin}/api/x402/lending/exposure?borrower=r... — XLS-66 cross-broker lending exposure, full detail + attestation, $0.01 (503 until XLS-66 activates; see the lending section above)
 - GET ${origin}/api/x402/lending/underwrite?borrower=r... — full underwriting-inputs bundle, $0.05, facts only, no recommendation (503 until XLS-66 activates)
 
-The mpt, screen/ofac, lending/exposure and lending/underwrite routes above are payable on EITHER rail at the same face value: USDC on Base
+The score, mpt, screen/ofac, lending/exposure and lending/underwrite routes above are payable on EITHER rail at the same face value: USDC on Base
 (X-PAYMENT header) or RLUSD on the XRP Ledger via the t54 facilitator (x402 v2: the 402 response carries a PAYMENT-REQUIRED header with
 network "xrpl:0"; retry with a PAYMENT-SIGNATURE header). On the XRPL rail the response is wrapped as { data, x402 } and you are only
-charged after the result is produced. /api/x402/usdc/score has an XRPL twin at /api/x402/score (RLUSD, $0.02).
+charged after the result is produced. One product, one price, every rail: POST /api/x402/usdc/score and GET /api/x402/score are the same $0.02 score.
 
 ## B2B API (prepaid key, 30-day term)
 
