@@ -48,12 +48,6 @@ const SCORE_OK: ToolResult = {
   },
 };
 
-test("the plugin registers exactly five actions and nothing else", () => {
-  const { get } = harness({});
-  for (const n of Object.values(ACTION_NAMES)) assert.ok(get(n), n);
-  assert.equal(Object.values(ACTION_NAMES).length, 5);
-});
-
 test("score: happy path, calls check_xrpl_score with the validated address", async () => {
   const h = harness({ check_xrpl_score: SCORE_OK });
   const { result, said } = await run(h.get(ACTION_NAMES.score), `what is the score of ${W}?`);
@@ -144,84 +138,166 @@ const SERVICES: ToolResult = {
   data: {
     count: 3,
     services: [
-      { id: "trustline", label: "Add a trust line", category: "Tokens", safetyTier: "safe", params: [{ name: "currency", required: true, example: "RLUSD" }] },
-      { id: "escrow", label: "Create an escrow", category: "Payments", safetyTier: "safe", params: [] },
-      { id: "multisig", label: "Multi-sig", category: "Wallet security", safetyTier: "caution", params: [] },
+      { id: "trustline", label: "Add a trust line", category: "Tokens", safetyTier: "safe", priceUsd: 20, params: [{ name: "currency", required: true, example: "RLUSD" }] },
+      { id: "escrow", label: "Create an escrow", category: "Payments", safetyTier: "safe", priceUsd: 40, params: [] },
+      { id: "multisig", label: "Multi-sig", category: "Wallet security", safetyTier: "caution", priceUsd: 60, params: [] },
     ],
   },
 };
 
-test("list: shows ids, tiers and required params, and states the unsigned rule", async () => {
+// A server response that (wrongly) carries signable transactions. No action may ever pass one on.
+const LEAKY = {
+  transaction: { TransactionType: "TrustSet", Account: W },
+  txjson: { TransactionType: "TrustSet", Account: W },
+  transactions: [{ id: "a", transaction: { TransactionType: "SignerListSet", Account: W } }],
+};
+
+const RESOURCE = `https://www.xrplhub.io/api/x402/tx?productId=trustline&account=${W}&currency=RLUSD`;
+const BUY_OK: ToolResult = {
+  ok: true,
+  data: { paid: true, productId: "trustline", label: "Add a trust line", safetyTier: "safe", resource: RESOURCE, price: { usd: 20 }, ...LEAKY },
+};
+
+const noTx = (r: { text?: string; data?: unknown }) => {
+  const blob = `${r.text ?? ""}${JSON.stringify(r.data ?? {})}`;
+  assert.doesNotMatch(blob, /TransactionType|SignerListSet|TrustSet/);
+};
+
+test("the plugin registers exactly six actions and nothing else", () => {
+  const { get } = harness({});
+  for (const n of Object.values(ACTION_NAMES)) assert.ok(get(n), n);
+  assert.equal(Object.values(ACTION_NAMES).length, 6);
+});
+
+test("list: shows ids, tiers, prices and required params, and says the transaction is sold", async () => {
   const h = harness({ list_xrpl_services: SERVICES });
   const { result } = await run(h.get(ACTION_NAMES.list), "what can xrplhub build?");
   assert.equal(result.success, true);
-  assert.match(result.text!, /trustline — Add a trust line \[safe\] \(params: currency\*\)/);
+  assert.match(result.text!, /trustline — Add a trust line \[safe\] \$20 \(params: currency\*\)/);
+  assert.match(result.text!, /delivered only after payment/);
   assert.match(result.text!, /never signs or holds keys/);
 });
 
-test("build: happy path returns UNSIGNED txjson for the requested wallet only", async () => {
-  const tx = { TransactionType: "TrustSet", Account: W, LimitAmount: { currency: "RLUSD", issuer: "rX", value: "100" } };
-  const h = harness({ build_xrpl_transaction: { ok: true, data: { success: true, product: "trustline", label: "Add a trust line", safetyTier: "safe", transaction: tx } } });
-  const { result } = await run(h.get(ACTION_NAMES.build), `build a trustline for ${W}`, { parameters: { product_id: "trustline", params: { currency: "RLUSD", value: "100" } } });
-  assert.equal(result.success, true);
-  assert.deepEqual(h.calls[0], { name: "build_xrpl_transaction", args: { product_id: "trustline", wallet_address: W, params: { currency: "RLUSD", value: "100" } } });
-  assert.equal((result.data as { unsigned: boolean }).unsigned, true);
-  assert.match(result.text!, /UNSIGNED/);
-  assert.match(result.text!, /"TransactionType":"TrustSet"/);
-});
-
-test("build: REFUSES a transaction whose Account is not the requested wallet", async () => {
-  const h = harness({ build_xrpl_transaction: { ok: true, data: { success: true, safetyTier: "safe", transaction: { TransactionType: "TrustSet", Account: W2 } } } });
-  const { result } = await run(h.get(ACTION_NAMES.build), `build for ${W}`, { parameters: { product_id: "trustline", params: {} } });
-  assert.equal(result.success, false);
-  assert.equal(result.error, "account_mismatch");
-  assert.doesNotMatch(result.text!, /"TransactionType"/);
-});
-
-test("build: refuses a multi-step service if ANY step is for another account", async () => {
+test("preview: describes for free, needs no wallet, and includes no transaction", async () => {
   const h = harness({
-    build_xrpl_transaction: { ok: true, data: { success: true, safetyTier: "caution", transaction: { TransactionType: "SignerListSet", Account: W }, transactions: [
-      { id: "signers", label: "Signer list", transaction: { TransactionType: "SignerListSet", Account: W } },
-      { id: "master", label: "Disable master", transaction: { TransactionType: "AccountSet", Account: W2 } },
-    ] } },
+    preview_xrpl_transaction: {
+      ok: true,
+      data: {
+        free: true, productId: "multisig", label: "Multi-sig", safetyTier: "caution",
+        whatItDoes: "Puts the account under N-of-M control.",
+        price: { usd: 60 },
+        requiredParams: [{ name: "signers", example: "rA,rB" }, { name: "quorum", example: "2" }],
+        optionalParams: [{ name: "disableMaster" }],
+        irreversible: { requiresConfirmation: true, heading: "Read carefully", warning: "You can lock yourself out.", irreversible: ["After step 3 no single key can move funds."], confirmPrompt: "I understand." },
+        ...LEAKY,
+      },
+    },
   });
-  const { result } = await run(h.get(ACTION_NAMES.build), `build ${W}`, { parameters: { product_id: "multisig", params: {} } });
-  assert.equal(result.error, "account_mismatch");
-});
-
-test("build: multi-step + caution tier is spelled out (order + explicit confirmation)", async () => {
-  const h = harness({
-    build_xrpl_transaction: { ok: true, data: { success: true, label: "Multi-sig", safetyTier: "caution", transaction: { TransactionType: "SignerListSet", Account: W }, transactions: [
-      { id: "signers", label: "Signer list", transaction: { TransactionType: "SignerListSet", Account: W } },
-      { id: "regkey", label: "Remove regular key", transaction: { TransactionType: "SetRegularKey", Account: W } },
-    ] } },
-  });
-  const { result } = await run(h.get(ACTION_NAMES.build), `build ${W}`, { parameters: { product_id: "multisig", params: { signers: "a", quorum: 2 } } });
+  const { result } = await run(h.get(ACTION_NAMES.preview), "what does a multisig do and how much is it?", { parameters: { product_id: "multisig" } });
   assert.equal(result.success, true);
-  assert.match(result.text!, /IN ORDER/);
-  assert.match(result.text!, /CAUTION/);
-  assert.match(result.text!, /Step 2/);
-  assert.equal((result.data as { transactions: unknown[] }).transactions.length, 2);
+  assert.deepEqual(h.calls[0], { name: "preview_xrpl_transaction", args: { product_id: "multisig", params: {} } });
+  assert.match(result.text!, /Price: \$60/);
+  assert.match(result.text!, /lock yourself out/);
+  assert.match(result.text!, /After step 3 no single key/);
+  assert.equal((result.data as { transactionIncluded: boolean }).transactionIncluded, false);
+  assert.equal((result.data as { requiresConfirmation: boolean }).requiresConfirmation, true);
+  noTx(result);
 });
 
-test("build: missing params come back as guidance, not a transaction", async () => {
+test("preview: with no product named it shows the priced menu instead of guessing", async () => {
+  const h = harness({ list_xrpl_services: SERVICES });
+  const { result } = await run(h.get(ACTION_NAMES.preview), "what does that cost?");
+  assert.equal(result.error, "product_id_required");
+  assert.match(result.text!, /\$40/);
+});
+
+test("build: returns the x402 payment resource and price, never a transaction", async () => {
+  const h = harness({ build_xrpl_transaction: BUY_OK });
+  const { result, said } = await run(h.get(ACTION_NAMES.build), `buy a trustline for ${W}`, { parameters: { product_id: "trustline", params: { currency: "RLUSD" } } });
+  assert.equal(result.success, true);
+  assert.deepEqual(h.calls[0], { name: "build_xrpl_transaction", args: { product_id: "trustline", wallet_address: W, params: { currency: "RLUSD" } } });
+  assert.match(result.text!, /Payment resource: GET https:\/\/www\.xrplhub\.io\/api\/x402\/tx\?productId=trustline/);
+  assert.match(result.text!, /Price: \$20/);
+  assert.equal((result.data as { resource: string }).resource, RESOURCE);
+  assert.equal((result.data as { transactionIncluded: boolean }).transactionIncluded, false);
+  assert.equal(said.length, 1);
+  noTx(result);
+});
+
+test("build: refuses a payment resource that points anywhere but XRPLHub, or at another service or wallet", async () => {
+  const bad = [
+    `https://evil.example/api/x402/tx?productId=trustline&account=${W}`,
+    `https://www.xrplhub.io.evil.example/api/x402/tx?productId=trustline&account=${W}`,
+    `http://www.xrplhub.io/api/x402/tx?productId=trustline&account=${W}`,
+    `https://www.xrplhub.io/api/other?productId=trustline&account=${W}`,
+    `https://www.xrplhub.io/api/x402/tx?productId=escrow&account=${W}`,
+    `https://www.xrplhub.io/api/x402/tx?productId=trustline&account=${W2}`,
+    `https://user:pw@www.xrplhub.io/api/x402/tx?productId=trustline&account=${W}`,
+    "not a url",
+  ];
+  for (const resource of bad) {
+    const h = harness({ build_xrpl_transaction: { ok: true, data: { paid: true, resource, price: { usd: 20 } } } });
+    const { result } = await run(h.get(ACTION_NAMES.build), `buy for ${W}`, { parameters: { product_id: "trustline", params: {} } });
+    assert.equal(result.success, false, resource);
+    assert.equal(result.error, "bad_payment_resource", resource);
+    assert.doesNotMatch(result.text!, /GET https?:/, resource);
+  }
+});
+
+test("build: a caution-tier service is withheld until confirm_caution is passed, and the flag is forwarded", async () => {
+  const h = harness({
+    build_xrpl_transaction: (args) =>
+      args.confirm_caution === true
+        ? { ok: true, data: { paid: true, resource: `https://www.xrplhub.io/api/x402/tx?productId=multisig&account=${W}&signers=a&quorum=2&confirmCaution=true`, price: { usd: 60 } } }
+        : { ok: true, data: { paid: true, requiresConfirmation: true, irreversible: { requiresConfirmation: true, warning: "This can lock the account forever.", irreversible: ["No single key can move funds."], confirmPrompt: "I understand." }, price: { usd: 60 }, ...LEAKY } },
+  });
+  const first = await run(h.get(ACTION_NAMES.build), `buy multisig for ${W}`, { parameters: { product_id: "multisig", params: { signers: "a", quorum: 2 } } });
+  assert.equal(first.result.success, false);
+  assert.equal(first.result.error, "confirmation_required");
+  assert.match(first.result.text!, /lock the account forever/);
+  assert.match(first.result.text!, /confirm_caution: true/);
+  assert.doesNotMatch(first.result.text!, /api\/x402\/tx/);
+  noTx(first.result);
+
+  const second = await run(h.get(ACTION_NAMES.build), `buy multisig for ${W}`, { parameters: { product_id: "multisig", params: { signers: "a", quorum: 2 }, confirm_caution: true } });
+  assert.equal(second.result.success, true);
+  assert.equal(h.calls[1]!.args.confirm_caution, true);
+  assert.match(second.result.text!, /confirmCaution=true/);
+});
+
+test("build: confirm_caution is only ever an explicit true", () => {
+  assert.equal(readBuildArgs(`x`, { confirm_caution: true }).confirmCaution, true);
+  assert.equal(readBuildArgs(`x {"confirmCaution": true}`, {}).confirmCaution, true);
+  assert.equal(readBuildArgs(`x`, { confirm_caution: "yes" }).confirmCaution, false);
+  assert.equal(readBuildArgs(`please confirm caution`, {}).confirmCaution, false);
+});
+
+test("build: missing params come back as guidance and nothing is charged", async () => {
   const h = harness({ build_xrpl_transaction: { ok: false, retryable: false, error: "Missing required params.", data: { missingParams: ["currency", "value"] } } });
-  const { result } = await run(h.get(ACTION_NAMES.build), `build ${W}`, { parameters: { product_id: "trustline" } });
+  const { result } = await run(h.get(ACTION_NAMES.build), `buy for ${W}`, { parameters: { product_id: "trustline" } });
   assert.equal(result.success, false);
   assert.match(result.text!, /Missing parameters: currency, value/);
+  assert.match(result.text!, /Nothing was charged/);
 });
 
-test("build: no product named -> shows the menu; one clear match in the text is used", async () => {
+test("build: a mistyped wallet is refused before any call", async () => {
+  const h = harness({ build_xrpl_transaction: BUY_OK });
+  const { result } = await run(h.get(ACTION_NAMES.build), `buy a trustline for ${BAD}`, { parameters: { product_id: "trustline" } });
+  assert.equal(result.error, "bad_address");
+  assert.equal(h.calls.length, 0);
+});
+
+test("build: no product named -> shows the priced menu; one clear match in the text is used", async () => {
   const h = harness({
     list_xrpl_services: SERVICES,
-    build_xrpl_transaction: { ok: true, data: { success: true, safetyTier: "safe", transaction: { TransactionType: "EscrowCreate", Account: W } } },
+    build_xrpl_transaction: { ok: true, data: { paid: true, resource: `https://www.xrplhub.io/api/x402/tx?productId=escrow&account=${W}`, price: { usd: 40 } } },
   });
-  const menu = await run(h.get(ACTION_NAMES.build), `build something for ${W}`);
+  const menu = await run(h.get(ACTION_NAMES.build), `buy something for ${W}`);
   assert.equal(menu.result.error, "product_id_required");
   assert.match(menu.result.text!, /trustline/);
   assert.equal(h.calls.filter((c) => c.name === "build_xrpl_transaction").length, 0);
 
-  const ok = await run(h.get(ACTION_NAMES.build), `create an escrow for ${W}`);
+  const ok = await run(h.get(ACTION_NAMES.build), `buy an escrow for ${W}`);
   assert.equal(ok.result.success, true);
   assert.equal(h.calls.find((c) => c.name === "build_xrpl_transaction")!.args.product_id, "escrow");
 });
@@ -232,6 +308,24 @@ test("build: params can arrive as a JSON object in the message text", () => {
   assert.deepEqual(args.params, { currency: "RLUSD", value: "50" });
   assert.equal(firstJsonObject("no braces here"), undefined);
   assert.deepEqual(firstJsonObject('x {"a":"}"} y'), { a: "}" });
+});
+
+test("no action ever passes a signable transaction on, even from a misbehaving server", async () => {
+  const leaky: Record<string, ToolResult> = {
+    check_xrpl_score: { ok: true, data: { ...(SCORE_OK as { data: object }).data, ...LEAKY } },
+    preview_xrpl_transaction: { ok: true, data: { label: "x", safetyTier: "safe", whatItDoes: "y", price: { usd: 1 }, irreversible: { requiresConfirmation: false, note: "z" }, ...LEAKY } },
+    build_xrpl_transaction: BUY_OK,
+    list_xrpl_services: SERVICES,
+  };
+  const h = harness(leaky);
+  for (const [name, text, opts] of [
+    [ACTION_NAMES.preview, "preview a trustline", { parameters: { product_id: "trustline" } }],
+    [ACTION_NAMES.build, `buy for ${W}`, { parameters: { product_id: "trustline", params: { currency: "RLUSD" } } }],
+    [ACTION_NAMES.list, "what can xrplhub build", undefined],
+  ] as const) {
+    const { result } = await run(h.get(name), text, opts as HandlerOptions | undefined);
+    noTx(result);
+  }
 });
 
 test("sanitiser strips control and bidi characters and caps length", () => {

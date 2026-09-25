@@ -100,6 +100,7 @@ export interface ServiceSummary {
   label: string;
   tier: string;
   category: string;
+  priceUsd?: number;
   params: { name: string; required: boolean; example?: string }[];
 }
 
@@ -115,6 +116,7 @@ export function parseServices(d: Record<string, unknown>): ServiceSummary[] {
           label: str(s.label, 120) ?? id,
           tier: str(s.safetyTier, 20) ?? "unknown",
           category: str(s.category, 60) ?? "",
+          priceUsd: num(s.priceUsd),
           params: arr(s.params)
             .filter(isRecord)
             .flatMap((p) => {
@@ -130,7 +132,69 @@ export function formatServices(services: ServiceSummary[]): string {
   if (services.length === 0) return "XRPLHub returned no services.";
   const lines = services.map((s) => {
     const ps = s.params.map((p) => `${p.name}${p.required ? "*" : ""}`).join(", ");
-    return `- ${s.id} — ${s.label} [${s.tier}]${ps ? ` (params: ${ps})` : ""}`;
+    return `- ${s.id} — ${s.label} [${s.tier}]${s.priceUsd != null ? ` $${s.priceUsd}` : ""}${ps ? ` (params: ${ps})` : ""}`;
   });
-  return [`${services.length} XRPL services XRPLHub can build an UNSIGNED transaction for (params marked * are required):`, ...lines, UNSIGNED_NOTE].join("\n");
+  return [
+    `${services.length} XRPL services XRPLHub sells an UNSIGNED transaction for (params marked * are required; prices in USD = RLUSD = USDC):`,
+    ...lines,
+    "Describe one for free with XRPLHUB_PREVIEW_TRANSACTION; buy it with XRPLHUB_BUILD_TRANSACTION (returns the x402 payment resource: the signable transaction is delivered only after payment).",
+    UNSIGNED_NOTE,
+  ].join("\n");
+}
+
+/** The free description of one service. Reads only whitelisted fields; never a transaction. */
+export function formatPreview(d: Record<string, unknown>): string {
+  const lines: string[] = [];
+  const tier = str(d.safetyTier, 20) ?? "unknown";
+  lines.push(`${str(d.label, 120) ?? str(d.productId, 60) ?? "Service"} [${tier}] — FREE description (no signable transaction is included).`);
+  if (str(d.whatItDoes, 900)) lines.push(`What it does: ${str(d.whatItDoes, 900)}`);
+  if (isRecord(d.price) && num(d.price.usd) != null) {
+    lines.push(`Price: $${num(d.price.usd)} (USD = RLUSD = USDC), payable in USDC on Base or RLUSD on the XRP Ledger via x402. Charged only if the transaction builds.`);
+  }
+  const req = arr(d.requiredParams).filter(isRecord).map((p) => `${str(p.name, 40) ?? "?"}${str(p.example, 60) ? ` (e.g. ${str(p.example, 60)})` : ""}`);
+  const opt = arr(d.optionalParams).filter(isRecord).map((p) => str(p.name, 40) ?? "?");
+  if (req.length) lines.push(`Required params: ${req.join("; ")}.`);
+  if (opt.length) lines.push(`Optional params: ${opt.join(", ")}.`);
+  const irr = d.irreversible;
+  if (isRecord(irr)) {
+    if (irr.blocked === true) lines.push(`NOT AVAILABLE: ${str(irr.note, 300) ?? "disabled for safety"}`);
+    else if (irr.requiresConfirmation === true) lines.push(...confirmationLines(irr));
+    else if (str(irr.note, 300)) lines.push(`Irreversibility: ${str(irr.note, 300)}`);
+  }
+  if (d.mptPermanence !== undefined) lines.push(`MPT permanence (read live from the ledger): ${JSON.stringify(cleanDeep(d.mptPermanence)).slice(0, 700)}`);
+  lines.push("To buy it: XRPLHUB_BUILD_TRANSACTION (returns the x402 payment resource; the transaction is delivered only after payment).", UNSIGNED_NOTE);
+  return lines.join("\n");
+}
+
+/** The confirmation copy for a caution-tier service, from whitelisted fields. */
+export function confirmationLines(c: Record<string, unknown>): string[] {
+  const lines: string[] = ["CAUTION — this can be hard or impossible to undo. Show this to the wallet owner before buying."];
+  if (str(c.heading, 200)) lines.push(str(c.heading, 200)!);
+  if (str(c.warning, 700)) lines.push(str(c.warning, 700)!);
+  const points = arr(c.irreversible).map((x) => str(x, 400)).filter((x): x is string => !!x).slice(0, 8);
+  points.forEach((p) => lines.push(`- ${p}`));
+  if (str(c.confirmPrompt, 500)) lines.push(`The owner must be able to say: "${str(c.confirmPrompt, 500)}"`);
+  return lines;
+}
+
+/**
+ * The payment resource is the ONLY place money is sent, so it is checked before an agent is told to pay it: it must be
+ * XRPLHub's own https://www.xrplhub.io/api/x402/tx URL for exactly the service and wallet that were asked for.
+ * Returns the parsed URL, or a reason it was refused.
+ */
+export function checkPaymentResource(resource: unknown, productId: string, wallet: string): { ok: true; url: string } | { ok: false; reason: string } {
+  if (typeof resource !== "string") return { ok: false, reason: "no payment resource was returned" };
+  let u: URL;
+  try {
+    u = new URL(resource);
+  } catch {
+    return { ok: false, reason: "the payment resource is not a URL" };
+  }
+  if (u.protocol !== "https:" || u.host !== "www.xrplhub.io" || u.pathname !== "/api/x402/tx" || u.username || u.password) {
+    return { ok: false, reason: "the payment resource does not point at https://www.xrplhub.io/api/x402/tx" };
+  }
+  if ((u.searchParams.get("productId") ?? "").toLowerCase() !== productId.toLowerCase() || u.searchParams.get("account") !== wallet) {
+    return { ok: false, reason: "the payment resource is for a different service or wallet than requested" };
+  }
+  return { ok: true, url: u.toString() };
 }

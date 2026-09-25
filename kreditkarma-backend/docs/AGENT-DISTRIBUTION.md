@@ -8,7 +8,7 @@ Agents sign with their own wallet (Ripple's XRPL AI Starter Kit has Wallet and P
 
 | Channel | State | Refreshes how |
 |---|---|---|
-| Official MCP Registry (`io.github.Dcroyalty/xrplhub`) | **1.12.0** (latest), description "…34 XRPL actions. You sign; no keys held." Old 1.3.0 ("35 actions") is still listed as a non-latest version. | Bump `server.json` `version`, `git tag vX.Y.Z && git push origin vX.Y.Z` (workflow `publish-mcp.yml`, GitHub OIDC). The `version` MUST change for the registry to accept it. |
+| Official MCP Registry (`io.github.Dcroyalty/xrplhub`) | **1.13.0** (latest), description "Free XRPL scores + tx previews; pay per unsigned txjson via x402 (USDC/RLUSD). You sign; no keys." Older versions (1.12.0, 1.3.0) remain listed as non-latest. | Bump `server.json` `version`, `git tag vX.Y.Z && git push origin vX.Y.Z` (workflow `publish-mcp.yml`, GitHub OIDC). The `version` MUST change for the registry to accept it. |
 | Glama (`glama.ai/mcp/connectors/io.github.Dcroyalty/xrplhub`) | Auto-synced from the official registry; already shows the new description. **Unclaimed.** | Automatic. To claim (health checks, analytics): the page offers GitHub, HTTP-challenge or DNS — needs a human login. |
 | Smithery (`butterballslaw/XRPLHub`, ~768 uses) | **STALE**: shows 3 tools and "35 XRPL transaction builders"; we serve 20 tools. | Human, needs a Smithery login: `smithery mcp publish "https://www.xrplhub.io/api/mcp" -n butterballslaw/XRPLHub`. `/.well-known/mcp/server-card.json` is current (v1.12.0, 20 tools) and is what a scan falls back to. |
 | mcp.so | **Not listed.** Human-reviewed, submission is a GitHub issue on `chatmcp/mcpso` (needs a GitHub login). | Draft below. |
@@ -18,7 +18,7 @@ Agents sign with their own wallet (Ripple's XRPL AI Starter Kit has Wallet and P
 ## x402: which resources take which rail
 
 `/.well-known/x402` lists 15 entries (11 URLs). XRPL-native (RLUSD via t54, x402 v2, `PAYMENT-REQUIRED` header, network `xrpl:0`):
-`score` ($0.02), `report` ($0.08), `tx` ($0.15) — XRPL only; and `usdc/mpt/{id}`, `screen/ofac`, `lending/exposure`,
+`score` ($0.02), `report` ($0.08) — XRPL only; `tx` — **both rails, priced per action at the storefront price ($15–$80, `src/lib/servicePrices.ts`)**; and `usdc/mpt/{id}`, `screen/ofac`, `lending/exposure`,
 `lending/underwrite` — **both rails at the same face value** (`src/lib/x402Dual.ts`: `PAYMENT-SIGNATURE` header = XRPL rail,
 `X-PAYMENT` = Base rail; the 402 body stays the v1 Base challenge, the v2 XRPL challenge is in the header).
 Base-only by design: `usdc/score` (its XRPL twin is `/api/x402/score`, at $0.02 vs $0.01 — deliberately not merged),
@@ -72,9 +72,20 @@ Do **not** run `elizaos publish` — it opens a registry PR, and that registry n
 Agents install it with `npm install plugin-xrplhub` and add it to `character.plugins`.
 Optional: `node scripts/live-check.mjs` exercises every action against production (nothing is signed or submitted).
 
-## Open decision recorded here
+## Signable txjson is sold, never free (decided and fixed 2026-09-25)
 
-`build_xrpl_transaction` (MCP) and therefore the ElizaOS build action return the unsigned txjson for **all 34 services with
-no payment gate**, while the same builders are behind the paid gate in the storefront (`/api/execute`) and at
-`/api/x402/tx` ($0.15 RLUSD). That is the current, advertised behaviour ("Free, no signup"), unchanged by the 2026-09-25
-work; it is recorded here because distributing the plugin widens who can use it.
+Until 2026-09-25 three free paths returned the unsigned txjson for **all 34 services**, making the storefront and `/api/x402/tx` optional:
+the MCP tool `build_xrpl_transaction`, `POST /api/execute/preview` (documented in OpenAPI/llms.txt), and — because `/api/x402/tx` charged a flat
+$0.15 while the storefront charges $15–$80 — the paid x402 route itself was 100–500× under the storefront price. Now:
+
+| Surface | Behaviour |
+|---|---|
+| MCP `build_xrpl_transaction` | **Paid.** Returns the x402 payment resource (`GET /api/x402/tx?productId=…&account=…&…`) + price. Never txjson. The MCP route no longer imports the transaction builder. |
+| MCP `preview_xrpl_transaction` (new) | **Free.** What it does, what is irreversible, price, required/optional fields, how to buy. Never txjson. |
+| `POST /api/execute/preview` | Still free; **no longer returns txjson** (returns step types, price, confirmation copy, and for `mptissue` the permanence manifest). |
+| `GET /api/x402/tx` | **Storefront price per service**, payable on **either rail** (RLUSD/XRPL or USDC/Base) via `dualX402`. Unknown service / mistyped account are refused before any challenge. Caution-tier services are refused unpaid (HTTP 409 `confirmation_required`, not charged) until `confirmCaution=true`, mirroring the storefront's confirmation step. |
+| ElizaOS plugin | `XRPLHUB_BUILD_TRANSACTION` returns the payment resource (host/service/wallet-checked); new `XRPLHUB_PREVIEW_TRANSACTION`. Never a transaction. |
+
+Guards: `scripts/check-service-parity.mjs` (runs in `npm run build`) fails if the MCP route imports the builder, the preview route emits
+txjson, or `/api/x402/tx` stops using `priceUsd`/`dualX402`; the plugin's `scripts/check-surface.mjs` fails if the plugin reads a transaction field.
+Behaviour change to know about: existing `/api/x402/tx` callers now pay the storefront price and must pass `confirmCaution=true` for caution-tier services.

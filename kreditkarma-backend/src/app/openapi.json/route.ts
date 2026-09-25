@@ -9,8 +9,8 @@ import { NextResponse } from "next/server";
 import {
   PRICE_PER_SCORE_RLUSD,
   PRICE_PER_PRODUCT_RLUSD,
-  PRICE_PER_TX_PRODUCT_RLUSD,
 } from "@/lib/paycall";
+import { priceUsd } from "@/lib/pricing";
 import { BUILDABLE_SERVICE_IDS, SERVICE_COUNT } from "@/app/api/execute/serviceCatalog";
 import { SCREEN_OFAC_OUTPUT_SCHEMA, SCREEN_OFAC_OUTPUT_EXAMPLE } from "@/lib/screen";
 import { LENDING_EXPOSURE_OUTPUT_SCHEMA } from "@/lib/lendingExposure";
@@ -284,12 +284,16 @@ export async function GET(req: Request) {
       "/api/x402/tx": {
         get: {
           operationId: "x402Tx",
-          summary: "Prebuilt XRPL transaction — " + SERVICE_COUNT + " actions (x402 exact scheme)",
+          summary: "Signable XRPL transaction — " + SERVICE_COUNT + " actions, storefront-priced (x402: USDC on Base or RLUSD on XRPL)",
           description:
-            "Get a ready-to-sign transaction JSON for any of " + SERVICE_COUNT + " XRPL actions (CheckCreate, Escrow, " +
+            "The signable transaction JSON for any of " + SERVICE_COUNT + " XRPL actions (CheckCreate, Escrow, " +
             "TrustSet, NFT mint/sell/burn, AMM create/deposit, DEX order, MPT issue/send, multisig, " +
-            "DID, credentials, permissioned domains, and more). The wallet owner signs the returned " +
-            "txjson — this never signs for anyone. No signup.",
+            "DID, credentials, permissioned domains, and more), delivered ONLY after payment. Priced per action at the storefront " +
+            "price ($15–$80, see /api/pricing; the amount shown is for the default productId=checkcreate). Pay on either rail: " +
+            "RLUSD on the XRP Ledger (x402 v2 via t54: PAYMENT-REQUIRED header, retry with PAYMENT-SIGNATURE) or USDC on Base " +
+            "(x402 v1: retry with X-PAYMENT). You are charged only if the transaction builds. Caution-tier actions (irreversible) " +
+            "are refused unpaid, with what is irreversible, until confirmCaution=true. The wallet owner signs the returned txjson — " +
+            "this never signs for anyone. Free description first: MCP preview_xrpl_transaction or POST /api/execute/preview.",
           tags: ["Transactions"],
           parameters: [
             {
@@ -310,7 +314,7 @@ export async function GET(req: Request) {
               schema: { type: "string" },
             },
           ],
-          "x-payment-info": payment(PRICE_PER_TX_PRODUCT_RLUSD, "One prebuilt XRPL transaction, RLUSD via x402 facilitator."),
+          "x-payment-info": payment(priceUsd("checkcreate") ?? 20, "One signable XRPL transaction at the storefront price of the requested action (amount shown = productId checkcreate); RLUSD on XRPL or USDC on Base via x402."),
           responses: {
             "200": ok(
               "The unsigned transaction, ready for `account` to sign.",
@@ -1160,16 +1164,16 @@ export async function GET(req: Request) {
       "/api/execute/preview": {
         post: {
           operationId: "executePreview",
-          summary: "Free preview of a service transaction (no payment)",
+          summary: "Free description of a service transaction (no payment; never returns the signable txjson)",
           description:
-            "Builds the exact service transaction and returns it DECODED, unsigned, with nothing submitted. " +
+            "Validates the request by building it, then returns a DESCRIPTION — what it is, its price, what is irreversible, the steps — and NEVER the signable txjson (delivered only after payment). Nothing is submitted. " +
             "For the MPT issuance builder (productId 'mptissue') it also returns the full manifest of what is " +
             "permanent, what is locked and what the issuer could still change — written for the LIVE DynamicMPT " +
             "(XLS-94) amendment state, which the response reports and dates ('permanence'); if the state can't be " +
             "read the wording is hedged, never 'permanent' — a plain-English guide to all 6 capability flags (what each lets the issuer " +
             "do to holders — clawback means you can take the token back from anyone), and the issuer's backing " +
             "declaration echoed back with the hard line: XRPLHub publishes the declaration and does not verify " +
-            "it. Pay via /api/create-payment then /api/execute to actually build and sign. Free.",
+            "it. Pay via x402 (/api/x402/tx) or /api/create-payment then /api/execute to receive the signable transaction. Free.",
           security: [],
           tags: ["Transactions"],
           requestBody: {
@@ -1189,7 +1193,7 @@ export async function GET(req: Request) {
             },
           },
           responses: {
-            "200": { description: "The decoded txjson + (for mptissue) the permanence manifest, flag guide, and backing declaration." },
+            "200": { description: "The description (no txjson) + (for mptissue) the permanence manifest, flag guide, and backing declaration." },
             "400": { description: "Bad request / invalid params." },
             "422": { description: "Missing required params (see needsParams)." },
           },

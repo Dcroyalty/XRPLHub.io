@@ -13,7 +13,7 @@ export function createXrplhubPlugin(client: XrplhubClient = createClient()): Plu
   return {
     name: "plugin-xrplhub",
     description:
-      "XRPLHub for XRPL agents: score a wallet (300–850), screen an address against OFAC SDN, look up an MPT issuer, and get an UNSIGNED ready-to-sign transaction for any of 34 XRPL services. Never signs, never holds keys: the agent signs with its own wallet.",
+      "XRPLHub for XRPL agents: score a wallet (300–850), screen an address against OFAC SDN, look up an MPT issuer, describe any of 34 XRPL transactions for free, and buy the UNSIGNED ready-to-sign transaction via x402 (USDC on Base or RLUSD on XRPL). Never signs, never holds keys: the agent signs with its own wallet.",
     actions: createActions(client),
   };
 }

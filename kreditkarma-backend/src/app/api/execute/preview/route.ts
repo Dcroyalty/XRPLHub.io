@@ -1,12 +1,12 @@
 // src/app/api/execute/preview/route.ts
 // POST /api/execute/preview  { productId, account, params }
 //
-// FREE. Builds the exact service transaction and returns it DECODED, with — for
-// an MPT issuance — the full manifest of what is permanent, the plain-English
-// flag guide, the backing declaration echoed back, and the hard line that we
-// publish the declaration but never verify it. No payment, no wallet, nothing
-// submitted. Pay via the normal flow (/api/create-payment -> /api/execute) to
-// actually build and sign.
+// FREE, and it NEVER returns signable txjson. It validates the request by really building the transaction, then returns a
+// DESCRIPTION: what the transaction is, its price, what is irreversible, and — for an MPT issuance — the full manifest of
+// what is permanent, the plain-English flag guide, the backing declaration echoed back, and the hard line that we publish
+// the declaration but never verify it. The exact transaction object (txjson) is delivered only after payment: the
+// storefront flow (/api/create-payment -> /api/execute) or x402 (/api/x402/tx, USDC on Base or RLUSD on XRPL).
+// (Until 2026-09-25 this route returned the txjson for free, which made every paid path optional.)
 
 import { NextResponse } from "next/server";
 import { buildServiceTx } from "../txBuilder";
@@ -68,14 +68,20 @@ export async function POST(req: Request) {
     productId,
     label: built.label,
     tier: built.tier,
-    txjson: built.txjson, // the decoded, unsigned transaction — review this before signing (first step)
-    // Multi-transaction services: every step, in signing order. You sign one at a time.
+    // The request BUILT successfully (so the params are valid); the transaction object itself is withheld until payment.
+    // Multi-transaction services: how many steps and what each is, in signing order. The transactions are paid-only.
     totalSteps: built.steps?.length ?? 1,
-    steps: (built.steps ?? []).map((s) => ({ id: s.id, label: s.label, txjson: s.txjson })),
+    steps: (built.steps ?? []).map((s) => ({ id: s.id, label: s.label, transactionType: String(s.txjson.TransactionType) })),
     priceUsd: priceUsd(productId),
     // Services with specific, serious consequences show them here — free, before you pay.
     confirmation: cautionCopyFor(productId, (body.params ?? {}) as Record<string, unknown>),
-    priced: "Free preview. Pay to build and sign — see /api/create-payment then /api/execute. The price is set by the server, not the client.",
+    signableTransaction: "withheld — delivered only after payment",
+    howToBuy: {
+      x402: `/api/x402/tx?productId=${productId}&account=${account} (pay USDC on Base or RLUSD on XRPL; add confirmCaution=true for caution-tier services)`,
+      storefront: "/api/create-payment then /api/execute",
+      mcp: "build_xrpl_transaction (returns the x402 resource)",
+    },
+    priced: "Free description. The signable transaction is delivered only after payment. The price is set by the server, not the client.",
   };
 
   if (productId === "mptissue" && view) {

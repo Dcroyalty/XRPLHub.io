@@ -26,7 +26,7 @@ for (const k of ["services", "providers", "evaluators", "routes", "events", "mod
   const empty = v === undefined || (Array.isArray(v) && v.length === 0) || (typeof v === "object" && v !== null && Object.keys(v).length === 0);
   if (!empty) fail(`plugin.${k} must be empty/absent (found ${typeof v})`);
 }
-const expected = ["XRPLHUB_SCORE_WALLET", "XRPLHUB_SCREEN_ADDRESS", "XRPLHUB_MPT_RISK", "XRPLHUB_LIST_SERVICES", "XRPLHUB_BUILD_TRANSACTION"];
+const expected = ["XRPLHUB_SCORE_WALLET", "XRPLHUB_SCREEN_ADDRESS", "XRPLHUB_MPT_RISK", "XRPLHUB_LIST_SERVICES", "XRPLHUB_PREVIEW_TRANSACTION", "XRPLHUB_BUILD_TRANSACTION"];
 const names = (plugin?.actions ?? []).map((a) => a.name);
 if (JSON.stringify(names) !== JSON.stringify(expected)) fail(`actions must be exactly ${expected.join(", ")} (found ${names.join(", ")})`);
 
@@ -45,6 +45,7 @@ const FORBIDDEN = [
   [/submitAndWait|\bsubmit\(|"submit"|'submit'|submit_multisigned|sendTransaction/, "submission call"],
   [/from\s+["'](?!node:crypto["'])(?!\.\/)[^"']+["']/, "runtime import other than node:crypto"],
   [/require\(/, "require()"],
+  [/\.(transactions?|txjson)\b/, "reads a transaction/txjson field from a server response (this plugin must never pass a signable transaction on)"],
   [/child_process|node:fs|node:net|node:http/, "process/file/network module"],
 ];
 function walk(dir) {

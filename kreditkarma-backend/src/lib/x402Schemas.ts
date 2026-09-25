@@ -5,6 +5,11 @@
 
 import { walletProp, SCORE_OUTPUT_SCHEMA, SCORE_OUTPUT_EXAMPLE } from "./scoreSchema";
 import { BUILDABLE_SERVICE_IDS, SERVICE_COUNT } from "@/app/api/execute/serviceCatalog";
+import { SERVICE_PRICE_USD } from "@/lib/servicePrices";
+
+const TX_PRICES = BUILDABLE_SERVICE_IDS.map((id) => SERVICE_PRICE_USD[id]).filter((n): n is number => typeof n === "number");
+const TX_MIN_USD = Math.min(...TX_PRICES);
+const TX_MAX_USD = Math.max(...TX_PRICES);
 
 export interface X402ResourceSchema {
   input: Record<string, unknown>;
@@ -79,9 +84,9 @@ export const REPORT_SCHEMA: X402ResourceSchema = {
 
 export const TX_SCHEMA: X402ResourceSchema = {
   description:
-    "A ready-to-sign XRPL transaction JSON for any of " + SERVICE_COUNT + " actions (CheckCreate, Escrow, TrustSet, NFT, " +
-    "AMM, DEX order, MPT, multisig, DID, credentials, permissioned domains, and more). The wallet owner " +
-    "signs it — this never signs for anyone. Params per action: /api/mcp list_xrpl_services.",
+    "The signable XRPL transaction JSON for any of " + SERVICE_COUNT + " actions (CheckCreate, Escrow, TrustSet, NFT, " +
+    "AMM, DEX order, MPT, multisig, DID, credentials, and more), delivered after payment. Priced per action at the storefront price ($" + TX_MIN_USD + "–$" + TX_MAX_USD + "; " +
+    "/api/pricing). Pay USDC on Base or RLUSD on XRPL. You sign with your own wallet. Caution-tier actions need confirmCaution=true. Free preview: MCP preview_xrpl_transaction.",
   input: {
     type: "object",
     properties: {
@@ -97,8 +102,14 @@ export const TX_SCHEMA: X402ResourceSchema = {
         description: "XRPL classic address that will sign the returned transaction.",
         example: "rMxCKbEDwqr76QuheSUMdEGf4B9xJ8m5De",
       },
+      confirmCaution: {
+        type: "string",
+        enum: ["true"],
+        description: "Caution-tier actions (multisig lockdown, No Freeze, MPT issuance, …) are refused unpaid with the irreversibility copy until the wallet owner has read it; then repeat with confirmCaution=true.",
+      },
     },
     required: ["productId", "account"],
+    // (confirmCaution is declared below in `properties` for caution-tier actions)
     additionalProperties: {
       type: "string",
       description: "Per-action parameters (destination, amount, issuer, currency, uri, ...). See list_xrpl_services.",

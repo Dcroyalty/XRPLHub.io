@@ -1,19 +1,35 @@
-// The five actions. Every one is READ-ONLY or BUILD-ONLY:
+// The six actions. Every one is READ-ONLY, DESCRIBE-ONLY or PAYMENT-INFO-ONLY:
 //   - it calls XRPLHub's public MCP tools and returns text + data;
-//   - the only thing it ever hands back that could move value is an UNSIGNED transaction object for the agent's
-//     own wallet to sign. There is no signing, no key handling, no submission and no setting anywhere in this package.
+//   - none of them ever returns a signable transaction. The transaction (txjson) is sold: XRPLHub delivers it only after an
+//     x402 payment (USDC on Base or RLUSD on XRPL). XRPLHUB_BUILD_TRANSACTION returns the PAYMENT RESOURCE for the agent's
+//     own x402 client/wallet to pay; XRPLHUB_PREVIEW_TRANSACTION describes a transaction for free.
+//   - there is no signing, no key handling, no submission and no setting anywhere in this package.
 
 import type { Action, ActionResult, HandlerCallback, HandlerOptions, IAgentRuntime, Memory, State } from "@elizaos/core";
 import { scanAddresses, scanMptIds } from "./address.ts";
-import { isRecord, messageText, readBuildArgs, resolveAddress, resolveMptId, structuredParams } from "./args.ts";
+import { messageText, readBuildArgs, resolveAddress, resolveMptId, structuredParams, type BuildArgs } from "./args.ts";
 import type { XrplhubClient } from "./client.ts";
-import { clean, formatMpt, formatScore, formatScreen, formatServices, parseServices, UNSIGNED_NOTE, type ServiceSummary } from "./format.ts";
+import {
+  checkPaymentResource,
+  clean,
+  confirmationLines,
+  formatMpt,
+  formatPreview,
+  formatScore,
+  formatScreen,
+  formatServices,
+  parseServices,
+  UNSIGNED_NOTE,
+  type ServiceSummary,
+} from "./format.ts";
+import { isRecord } from "./args.ts";
 
 export const ACTION_NAMES = {
   score: "XRPLHUB_SCORE_WALLET",
   screen: "XRPLHUB_SCREEN_ADDRESS",
   mpt: "XRPLHUB_MPT_RISK",
   list: "XRPLHUB_LIST_SERVICES",
+  preview: "XRPLHUB_PREVIEW_TRANSACTION",
   build: "XRPLHUB_BUILD_TRANSACTION",
 } as const;
 
@@ -38,6 +54,8 @@ const example = (user: string, agent: string, action: string) => [
   { name: "{{agentName}}", content: { text: agent, actions: [action] } },
 ];
 
+const SERVICE_WORDS = /trustline|escrow|nft|amm|multisig|regular key|deposit auth|mpt|credential|permissioned|check|ticket|payment channel|freeze|did\b/i;
+
 export function createActions(client: XrplhubClient): Action[] {
   let serviceCache: { at: number; services: ServiceSummary[] } | undefined;
 
@@ -49,6 +67,17 @@ export function createActions(client: XrplhubClient): Action[] {
     if (list.length === 0) return { ok: false, error: "XRPLHub returned an empty service list." };
     serviceCache = { at: Date.now(), services: list };
     return { ok: true, services: list };
+  }
+
+  /** The service asked for: explicit product_id, else exactly one known id named in the text, else the menu. */
+  async function resolveProduct(name: string, c: Ctx, text: string, args: BuildArgs, verb: string): Promise<{ ok: true; productId: string } | { ok: false; result: ActionResult }> {
+    if (args.productId) return { ok: true, productId: args.productId.toLowerCase() };
+    const s = await services();
+    if (!s.ok) return { ok: false, result: refusal(name, c, "unavailable", `Could not load the service list: ${clean(s.error, 300)}`) };
+    const lower = text.toLowerCase();
+    const hits = s.services.filter((svc) => new RegExp(`(^|[^a-z0-9])${svc.id.toLowerCase()}([^a-z0-9]|$)`).test(lower));
+    if (hits.length === 1) return { ok: true, productId: hits[0]!.id };
+    return { ok: false, result: refusal(name, c, "product_id_required", `Which service should I ${verb}? Pass product_id as one of these ids.\n${formatServices(s.services)}`) };
   }
 
   // ── 1. score ────────────────────────────────────────────────────────────────
@@ -135,8 +164,8 @@ export function createActions(client: XrplhubClient): Action[] {
     name: ACTION_NAMES.list,
     similes: ["LIST_XRPL_SERVICES", "XRPL_SERVICE_CATALOG", "WHAT_CAN_XRPLHUB_BUILD"],
     description:
-      "List every XRPL transaction XRPLHub can build unsigned (trustlines, escrows, AMM, NFTs, multisig, MPT issuance and more), with each one's parameters. Call this first so you pass the right product_id and params to XRPLHUB_BUILD_TRANSACTION. Read-only, free.",
-    validate: async (_runtime, message) => /xrplhub|xrpl.{0,40}(service|transaction|build)|(build|create|set up).{0,30}(trustline|escrow|nft|amm|multisig|check)/i.test(messageText(message)),
+      "List every XRPL transaction XRPLHub sells (trustlines, escrows, AMM, NFTs, multisig, MPT issuance and more) with each one's price and parameters. Call this first so you pass the right product_id and params to XRPLHUB_PREVIEW_TRANSACTION or XRPLHUB_BUILD_TRANSACTION. Read-only, free.",
+    validate: async (_runtime, message) => /xrplhub|xrpl.{0,40}(service|transaction|build)|(build|create|set up|buy).{0,30}(trustline|escrow|nft|amm|multisig|check)/i.test(messageText(message)),
     handler: async (runtime, message, state, options, callback) => {
       const c: Ctx = { runtime, message, state, options, callback };
       const s = await services();
@@ -147,19 +176,57 @@ export function createActions(client: XrplhubClient): Action[] {
         data: { count: s.services.length, services: s.services },
       });
     },
-    examples: [example("What XRPL transactions can XRPLHub build for me?", "Here is the list of services.", ACTION_NAMES.list)],
+    examples: [example("What XRPL transactions can XRPLHub build for me?", "Here is the list of services and prices.", ACTION_NAMES.list)],
   };
 
-  // ── 5. build (UNSIGNED) ─────────────────────────────────────────────────────
+  // ── 5. preview (FREE description, no transaction) ───────────────────────────
+  const preview: Action = {
+    name: ACTION_NAMES.preview,
+    similes: ["DESCRIBE_XRPL_TRANSACTION", "PREVIEW_XRPL_TRANSACTION", "XRPL_TRANSACTION_PRICE", "WHAT_DOES_THIS_XRPL_TX_DO"],
+    description:
+      "FREE. Describe one XRPL transaction before buying it: what it does, what is irreversible, the price, and every field it needs. Returns NO signable transaction. Parameters: product_id (from XRPLHUB_LIST_SERVICES), params (optional).",
+    validate: async (_runtime, message) => {
+      const text = messageText(message);
+      return SERVICE_WORDS.test(text) && /preview|describe|what (does|would)|how much|price|cost|irreversible|undo|explain/i.test(text);
+    },
+    handler: async (runtime, message, state, options, callback) => {
+      const c: Ctx = { runtime, message, state, options, callback };
+      const text = messageText(message);
+      const args = readBuildArgs(text, structuredParams(options));
+      const p = await resolveProduct(ACTION_NAMES.preview, c, text, args, "describe");
+      if (!p.ok) return p.result;
+      const res = await client.callTool("preview_xrpl_transaction", { product_id: p.productId, params: args.params });
+      if (!res.ok) return refusal(ACTION_NAMES.preview, c, res.retryable ? "unavailable" : "preview_failed", `Could not describe "${clean(p.productId, 60)}": ${clean(res.error, 300)}`);
+      const d = res.data;
+      return done(ACTION_NAMES.preview, message, callback, {
+        success: true,
+        text: formatPreview(d),
+        // Whitelisted fields only: a description, never a transaction.
+        data: {
+          productId: p.productId,
+          label: typeof d.label === "string" ? clean(d.label, 120) : p.productId,
+          safetyTier: typeof d.safetyTier === "string" ? clean(d.safetyTier, 20) : "unknown",
+          priceUsd: isRecord(d.price) && typeof d.price.usd === "number" ? d.price.usd : null,
+          requiresConfirmation: isRecord(d.irreversible) && d.irreversible.requiresConfirmation === true,
+          transactionIncluded: false,
+        },
+      });
+    },
+    examples: [
+      example("What does a multisig lockdown do and how much is it?", "Here is what it does, what cannot be undone, and the price.", ACTION_NAMES.preview),
+    ],
+  };
+
+  // ── 6. build = BUY: returns the x402 payment resource, never the transaction ─
   const build: Action = {
     name: ACTION_NAMES.build,
-    similes: ["BUILD_XRPL_TRANSACTION", "XRPL_TXJSON", "PREPARE_XRPL_TRANSACTION", "CREATE_UNSIGNED_XRPL_TX"],
+    similes: ["BUY_XRPL_TRANSACTION", "BUILD_XRPL_TRANSACTION", "GET_XRPL_TXJSON_PAYMENT", "PREPARE_XRPL_TRANSACTION"],
     description:
-      "Build an UNSIGNED, ready-to-sign XRPL transaction (txjson) for one of XRPLHub's services (trustline, escrow, AMM, NFT, multisig, MPT issuance…) for a given wallet. XRPLHub never signs and never holds keys: you sign and submit it with your own wallet. Parameters: product_id, wallet_address, params (object; see XRPLHUB_LIST_SERVICES).",
+      "BUY the unsigned transaction for one XRPL service. This action returns the x402 PAYMENT RESOURCE (an https://www.xrplhub.io/api/x402/tx URL) and the price; it does not return the transaction. Pay the resource with your own x402 client (USDC on Base or RLUSD on XRPL) and that response is the txjson to sign with your own wallet. XRPLHub never signs and never holds keys. Parameters: product_id, wallet_address, params (object), confirm_caution (caution-tier only, after the wallet owner has read the preview).",
     validate: async (_runtime, message) => {
       const text = messageText(message);
       const s = scanAddresses(text);
-      return (s.valid.length > 0 || s.malformed.length > 0) && /build|create|prepare|txjson|transaction|trustline|escrow|nft|amm|multisig|regular key|deposit auth|mpt/i.test(text);
+      return (s.valid.length > 0 || s.malformed.length > 0) && (/build|buy|purchase|create|prepare|txjson|transaction/i.test(text) || SERVICE_WORDS.test(text));
     },
     handler: async (runtime, message, state, options, callback) => {
       const c: Ctx = { runtime, message, state, options, callback };
@@ -170,85 +237,63 @@ export function createActions(client: XrplhubClient): Action[] {
       if (!wallet.ok) return refusal(ACTION_NAMES.build, c, "bad_address", wallet.message);
 
       const args = readBuildArgs(text, sp);
-      let productId = args.productId;
+      const p = await resolveProduct(ACTION_NAMES.build, c, text, args, "buy");
+      if (!p.ok) return p.result;
+      const productId = p.productId;
 
-      if (!productId) {
-        // No product named: try to match exactly one known service id in the text, otherwise show the menu.
-        const s = await services();
-        if (!s.ok) return refusal(ACTION_NAMES.build, c, "unavailable", `Could not load the service list: ${clean(s.error, 300)}`);
-        const lower = text.toLowerCase();
-        const hits = s.services.filter((svc) => new RegExp(`(^|[^a-z0-9])${svc.id.toLowerCase()}([^a-z0-9]|$)`).test(lower));
-        if (hits.length === 1) productId = hits[0]!.id;
-        else {
-          return refusal(
-            ACTION_NAMES.build,
-            c,
-            "product_id_required",
-            `Which service should I build? Pass product_id as one of these ids.\n${formatServices(s.services)}`,
-          );
-        }
-      }
-
-      const res = await client.callTool("build_xrpl_transaction", { product_id: productId, wallet_address: wallet.value, params: args.params });
+      const payload: Record<string, unknown> = { product_id: productId, wallet_address: wallet.value, params: args.params };
+      if (args.confirmCaution) payload.confirm_caution = true;
+      const res = await client.callTool("build_xrpl_transaction", payload);
       if (!res.ok) {
         const missing = Array.isArray(res.data?.missingParams) ? (res.data!.missingParams as unknown[]).map((m) => clean(m, 60)).filter(Boolean) : [];
-        const hint = missing.length ? ` Missing parameters: ${missing.join(", ")}. Provide them in params and call again.` : "";
-        return refusal(ACTION_NAMES.build, c, res.retryable ? "unavailable" : "build_failed", `Could not build "${clean(productId, 60)}": ${clean(res.error, 300)}${hint}`);
+        const hint = missing.length ? ` Missing parameters: ${missing.join(", ")}. Provide them in params and call again. Nothing was charged.` : "";
+        return refusal(ACTION_NAMES.build, c, res.retryable ? "unavailable" : "build_failed", `Could not prepare "${clean(productId, 60)}": ${clean(res.error, 300)}${hint}`);
       }
-
-      // The server builds the transaction FOR this wallet. Verify that before handing it to a signer: a transaction whose
-      // Account is anything else must never reach a wallet the agent then signs.
       const d = res.data;
-      const steps: { id?: string; label?: string; tx: Record<string, unknown> }[] = [];
-      if (Array.isArray(d.transactions) && d.transactions.length > 0) {
-        for (const t of d.transactions) {
-          if (!isRecord(t) || !isRecord(t.transaction)) return refusal(ACTION_NAMES.build, c, "bad_response", "XRPLHub returned a malformed multi-step transaction; refusing to use it.");
-          steps.push({ id: typeof t.id === "string" ? clean(t.id, 40) : undefined, label: typeof t.label === "string" ? clean(t.label, 120) : undefined, tx: t.transaction });
-        }
-      } else if (isRecord(d.transaction)) {
-        steps.push({ tx: d.transaction });
-      } else {
-        return refusal(ACTION_NAMES.build, c, "bad_response", "XRPLHub returned no transaction; refusing to continue.");
-      }
-      for (const s of steps) {
-        if (typeof s.tx.TransactionType !== "string" || s.tx.Account !== wallet.value) {
-          return refusal(
-            ACTION_NAMES.build,
-            c,
-            "account_mismatch",
-            `Refusing to return this transaction: it is not built for ${wallet.value} (Account is ${clean(s.tx.Account, 40) || "missing"}). Nothing should be signed.`,
-          );
-        }
+
+      // Caution-tier and not yet confirmed: the server withholds the payment resource. Pass the warning on; buy nothing.
+      if (d.requiresConfirmation === true) {
+        const conf = isRecord(d.irreversible) ? confirmationLines(d.irreversible) : ["CAUTION — this can be hard or impossible to undo. Show the preview to the wallet owner before buying."];
+        return done(ACTION_NAMES.build, message, callback, {
+          success: false,
+          error: "confirmation_required",
+          text: [
+            `CONFIRMATION REQUIRED before buying "${clean(productId, 60)}". Nothing was charged and no payment resource was issued.`,
+            ...conf,
+            "When the wallet owner has confirmed, call XRPLHUB_BUILD_TRANSACTION again with confirm_caution: true.",
+          ].join("\n"),
+          data: { productId, wallet: wallet.value, requiresConfirmation: true, transactionIncluded: false },
+        });
       }
 
-      const tier = typeof d.safetyTier === "string" ? clean(d.safetyTier, 20) : "unknown";
-      const label = typeof d.label === "string" ? clean(d.label, 120) : clean(productId, 60);
-      const lines = [
-        `${label} — UNSIGNED transaction${steps.length > 1 ? "s" : ""} for ${wallet.value} (safety tier: ${tier}).`,
-        UNSIGNED_NOTE,
-      ];
-      if (steps.length > 1) lines.push(`This service is ${steps.length} transactions. Sign and submit them IN ORDER, waiting for each to validate before the next.`);
-      steps.forEach((s, i) => lines.push(`${steps.length > 1 ? `Step ${i + 1}${s.label ? ` (${s.label})` : ""}: ` : "txjson: "}${JSON.stringify(s.tx)}`));
-      if (tier === "caution") lines.push("CAUTION: this changes account security or permissions and can be hard or impossible to undo. Show it to the wallet owner and get explicit confirmation before signing.");
-      for (const k of ["permanenceNotice", "permanence", "notice"]) {
-        if (typeof d[k] === "string") lines.push(clean(d[k], 600));
+      // The payment resource is where money goes: only ever surface XRPLHub's own URL for exactly this service and wallet.
+      const checked = checkPaymentResource(d.resource, productId, wallet.value);
+      if (!checked.ok) {
+        return refusal(ACTION_NAMES.build, c, "bad_payment_resource", `Refusing to give you a payment URL: ${checked.reason}. Nothing was charged.`);
       }
-      const txs = steps.map((s) => ({ ...(s.id ? { id: s.id } : {}), ...(s.label ? { label: s.label } : {}), txjson: s.tx }));
+      const usd = isRecord(d.price) && typeof d.price.usd === "number" ? d.price.usd : null;
+      const label = typeof d.label === "string" ? clean(d.label, 120) : clean(productId, 60);
       return done(ACTION_NAMES.build, message, callback, {
         success: true,
-        text: lines.join("\n"),
-        values: { xrplhubUnsignedTransactions: txs },
-        data: { productId, wallet: wallet.value, safetyTier: tier, unsigned: true, transactions: txs },
+        text: [
+          `${label} for ${wallet.value}: the signable transaction is delivered after payment.`,
+          `Payment resource: GET ${checked.url}`,
+          usd != null ? `Price: $${usd} (USD = RLUSD = USDC). Pay in USDC on Base or RLUSD on the XRP Ledger with your own x402 client; you are charged only if the transaction builds.` : "Pay with your own x402 client (USDC on Base or RLUSD on XRPL); you are charged only if the transaction builds.",
+          `After payment: check every returned transaction's Account equals ${wallet.value}, then sign with your own wallet and submit it (multi-step services: in order). ${UNSIGNED_NOTE}`,
+        ].join("\n"),
+        values: { xrplhubPaymentResource: checked.url },
+        // Whitelisted fields only. No transaction is ever in here.
+        data: { productId, wallet: wallet.value, resource: checked.url, priceUsd: usd, payWith: ["USDC on Base (x402 v1)", "RLUSD on XRPL (x402 v2 via t54)"], transactionIncluded: false },
       });
     },
     examples: [
       example(
-        "Build me a trustline to RLUSD for rs59g3amo5iT6T64Cg96XXMAWuw3WPQcLF.",
-        "Building the unsigned trustline transaction; you sign it with your own wallet.",
+        "Buy me a trustline transaction for rs59g3amo5iT6T64Cg96XXMAWuw3WPQcLF (RLUSD, limit 100).",
+        "Here is the payment resource and price; pay it with your x402 wallet and you get the unsigned transaction to sign.",
         ACTION_NAMES.build,
       ),
     ],
   };
 
-  return [score, screen, mpt, list, build];
+  return [score, screen, mpt, list, preview, build];
 }

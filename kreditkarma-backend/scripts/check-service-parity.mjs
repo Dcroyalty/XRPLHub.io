@@ -118,6 +118,23 @@ for (const f of walk("src")) {
   });
 }
 
+// ── no free signable txjson ─────────────────────────────────────────────────────────────────────────────────────────
+// Until 2026-09-25 the MCP build tool and POST /api/execute/preview returned the signable transaction for free, which made the
+// storefront and /api/x402/tx optional. The signable txjson is delivered ONLY after payment. Structural guards:
+//  - the MCP route must not import the transaction builder (it cannot leak what it cannot build);
+//  - the free preview route must not emit txjson;
+//  - /api/x402/tx must be priced from the storefront table (priceUsd), never a flat constant, and must be dual-rail.
+{
+  const mcp = read("src/app/api/mcp/route.ts");
+  if (/buildServiceTx|execute\/txBuilder/.test(mcp)) fail("src/app/api/mcp/route.ts imports the transaction builder: the MCP surface must never build signable txjson (return the x402 payment resource instead)");
+  const prev = read("src/app/api/execute/preview/route.ts");
+  if (/txjson\s*:\s*(built|s)\.txjson/.test(prev)) fail("src/app/api/execute/preview/route.ts returns txjson: the free preview must describe a transaction, never return it");
+  const tx = read("src/app/api/x402/tx/route.ts");
+  if (!/priceUsd\(/.test(tx)) fail("src/app/api/x402/tx/route.ts must be priced from the storefront table (priceUsd), so no service is sold below its storefront price");
+  if (/PRICE_PER_TX_PRODUCT_RLUSD/.test(tx)) fail("src/app/api/x402/tx/route.ts uses a flat price constant");
+  if (!/dualX402\(/.test(tx)) fail("src/app/api/x402/tx/route.ts must serve both x402 rails (dualX402)");
+}
+
 if (problems.length) {
   console.error(`\n✖ service parity check FAILED (${problems.length} problem${problems.length === 1 ? "" : "s"}):`);
   for (const p of problems) console.error("  - " + p);

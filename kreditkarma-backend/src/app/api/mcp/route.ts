@@ -11,10 +11,10 @@
 // Stateless — zero new infrastructure, runs on Vercel as a standard serverless fn.
 // No new npm packages required.
 //
-// NINETEEN TOOLS:
+// TWENTY-ONE TOOLS:
 //   1. check_xrpl_score        — free 300–850 wallet creditworthiness score
 //   2. list_xrpl_services      — every build_xrpl_transaction action + its params
-//   3. build_xrpl_transaction  — ready-to-sign txjson for any listed XRPL action
+//   3. build_xrpl_transaction  — PAID: returns the x402 payment resource (USDC/Base or RLUSD/XRPL) that delivers the txjson
 //   4. issue_score_credential  — paid signed, verifiable score certificate (1 XRP/RLUSD)
 //   5. submit_grant_application — apply for a 1–100 RLUSD community micro-grant
 //   6. donate_to_community_fund — donate XRP or RLUSD to the XRPLHub treasury
@@ -31,13 +31,13 @@
 //  17. get_lending_exposure    — free: a borrower's total XLS-66 exposure across ALL brokers + observation history
 //  18. get_lending_history     — free: every loan XRPLHub has ever observed for a borrower
 //  19. get_underwriting_inputs — paid ($0.05 USDC/Base x402): the full underwriting-inputs bundle, facts only
+//  21. preview_xrpl_transaction — free: what a transaction does, what is irreversible, price, fields (NO txjson)
 //
 // © 2026 XRPLHub.io · XRPLScore™ · All Rights Reserved
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { NextRequest, NextResponse } from 'next/server';
-import { buildServiceTx } from '@/app/api/execute/txBuilder';
-import { buildContextFromView, mptRegimeFor, permanenceNotice } from '@/lib/mptPermanence';
+import { describeService, missingRequiredParams, paymentResourceUrl, priceInfo, serviceDef } from '@/lib/txPurchase';
 import { SERVICE_CATALOG, SERVICE_COUNT, BUILDABLE_SERVICE_IDS, serviceParamLines } from '@/app/api/execute/serviceCatalog';
 import { prisma } from '@/lib/xrplscore-db';
 import { screenOfac, NoSnapshotError } from '@/lib/screen';
@@ -59,9 +59,9 @@ const CORS = {
 // JSON-RPC surface (one source of truth for scanners like Smithery).
 export const MCP_SERVER_INFO = {
   name: 'xrplhub',
-  version: '1.12.0',
+  version: '1.13.0',
   description:
-    'Free XRPL wallet creditworthiness scores · ready-to-sign txjson for ' + SERVICE_COUNT + ' XRPL actions (incl. MPT ' +
+    'Free XRPL wallet creditworthiness scores · free previews of ' + SERVICE_COUNT + ' XRPL actions and pay-per-transaction unsigned txjson (x402: USDC on Base or RLUSD on XRPL) (incl. MPT ' +
     'issuance with a plain-English flag guide + on-ledger backing declaration) · verifiable score ' +
     'credential · credential + permissioned domain explorer · MPT issuer risk + backing declarations · ' +
     'OFAC SDN screening attestation (process, not ground truth) · XLS-66 cross-broker lending exposure & ' +
@@ -252,13 +252,35 @@ export const TOOLS = [
     inputSchema: { type: 'object', properties: {} },
   },
   {
+    name: 'preview_xrpl_transaction',
+    description:
+      'FREE. Describe one XRPL transaction before you buy it: what it does, what is irreversible, the price, and every field it ' +
+      'needs. Returns NO signable txjson — enough to decide, not enough to sign. Then call build_xrpl_transaction to buy it. ' +
+      'Params: product_id (required, from list_xrpl_services), params (optional object; tailors the multisig warning).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        product_id: {
+          type: 'string',
+          enum: BUILDABLE_SERVICE_IDS,
+          description: 'Which XRPL action to describe. Call list_xrpl_services for the catalogue.',
+        },
+        params: {
+          type: 'object',
+          description: 'Optional per-service parameters; only used to tailor the irreversibility wording (e.g. signers, quorum).',
+        },
+      },
+      required: ['product_id'],
+    },
+  },
+  {
     name: 'build_xrpl_transaction',
     description:
-      'Get a ready-to-sign transaction JSON for any of ' + SERVICE_COUNT + ' XRPL actions — no XRPL coding. Returns the ' +
-      'exact txjson plus a safety tier; the wallet owner signs it in their own wallet (never signed by us: ' +
-      'agents use their own wallet). Call list_xrpl_services first for all ' + SERVICE_COUNT + ' ids and every parameter with examples. ' +
-      'Params: product_id (required — e.g. checkcreate, escrow, trustline, nftmint, dexorder, multisig), ' +
-      'wallet_address (r... signer, required), params (object, per-service). Free, no signup.',
+      'BUY the unsigned, ready-to-sign transaction for one of ' + SERVICE_COUNT + ' XRPL actions. Not free: returns the exact x402 ' +
+      'payment resource (GET /api/x402/tx?...) at the storefront price, payable in USDC on Base or RLUSD on XRPL. Pay it with an ' +
+      'x402 client and that response is the txjson; you sign it with your own wallet (XRPLHub never signs). No payment, no ' +
+      'txjson. Call preview_xrpl_transaction (free) first. Params: product_id, wallet_address (r..., the signer), params ' +
+      '(object), confirm_caution (caution-tier only, after the wallet owner has read the preview).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -266,8 +288,8 @@ export const TOOLS = [
           type: 'string',
           enum: BUILDABLE_SERVICE_IDS,
           description:
-            'Which XRPL action to build. Call list_xrpl_services for the full catalogue with ' +
-            'each id\'s label, tier and parameters.',
+            'Which XRPL action to buy. Call list_xrpl_services for the full catalogue with ' +
+            'each id\'s label, tier, price and parameters.',
         },
         wallet_address: {
           type: 'string',
@@ -278,6 +300,12 @@ export const TOOLS = [
           description:
             'Per-service parameters. Call list_xrpl_services for types + examples for every field. ' +
             'Required fields by id — ' + serviceParamLines(),
+        },
+        confirm_caution: {
+          type: 'boolean',
+          description:
+            'Caution-tier services (multisig lockdown, No Freeze, MPT issuance…) can be irreversible. Set true ONLY after the ' +
+            'wallet owner has read the preview_xrpl_transaction `irreversible` block; it is added to the payment resource.',
         },
       },
       required: ['product_id', 'wallet_address'],
@@ -802,14 +830,15 @@ async function toolCheckDomainEligibility(args: Record<string, unknown>): Promis
 function toolListXrplServices(): string {
   return JSON.stringify({
     count: SERVICE_COUNT,
-    note: 'Pass one of these `id` values as product_id to build_xrpl_transaction, ' +
-          'plus a params object with the listed fields. This tool builds txjson only — ' +
-          'the wallet owner signs it. Free, no signup.',
+    note: 'Pass one of these `id` values as product_id to preview_xrpl_transaction (free: what it does, what is irreversible, price) ' +
+          'or build_xrpl_transaction (paid via x402: returns the payment resource that delivers the txjson), plus a params object with the ' +
+          'listed fields. XRPLHub never signs: the wallet owner signs with their own wallet. This list is free.',
     services: SERVICE_CATALOG.filter((s) => s.tier !== 'blocked').map((s) => ({
       id: s.id,
       label: s.label,
       category: s.category,
       safetyTier: s.tier,
+      priceUsd: priceInfo(s.id)?.usd ?? null,
       gives: s.gives,
       params: s.params.map((p) => ({
         name: p.name,
@@ -823,63 +852,103 @@ function toolListXrplServices(): string {
   }, null, 2);
 }
 
+// PAID. Returns the x402 payment resource that delivers the signable txjson — never the txjson itself. (Until 2026-09-25
+// this tool built and returned the transaction for free; the paid gate on the storefront and /api/x402/tx was optional.)
+// This route deliberately does not import the transaction builder: it cannot leak what it cannot build.
 async function toolBuildXrplTransaction(
   args: Record<string, unknown>
 ): Promise<string> {
-  const productId = String(args.product_id || '').trim();
+  const productId = String(args.product_id || '').trim().toLowerCase();
   const wallet    = String(args.wallet_address || '').trim();
-  const params    = (args.params as Record<string, string | number | boolean | undefined>) || {};
+  const raw       = (args.params && typeof args.params === 'object' && !Array.isArray(args.params) ? args.params : {}) as Record<string, unknown>;
+  const confirmCaution = args.confirm_caution === true;
 
   if (!isValidXrplAddress(wallet)) {
     return JSON.stringify({ error: 'Invalid XRPL wallet address.' });
   }
   if (!productId) {
-    return JSON.stringify({ error: 'product_id is required. See tool description for valid options.' });
+    return JSON.stringify({ error: 'product_id is required. Call list_xrpl_services for the ids.' });
+  }
+  const def = serviceDef(productId);
+  if (!def) {
+    return JSON.stringify({ error: `Unknown product_id "${productId.slice(0, 40)}". Call list_xrpl_services for the ids.` });
+  }
+  if (def.tier === 'blocked') {
+    return JSON.stringify({
+      error: 'This operation is disabled for safety.',
+      safetyTier: 'blocked',
+      reason: 'It can permanently lock account access. Contact support@xrplhub.io for a guided manual process.',
+    });
+  }
+  const missing = missingRequiredParams(def, raw);
+  if (missing.length) {
+    return JSON.stringify({
+      error: 'Missing required params.',
+      missingParams: missing,
+      hint: `Provide these params and try again: ${missing.join(', ')}. Nothing was charged. preview_xrpl_transaction lists every field.`,
+    });
   }
 
-  try {
-    // MPT issuance: live DynamicMPT state drives both the build (locks only when active)
-    // and the permanence notice below. Other products read nothing.
-    const view = await mptRegimeFor(productId);
-    const result = await buildServiceTx(productId, wallet, params, view ? buildContextFromView(view) : undefined);
-    if (!result.ok) {
-      return JSON.stringify({
-        error:        result.error || 'Transaction build failed',
-        missingParams: result.needsParams || [],
-        hint: result.needsParams?.length
-          ? `Provide these params and try again: ${result.needsParams.join(', ')}`
-          : 'Check the product_id is valid and try again.',
-      });
-    }
-    if (result.tier === 'blocked') {
-      return JSON.stringify({
-        error: result.error,
-        safetyTier: 'blocked',
-        reason: 'This operation is disabled for safety — it can permanently lock account access.',
-      });
-    }
+  const params: Record<string, string | number | boolean> = {};
+  for (const [k, v] of Object.entries(raw).slice(0, 30)) {
+    if (typeof v === 'string') params[k] = v.slice(0, 2000);
+    else if (typeof v === 'number' && Number.isFinite(v)) params[k] = v;
+    else if (typeof v === 'boolean') params[k] = v;
+  }
+
+  // Caution-tier: never hand out a payable resource until the caller says the wallet owner has read what is irreversible.
+  if (def.tier === 'caution' && !confirmCaution) {
+    const preview = await describeService(API_URL, productId, params);
     return JSON.stringify({
-      success:     true,
-      product:     productId,
-      label:       result.label,
-      safetyTier:  result.tier,
-      transaction: result.txjson,
-      // Services made of several transactions: sign them IN ORDER (the first is `transaction`).
-      ...(result.steps && result.steps.length > 1
-        ? {
-            transactions: result.steps.map((s) => ({ id: s.id, label: s.label, transaction: s.txjson })),
-            stepsNote: `This service is ${result.steps.length} transactions. Sign and submit them in the order listed, waiting for each to validate before the next.`,
-          }
-        : {}),
-      ...(view ? permanenceNotice(view) : {}),
-      signingInstructions:
-        'Present this transaction object to the wallet holder. They must sign it ' +
-        'using their Xaman wallet — the transaction cannot be submitted without ' +
-        'their cryptographic signature. Never sign on behalf of a user.',
-      poweredBy: 'XRPLHub.io — ' + SERVICE_COUNT + ' Done-For-You XRPL Services © 2026',
+      paid: true,
+      productId,
+      safetyTier: 'caution',
+      requiresConfirmation: true,
+      irreversible: preview?.irreversible ?? null,
+      price: priceInfo(productId),
+      message:
+        'This service is caution-tier and can be hard or impossible to undo. Show `irreversible` to the wallet owner. Once they have ' +
+        'confirmed, call build_xrpl_transaction again with confirm_caution: true to receive the payment resource. Nothing was charged.',
     }, null, 2);
+  }
+
+  return JSON.stringify({
+    paid: true,
+    productId,
+    label: def.label,
+    safetyTier: def.tier,
+    resource: paymentResourceUrl(API_URL, productId, wallet, params, confirmCaution),
+    method: 'GET',
+    price: priceInfo(productId),
+    howToPay: [
+      'GET the resource with an x402 client. It answers 402 with the price on both rails; pay in USDC on Base (x402 v1, X-PAYMENT) or RLUSD on the XRP Ledger (x402 v2 via t54, PAYMENT-SIGNATURE) and retry.',
+      'You are charged only if the transaction builds successfully; a failed build costs nothing and can be retried.',
+      'The paid response contains the unsigned txjson (every step, in order, for multi-step services) and signWith.',
+    ],
+    afterPayment:
+      'Check that every returned transaction\'s Account equals signWith, then sign with your OWN wallet and submit it. XRPLHub never signs for anyone and never holds keys.',
+    preview: 'preview_xrpl_transaction (free): what it does, what is irreversible, the price, every field.',
+    discovery: `${API_URL}/.well-known/x402`,
+  }, null, 2);
+}
+
+// FREE. Describes a service (what it does, what is irreversible, the price, the fields it needs). NEVER returns txjson.
+async function toolPreviewXrplTransaction(
+  args: Record<string, unknown>
+): Promise<string> {
+  const productId = String(args.product_id || '').trim().toLowerCase();
+  const params = (args.params && typeof args.params === 'object' && !Array.isArray(args.params) ? args.params : {}) as Record<string, unknown>;
+  if (!productId) {
+    return JSON.stringify({ error: 'product_id is required. Call list_xrpl_services for the ids.' });
+  }
+  try {
+    const preview = await describeService(API_URL, productId, params);
+    if (!preview) {
+      return JSON.stringify({ error: `Unknown product_id "${productId.slice(0, 40)}". Call list_xrpl_services for the ids.` });
+    }
+    return JSON.stringify(preview, null, 2);
   } catch (e) {
-    return JSON.stringify({ error: `Build failed: ${e instanceof Error ? e.message : 'unknown'}` });
+    return JSON.stringify({ error: `Preview failed: ${e instanceof Error ? e.message : 'unknown'}` });
   }
 }
 
@@ -1198,6 +1267,8 @@ export async function POST(req: NextRequest) {
         output = toolListXrplServices();
       } else if (toolName === 'build_xrpl_transaction') {
         output = await toolBuildXrplTransaction(toolArgs);
+      } else if (toolName === 'preview_xrpl_transaction') {
+        output = await toolPreviewXrplTransaction(toolArgs);
       } else if (toolName === 'submit_grant_application') {
         output = await toolSubmitGrantApplication(toolArgs);
       } else if (toolName === 'donate_to_community_fund') {

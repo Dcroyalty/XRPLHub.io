@@ -13,6 +13,10 @@
 //
 // The handler is SHARED: the XRPL rail calls the very same function the Base rail does and adapts its JSON response, so
 // the two rails cannot drift apart. The XRPL rail wraps the result as { data, x402 } (same envelope as /api/x402/score).
+//
+// PRICING may be per request (a function of the request): /api/x402/tx charges the storefront price of whichever service
+// was asked for. The two rails must agree on every request; if they ever do not, the request FAILS CLOSED (HTTP 500 and an
+// alert) rather than quoting different prices on different rails.
 
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
@@ -28,21 +32,24 @@ import {
   type X402ErrorCode,
 } from "@/lib/x402";
 import { TREASURY_ADDRESS } from "@/lib/paycall";
+import { notifyError } from "@/lib/notify";
 
 export interface DualSchemas { input: unknown; output: unknown; outputExample?: unknown }
+
+type PerRequest<T> = T | ((req: NextRequest) => T);
 
 export interface DualOpts {
   /** Stable resource path for the challenge + the idempotency key, e.g. "/api/x402/screen/ofac". */
   resource: string;
   /** recordPaidInvoice plan tag, e.g. "x402:screen-ofac". */
-  plan: string;
-  amountRlusd: number;
-  /** The Base (USDC) price of the same resource; the two MUST be the same face value. */
-  amountUsdc: number;
+  plan: PerRequest<string>;
+  amountRlusd: PerRequest<number>;
+  /** The Base (USDC) price of the same resource; the two MUST be the same face value on every request. */
+  amountUsdc: PerRequest<number>;
   name: string;
   description: string;
   schemas: DualSchemas;
-  /** The existing `withX402(handler, …)` export for the Base rail. */
+  /** The existing `withX402(handler, …)` export for the Base rail (may pick a wrapper per request). */
   base: (req: NextRequest) => Promise<Response>;
   /** The shared handler both rails run (the same function `base` wraps). Runs only after payment verification. */
   core: (req: NextRequest) => Promise<Response>;
@@ -75,25 +82,31 @@ async function toHandlerResult(res: Response): Promise<HandlerResult> {
   return { ok: false, code, status: res.status, message, details: body ?? undefined };
 }
 
+const resolve = <T>(v: PerRequest<T>, req: NextRequest): T => (typeof v === "function" ? (v as (r: NextRequest) => T)(req) : v);
+
 export function dualX402(opts: DualOpts): (req: NextRequest) => Promise<Response> {
-  // A price drift between the rails would let one rail undercut the other silently. Fail loudly at import instead.
-  if (Math.abs(opts.amountRlusd - opts.amountUsdc) > 1e-9) {
-    throw new Error(`x402Dual ${opts.resource}: RLUSD price ${opts.amountRlusd} != USDC price ${opts.amountUsdc}`);
-  }
-
-  const requirements = (invoiceId: string) =>
-    rlusdRequirements({
-      payTo: TREASURY_ADDRESS,
-      amountRlusd: opts.amountRlusd,
-      invoiceId,
-      name: opts.name,
-      description: opts.description,
-      schemas: headerSchemas(opts.schemas),
-    });
-
   return async (req: NextRequest): Promise<Response> => {
     const refused = opts.refuse ? await opts.refuse(req) : null;
     if (refused) return refused;
+
+    const amountRlusd = resolve(opts.amountRlusd, req);
+    const amountUsdc = resolve(opts.amountUsdc, req);
+    const plan = resolve(opts.plan, req);
+    // A price drift between the rails would let one rail undercut the other silently. Fail closed and say so.
+    if (!(amountRlusd > 0) || Math.abs(amountRlusd - amountUsdc) > 1e-9) {
+      void notifyError(`x402Dual price mismatch ${opts.resource}`, new Error(`RLUSD ${amountRlusd} != USDC ${amountUsdc}`), { plan });
+      return NextResponse.json({ error: "price_mismatch", message: "This resource is temporarily unavailable (pricing error). Nothing was charged." }, { status: 500 });
+    }
+
+    const requirements = (invoiceId: string) =>
+      rlusdRequirements({
+        payTo: TREASURY_ADDRESS,
+        amountRlusd,
+        invoiceId,
+        name: opts.name,
+        description: opts.description,
+        schemas: headerSchemas(opts.schemas),
+      });
 
     // XRPL rail
     if (req.headers.get("PAYMENT-SIGNATURE")) {
@@ -101,8 +114,8 @@ export function dualX402(opts: DualOpts): (req: NextRequest) => Promise<Response
         req,
         prisma,
         resource: new URL(req.url).pathname, // the concrete path (matters for /mpt/{id})
-        plan: opts.plan,
-        amountRlusd: opts.amountRlusd,
+        plan,
+        amountRlusd,
         challengeDescription: opts.description.slice(0, 480),
         requirements,
         handler: async () => toHandlerResult(await opts.core(req)),
@@ -113,7 +126,7 @@ export function dualX402(opts: DualOpts): (req: NextRequest) => Promise<Response
     const res = await opts.base(req);
     if (res.status !== 402 || req.headers.get("X-PAYMENT")) return res;
 
-    const challenge = paymentRequiredChallenge(requirements(statelessInvoiceId(opts.plan)), new URL(req.url).pathname, opts.description.slice(0, 480));
+    const challenge = paymentRequiredChallenge(requirements(statelessInvoiceId(plan)), new URL(req.url).pathname, opts.description.slice(0, 480));
     const headers = new Headers(res.headers);
     headers.set("PAYMENT-REQUIRED", encodeHeader(challenge));
     headers.set("Cache-Control", "no-store");

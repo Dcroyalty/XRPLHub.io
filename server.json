@@ -2,8 +2,8 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.Dcroyalty/xrplhub",
   "title": "XRPLHub — XRPLScore & XRPL actions",
-  "description": "Free XRPL wallet scores + unsigned ready-to-sign txjson for 34 XRPL actions. You sign; no keys held.",
-  "version": "1.12.0",
+  "description": "Free XRPL scores + tx previews; pay per unsigned txjson via x402 (USDC/RLUSD). You sign; no keys.",
+  "version": "1.13.0",
   "repository": {
     "url": "https://github.com/Dcroyalty/XRPLHub.io",
     "source": "github",

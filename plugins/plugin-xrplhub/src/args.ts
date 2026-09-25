@@ -106,7 +106,8 @@ export function firstJsonObject(text: string): Record<string, unknown> | undefin
 }
 
 const PRODUCT_KEYS = ["product_id", "productId", "service", "service_id", "serviceId"];
-const RESERVED_KEYS = new Set([...PRODUCT_KEYS, ...WALLET_KEYS, "params", "parameters"]);
+const CONFIRM_KEYS = ["confirm_caution", "confirmCaution"];
+const RESERVED_KEYS = new Set([...PRODUCT_KEYS, ...WALLET_KEYS, ...CONFIRM_KEYS, "params", "parameters"]);
 const MAX_PARAMS = 30;
 const MAX_PARAM_CHARS = 2_000;
 
@@ -124,12 +125,17 @@ function primitives(src: Record<string, unknown>): Record<string, string | numbe
 export interface BuildArgs {
   productId?: string;
   params: Record<string, string | number | boolean>;
+  /** The caller says the wallet owner has read the irreversibility copy. Only ever an explicit true. */
+  confirmCaution: boolean;
 }
+
+const isTrue = (v: unknown) => v === true || v === "true";
 
 /** product_id + the service's own params, from structured parameters first, then a JSON object in the message text. */
 export function readBuildArgs(text: string, sp: Record<string, unknown>): BuildArgs {
   const fromText = firstJsonObject(text) ?? {};
   const productId = pickString(sp, PRODUCT_KEYS) ?? pickString(fromText, PRODUCT_KEYS);
+  const confirmCaution = CONFIRM_KEYS.some((k) => isTrue(sp[k]) || isTrue(fromText[k]));
 
   let nested: Record<string, unknown> | undefined;
   for (const src of [sp, fromText]) {
@@ -150,12 +156,12 @@ export function readBuildArgs(text: string, sp: Record<string, unknown>): BuildA
       }
     }
   }
-  if (nested) return { productId, params: primitives(nested) };
+  if (nested) return { productId, params: primitives(nested), confirmCaution };
 
   // No explicit `params` object: treat leftover keys as the service's params (lenient for models that flatten them).
   const loose: Record<string, unknown> = {};
   for (const src of [fromText, sp]) {
     for (const [k, v] of Object.entries(src)) if (!RESERVED_KEYS.has(k)) loose[k] = v;
   }
-  return { productId, params: primitives(loose) };
+  return { productId, params: primitives(loose), confirmCaution };
 }

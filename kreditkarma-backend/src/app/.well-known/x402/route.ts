@@ -22,7 +22,6 @@ import {
 import {
   PRICE_PER_SCORE_RLUSD,
   PRICE_PER_PRODUCT_RLUSD,
-  PRICE_PER_TX_PRODUCT_RLUSD,
   PRICE_PER_SCREEN_RLUSD,
   PRICE_PER_MPT_RLUSD,
   PRICE_PER_EXPOSURE_RLUSD,
@@ -44,6 +43,8 @@ import {
   LENDING_EXPOSURE_OUTPUT_SCHEMA,
 } from "@/lib/lendingExposure";
 import { PLANS, type PlanId } from "@/lib/plans";
+import { priceUsd } from "@/lib/pricing";
+import { SERVICE_PRICE_USD } from "@/lib/servicePrices";
 import { USDC_PLAN_OUTPUT_SCHEMA, usdcPlanOutputExample } from "@/lib/checkoutUsdc";
 import { walletProp, SCORE_OUTPUT_SCHEMA as scoreOutputSchema, SCORE_OUTPUT_EXAMPLE as scoreOutputExample } from "@/lib/scoreSchema";
 import { SCORE_SCHEMA, REPORT_SCHEMA, TX_SCHEMA } from "@/lib/x402Schemas";
@@ -274,6 +275,45 @@ function usdcUnderwriteResource(origin: string) {
   };
 }
 
+// /api/x402/tx is priced PER ACTION at the storefront price (src/lib/servicePrices.ts) on BOTH rails. A discovery entry has one
+// `amount`, so it shows the default action (checkcreate, what a bare probe is quoted); `pricing` carries the real range.
+function txPricing(origin: string) {
+  const prices = BUILDABLE_SERVICE_IDS.map((id) => SERVICE_PRICE_USD[id]).filter((n): n is number => typeof n === "number");
+  return {
+    pricing: {
+      model: "per-action storefront price (USD = RLUSD = USDC)",
+      amountShownIsFor: "productId=checkcreate",
+      minUsd: Math.min(...prices),
+      maxUsd: Math.max(...prices),
+      table: `${origin}/api/pricing`,
+    },
+    cautionTier: "Irreversible actions are refused unpaid (HTTP 409 confirmation_required, not charged) until confirmCaution=true.",
+    freePreview: "MCP tool preview_xrpl_transaction (no signable txjson)",
+  };
+}
+
+function txBaseResource(origin: string) {
+  return {
+    resource: `${origin}/api/x402/tx`,
+    method: "GET",
+    name: "Signable XRPL transaction (" + SERVICE_COUNT + " actions) — pay in USDC on Base",
+    description: TX_SCHEMA.description,
+    x402Version: 1,
+    scheme: "exact",
+    network: BASE_NETWORK,
+    asset: USDC_BASE_ASSET,
+    assetSymbol: "USDC",
+    payTo: BASE_PAY_TO,
+    maxTimeoutSeconds: 300,
+    facilitator: CDP_FACILITATOR_URL,
+    noSignup: true,
+    amount: (priceUsd("checkcreate") ?? 20).toFixed(6),
+    ...txPricing(origin),
+    inputSchema: TX_SCHEMA.input,
+    outputSchema: TX_SCHEMA.output,
+  };
+}
+
 const MPT_XRPL_DESCRIPTION =
   "Full risk view of one XLS-33 Multi-Purpose Token issuance: issuer powers (clawback, freeze, " +
   "require-auth, non-transferable) plus the issuer's XRPLScore, account age, xrp-ledger.toml-verified " +
@@ -360,11 +400,13 @@ export async function GET(req: Request) {
           name: "Prebuilt XRPL transaction (" + SERVICE_COUNT + " actions)",
           description: TX_SCHEMA.description,
           ...common,
-          amount: PRICE_PER_TX_PRODUCT_RLUSD.toFixed(6),
+          amount: (priceUsd("checkcreate") ?? 20).toFixed(6),
+          ...txPricing(origin),
           inputSchema: TX_SCHEMA.input,
           outputSchema: TX_SCHEMA.output,
           outputExample: TX_SCHEMA.outputExample,
         },
+        txBaseResource(origin),
         // XRPL twins of the four dual-rail resources (same URL as the Base entries further down; same face value).
         {
           resource: `${origin}/api/x402/usdc/mpt/{mptokenIssuanceID}`,
