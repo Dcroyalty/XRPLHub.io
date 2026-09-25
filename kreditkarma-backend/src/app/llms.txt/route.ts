@@ -31,6 +31,13 @@ export async function GET(req: Request) {
 > The wallet score is free and unauthenticated. Paid actions settle in XRP or
 > RLUSD with no account and no signup.
 
+## Signing: unsigned only (no custody)
+
+XRPLHub builds and scores; it never signs and never holds keys. Every transaction we return is unsigned txjson
+for the wallet owner (or the agent's own wallet) to sign and submit. For agent wallet creation, signing and payments
+use Ripple's XRPL AI Starter Kit (Agent Wallet and Payment skills, https://ripple.com/insights/xrpl-ai-starter-kit/)
+and pair it with XRPLHub for the built transactions and wallet scoring.
+
 ## XRPLScore (free)
 
 The score is a 300-850 number, absolute scale (like FICO, not a percentile), from

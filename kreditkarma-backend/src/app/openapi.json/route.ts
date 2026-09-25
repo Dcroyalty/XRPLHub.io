@@ -139,7 +139,8 @@ export async function GET(req: Request) {
         "Pay-per-call XRP Ledger services for AI agents, settled in RLUSD. " +
         "A 300–850 wallet creditworthiness score from 8 signals, full risk reports, and " +
         "ready-to-sign prebuilt XRPL transactions for " + SERVICE_COUNT + " actions. No account, no API key, no signup. " +
-        "A free (unauthenticated) score is also at GET /api/score/{wallet}.\n\n" +
+        "A free (unauthenticated) score is also at GET /api/score/{wallet}. UNSIGNED ONLY: XRPLHub builds transactions and " +
+        "scores wallets but never signs or holds keys; the caller signs with their own wallet.\n\n" +
         "AGENT SAFETY on /api/x402/{score,report,tx}: the on-ledger payment settles ONLY after the paid " +
         "work returns success — a handler failure returns `error: \"handler_failed\"` and does NOT charge " +
         "you (retry with the same PAYMENT-SIGNATURE within maxTimeoutSeconds). Send an `Idempotency-Key` " +

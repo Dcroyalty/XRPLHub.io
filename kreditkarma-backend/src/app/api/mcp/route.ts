@@ -59,13 +59,15 @@ const CORS = {
 // JSON-RPC surface (one source of truth for scanners like Smithery).
 export const MCP_SERVER_INFO = {
   name: 'xrplhub',
-  version: '1.11.0',
+  version: '1.12.0',
   description:
     'Free XRPL wallet creditworthiness scores · ready-to-sign txjson for ' + SERVICE_COUNT + ' XRPL actions (incl. MPT ' +
     'issuance with a plain-English flag guide + on-ledger backing declaration) · verifiable score ' +
     'credential · credential + permissioned domain explorer · MPT issuer risk + backing declarations · ' +
     'OFAC SDN screening attestation (process, not ground truth) · XLS-66 cross-broker lending exposure & ' +
-    'underwriting inputs (attested, facts only) · community micro-grants · donations',
+    'underwriting inputs (attested, facts only) · community micro-grants · donations. UNSIGNED ONLY: XRPLHub builds ' +
+    'and scores but never signs or holds keys — an agent signs with its own wallet (the Ripple XRPL AI Starter Kit ' +
+    'has Wallet and Payment skills for that).',
 };
 
 // ─── TOOL DEFINITIONS (descriptions are the marketing copy to the AI) ────────
@@ -253,8 +255,8 @@ export const TOOLS = [
     name: 'build_xrpl_transaction',
     description:
       'Get a ready-to-sign transaction JSON for any of ' + SERVICE_COUNT + ' XRPL actions — no XRPL coding. Returns the ' +
-      'exact txjson plus a safety tier; the wallet owner signs it in their own wallet (this never ' +
-      'signs for anyone). Call list_xrpl_services first for all ' + SERVICE_COUNT + ' ids and every parameter with examples. ' +
+      'exact txjson plus a safety tier; the wallet owner signs it in their own wallet (never signed by us: ' +
+      'agents use their own wallet). Call list_xrpl_services first for all ' + SERVICE_COUNT + ' ids and every parameter with examples. ' +
       'Params: product_id (required — e.g. checkcreate, escrow, trustline, nftmint, dexorder, multisig), ' +
       'wallet_address (r... signer, required), params (object, per-service). Free, no signup.',
     inputSchema: {

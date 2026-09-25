@@ -7,6 +7,7 @@ score certificates (XRPLHub's own attestation), and runs a community micro-grant
 (human-reviewed; applications currently paused).
 
 - **Live app:** https://www.xrplhub.io
+- **Unsigned only, no custody:** XRPLHub builds the exact transaction and scores wallets; it never signs or holds keys. Agents sign with their own wallet (see Ripple's [XRPL AI Starter Kit](https://ripple.com/insights/xrpl-ai-starter-kit/) Wallet and Payment skills).
 - **The wallet score is free and unauthenticated.** Paid actions settle in **XRP or RLUSD** — no account, no signup.
 - Next.js + TypeScript on Vercel · Neon Postgres (Prisma) · Xaman (XUMM) for signing.
 
