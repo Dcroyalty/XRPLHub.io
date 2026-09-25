@@ -874,7 +874,7 @@ export async function GET(req: Request) {
       "/api/x402/usdc/mpt/{issuanceId}": {
         get: {
           operationId: "mptRiskFull",
-          summary: "MPT issuance risk — full issuer detail (x402, $0.01 USDC on Base)",
+          summary: "MPT issuance risk — full issuer detail (x402, $0.01 USDC on Base or RLUSD on XRPL)",
           description:
             "Everything /api/mpt/{issuanceId} returns plus the parts that cost real live work: issuer " +
             "account age, blackhole check, xrp-ledger.toml domain verification, the full credential list, " +
@@ -894,7 +894,7 @@ export async function GET(req: Request) {
           },
           responses: {
             "200": { description: "Full risk view — see /api/mpt/{issuanceId} 200 schema plus issuerRisk.{accountAgeDays,blackholed,domain,domainVerified,credentials} and a related[] block." },
-            "402": { description: "Payment Required — x402 challenge. Pay in USDC on Base and retry with the X-PAYMENT header." },
+            "402": { description: "Payment Required — x402 challenge. Pay EITHER in USDC on Base (v1 body; retry with X-PAYMENT) OR in RLUSD on the XRP Ledger (v2: PAYMENT-REQUIRED header, network xrpl:0; retry with PAYMENT-SIGNATURE, result wrapped as { data, x402 })." },
           },
         },
       },
@@ -926,7 +926,7 @@ export async function GET(req: Request) {
       "/api/x402/screen/ofac": {
         get: {
           operationId: "x402ScreenOfac",
-          summary: "OFAC SDN screening attestation (x402, $0.01 USDC on Base)",
+          summary: "OFAC SDN screening attestation (x402, $0.01 USDC on Base or RLUSD on XRPL)",
           description:
             "The same OFAC SDN screening attestation as /api/screen/ofac, priced for agents at $0.01 per " +
             "call and settled in USDC on Base via the CDP x402 facilitator — no API key, no signup. " +
@@ -943,7 +943,7 @@ export async function GET(req: Request) {
           },
           responses: {
             "200": ok("The screening receipt.", screenOutputSchema, screenOutputExample),
-            "402": { description: "Payment Required — x402 challenge. Pay in USDC on Base and retry with the X-PAYMENT header." },
+            "402": { description: "Payment Required — x402 challenge. Pay EITHER in USDC on Base (v1 body; retry with X-PAYMENT) OR in RLUSD on the XRP Ledger (v2: PAYMENT-REQUIRED header, network xrpl:0; retry with PAYMENT-SIGNATURE, result wrapped as { data, x402 })." },
           },
         },
       },
@@ -1106,7 +1106,7 @@ export async function GET(req: Request) {
       "/api/x402/lending/exposure": {
         get: {
           operationId: "x402LendingExposure",
-          summary: "XLS-66 cross-broker lending exposure — full detail (x402, $0.01 USDC on Base)",
+          summary: "XLS-66 cross-broker lending exposure — full detail (x402, $0.01 USDC on Base or RLUSD on XRPL)",
           description:
             "Everything /api/lending/exposure returns PLUS every loan decoded (rates in bps, days-to-due / " +
             "days-overdue, flags), the per-broker first-loss context (the counterparty broker's own " +
@@ -1123,7 +1123,7 @@ export async function GET(req: Request) {
           },
           responses: {
             "200": ok("Full exposure — loans[], brokers[], vanishedLoans[], attestation.", exposureOutputSchema, {}),
-            "402": { description: "Payment Required — x402 challenge. Pay in USDC on Base and retry with the X-PAYMENT header." },
+            "402": { description: "Payment Required — x402 challenge. Pay EITHER in USDC on Base (v1 body; retry with X-PAYMENT) OR in RLUSD on the XRP Ledger (v2: PAYMENT-REQUIRED header, network xrpl:0; retry with PAYMENT-SIGNATURE, result wrapped as { data, x402 })." },
             "503": { description: "LendingProtocol (XLS-66) not yet enabled on mainnet." },
           },
         },
@@ -1132,7 +1132,7 @@ export async function GET(req: Request) {
       "/api/x402/lending/underwrite": {
         get: {
           operationId: "x402LendingUnderwrite",
-          summary: "XLS-66 underwriting inputs — full bundle (x402, $0.05 USDC on Base)",
+          summary: "XLS-66 underwriting inputs — full bundle (x402, $0.05 USDC on Base or RLUSD on XRPL)",
           description:
             "Every input a LoanBroker needs for an XLS-66 underwriting decision in one call: cross-broker " +
             "exposure (outstanding by asset, defaults, impairments), XRPLScore + grade, OFAC SDN screening " +
@@ -1151,7 +1151,7 @@ export async function GET(req: Request) {
           },
           responses: {
             "200": { description: "The bundle: exposure, score, screening (+ receipt), observation history, one attestation." },
-            "402": { description: "Payment Required — x402 challenge. Pay in USDC on Base and retry with the X-PAYMENT header." },
+            "402": { description: "Payment Required — x402 challenge. Pay EITHER in USDC on Base (v1 body; retry with X-PAYMENT) OR in RLUSD on the XRP Ledger (v2: PAYMENT-REQUIRED header, network xrpl:0; retry with PAYMENT-SIGNATURE, result wrapped as { data, x402 })." },
             "503": { description: "LendingProtocol (XLS-66) not yet enabled — body carries the live XRPLScore + OFAC screening." },
           },
         },

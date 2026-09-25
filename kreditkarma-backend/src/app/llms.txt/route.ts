@@ -78,7 +78,7 @@ and "partial" must be read as a floor, not the whole population.
 - GET ${origin}/api/mpt/anchor — free: the latest on-ledger Merkle-root anchor of the registry (BIS WP 1374 pattern) + the canonicalisation scheme, so anyone can check the registry rows we publish against the root we anchored on-ledger (proves published rows match the anchored root at a known time, not immutability — the index is mutable and re-anchored)
 - GET ${origin}/api/mpt/<48-hex MPTokenIssuanceID> — free, live: issuance facts + issuer powers + issuer score/grade + "mutability" (what the issuer can still change, incl. ImmutableFlags locks) + "confidential" (XLS-96: per-holder data reported as unavailable, never zero)
 - GET ${origin}/api/mpt/permanence — free, live: which MPT permanence regime applies right now (DynamicMPT amendment state read from the ledger) and the wording that follows
-- GET ${origin}/api/x402/usdc/mpt/<48-hex id> — $0.01 USDC on Base (x402): full issuer risk — account age, xrp-ledger.toml-verified domain, credentials held, Bithomp cross-check
+- GET ${origin}/api/x402/usdc/mpt/<48-hex id> — $0.01 USDC on Base or RLUSD on XRPL (x402): full issuer risk — account age, xrp-ledger.toml-verified domain, credentials held, Bithomp cross-check
 
 ## OFAC SDN screening attestation
 
@@ -95,7 +95,7 @@ Scope: OFAC SDN only (no EU/UK/UN, no Consolidated list, no name/alias/fuzzy
 matching, no 1-hop graph analysis). Full terms: ${origin}/legal/screening
 
 - GET ${origin}/api/screen/ofac?address=r... — API key (a free key works), metered. Returns queryId, the list {name, vintage, sha256}, result {listed, matches[]}, a one-sentence factual statement, the canonical leaf, and the disclaimer.
-- GET ${origin}/api/x402/screen/ofac?address=r... — $0.01 USDC on Base (x402), no key, no signup. Same receipt.
+- GET ${origin}/api/x402/screen/ofac?address=r... — $0.01 USDC on Base or RLUSD on XRPL (x402), no key, no signup. Same receipt.
 - GET ${origin}/api/attest/verify?queryId=<uuid> — free: the receipt + Merkle inclusion proof + anchor tx hash + ledger close time + list hash. Verify without trusting XRPLHub. Add &include=snapshot for the full canonical list archive.
 - GET ${origin}/api/attest/anchor — free: the frozen ofac-screen-v1 canonicalisation spec, the sanction-screen-v1 engine rules + version-bump policy, the current SDN snapshot, and the latest on-ledger anchor.
 - engineVersion "sanction-screen-v1" is immutable per receipt — it changes only if the match algorithm changes (normalisation, match rule, extracted idTypes, source lists, snapshot selection). A newer SDN snapshot is a new vintage, not a version bump.
@@ -127,8 +127,8 @@ Amendments object, no redeploy. Not underwriting or credit advice.
 - GET ${origin}/api/lending/exposure?borrower=r... — API key (a free key works): the aggregate + observation summary. Persists a snapshot every call.
 - GET ${origin}/api/lending/history?borrower=r... — API key: every loan ever observed for this borrower, first/last observed, last-known status, ever-defaulted/impaired flags, and the ledger window in which any vanished loan disappeared. Carries a sweepCoverage block: when this borrower was last swept, which pass, and any gaps in the observation window (honest about what we did and didn't see).
 - A daily cron sweep re-observes EVERY borrower we've ever seen so the attested history has no gaps where nobody happened to run a paid query. Borrowers with active or impaired loans are swept first (their evidence is the most likely to be deleted). A sweep observation is byte-identical in the attested record to a paid one.
-- GET ${origin}/api/x402/lending/exposure?borrower=r... — $0.01 USDC on Base (x402), no key: adds every loan decoded, per-broker first-loss context (DebtTotal / CoverAvailable), vanished-loan detail, and the attestation receipt.
-- GET ${origin}/api/x402/lending/underwrite?borrower=r... — $0.05 USDC on Base (x402), no key, no free tier: the full underwriting-inputs bundle for a LoanBroker — cross-broker exposure + XRPLScore + OFAC SDN screening (with its own receipt) + observation history/gaps + ONE attestation over the whole bundle. FACTS ONLY: no recommended principal, rate, approve/decline, or probability of default. The broker decides. Amendment-gated (503 with the live XRPLScore + OFAC result until XLS-66 enables).
+- GET ${origin}/api/x402/lending/exposure?borrower=r... — $0.01 USDC on Base or RLUSD on XRPL (x402), no key: adds every loan decoded, per-broker first-loss context (DebtTotal / CoverAvailable), vanished-loan detail, and the attestation receipt.
+- GET ${origin}/api/x402/lending/underwrite?borrower=r... — $0.05 USDC on Base or RLUSD on XRPL (x402), no key, no free tier: the full underwriting-inputs bundle for a LoanBroker — cross-broker exposure + XRPLScore + OFAC SDN screening (with its own receipt) + observation history/gaps + ONE attestation over the whole bundle. FACTS ONLY: no recommended principal, rate, approve/decline, or probability of default. The broker decides. Amendment-gated (503 with the live XRPLScore + OFAC result until XLS-66 enables).
 - GET ${origin}/api/attest/verify?queryId=<uuid> — free: the exposure snapshot + Merkle inclusion proof + on-ledger anchor tx. The leaf commits to visibleLoanIds, so a loan later deleted is still provably attested to have existed.
 
 ## Continuous monitoring (API key; a free key works)
@@ -184,6 +184,11 @@ x402 pay-per-call (USDC on Base, CDP facilitator, no signup):
 - GET ${origin}/api/x402/screen/ofac?address=r... — OFAC SDN screening attestation, $0.01 (process not ground truth; see the screening section above)
 - GET ${origin}/api/x402/lending/exposure?borrower=r... — XLS-66 cross-broker lending exposure, full detail + attestation, $0.01 (503 until XLS-66 activates; see the lending section above)
 - GET ${origin}/api/x402/lending/underwrite?borrower=r... — full underwriting-inputs bundle, $0.05, facts only, no recommendation (503 until XLS-66 activates)
+
+The mpt, screen/ofac, lending/exposure and lending/underwrite routes above are payable on EITHER rail at the same face value: USDC on Base
+(X-PAYMENT header) or RLUSD on the XRP Ledger via the t54 facilitator (x402 v2: the 402 response carries a PAYMENT-REQUIRED header with
+network "xrpl:0"; retry with a PAYMENT-SIGNATURE header). On the XRPL rail the response is wrapped as { data, x402 } and you are only
+charged after the result is produced. /api/x402/usdc/score has an XRPL twin at /api/x402/score (RLUSD, $0.02).
 
 ## B2B API (prepaid key, 30-day term)
 

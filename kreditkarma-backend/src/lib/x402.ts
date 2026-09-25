@@ -115,6 +115,7 @@ export const X402_ERROR_CODES = {
   handler_failed: "The paid work failed AFTER verification but BEFORE settlement. You were NOT charged. Retry with the same PAYMENT-SIGNATURE within maxTimeoutSeconds, or fetch a new challenge.",
   account_not_found: "The wallet is not an activated account on XRPL mainnet. You were NOT charged.",
   xrpl_unavailable: "One or more XRPL calls could not be read (rate-limit / timeout / upstream error). No result was produced and you were NOT charged. Retry shortly — see `message` for which calls failed.",
+  amendment_not_active: "The XRPL amendment this data depends on (XLS-66 LendingProtocol) is not enabled on mainnet yet. You were NOT charged; any facts that are available are in `details`. The route starts serving on activation with no redeploy.",
   settlement_failed: "The result was computed and is returned, but on-ledger settlement FAILED (after one inline retry): no payment was collected and none will be retried automatically. The response says x402.success:false and x402.settled:false. You were NOT charged.",
   idempotent_replay: "This Idempotency-Key (or invoiceId) was already processed — the original response is returned unchanged.",
   request_in_progress: "A request with this Idempotency-Key (or invoiceId) is still being processed. Retry shortly.",
@@ -277,7 +278,7 @@ export async function recordPaidInvoice(
 
 export type HandlerResult =
   | { ok: true; data: unknown }
-  | { ok: false; code: X402ErrorCode; status: number; message: string };
+  | { ok: false; code: X402ErrorCode; status: number; message: string; details?: unknown };
 
 export interface ServeX402Opts {
   req: Request;
@@ -382,7 +383,7 @@ export async function serveX402Paid(opts: ServeX402Opts): Promise<NextResponse> 
     const h = await opts.handler();
     if (!h.ok) {
       return finish(
-        { error: h.code, message: h.message, settled: false, retry: X402_ERROR_CODES.handler_failed },
+        { error: h.code, message: h.message, settled: false, retry: X402_ERROR_CODES.handler_failed, ...(h.details !== undefined ? { details: h.details } : {}) },
         h.status, false, null
       );
     }

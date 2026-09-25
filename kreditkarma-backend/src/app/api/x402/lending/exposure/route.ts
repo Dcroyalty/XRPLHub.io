@@ -15,11 +15,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { withX402 } from "x402-next";
 import { createHash } from "crypto";
 import { BASE_PAY_TO, BASE_NETWORK, PRICE_PER_EXPOSURE_USDC, cdpFacilitator } from "@/lib/x402Base";
+import { dualX402 } from "@/lib/x402Dual";
+import { PRICE_PER_EXPOSURE_RLUSD } from "@/lib/paycall";
 import { prisma } from "@/lib/xrplscore-db";
 import {
   runExposureQuery,
   isValidXrplAddress,
   LENDING_EXPOSURE_DESCRIPTION,
+  LENDING_EXPOSURE_INPUT_SCHEMA,
   LENDING_EXPOSURE_OUTPUT_SCHEMA,
 } from "@/lib/lendingExposure";
 import { LENDING_PROTOCOL_AMENDMENT_ID } from "@/lib/lendingLedger";
@@ -36,7 +39,8 @@ const handler = async (req: NextRequest): Promise<NextResponse<unknown>> => {
     return NextResponse.json({ error: "bad_request", message: "Provide a valid XRPL address: ?borrower=r..." }, { status: 400 });
   }
 
-  const pay = req.headers.get("x-payment") ?? "";
+  // Base rail pays with X-PAYMENT, the XRPL rail with PAYMENT-SIGNATURE (src/lib/x402Dual.ts).
+  const pay = req.headers.get("x-payment") ?? req.headers.get("payment-signature") ?? "";
   const payId = pay ? createHash("sha256").update(pay).digest("hex").slice(0, 16) : "base-usdc";
 
   try {
@@ -119,7 +123,7 @@ const paidGET = withX402(
 // A MISTYPED address is refused BEFORE the payment challenge: no 402 to pay against, no receipt, no attestation, no charge.
 // A bare request (no address) still gets the 402 challenge, so x402 discovery crawlers can index the route.
 // (The handler above re-checks it too; that check alone runs only after the payment was verified.)
-export const GET = async (req: NextRequest) => {
+const refuse = (req: NextRequest): Response | null => {
   const supplied = (req.nextUrl.searchParams.get("borrower") ?? "").trim();
   if (supplied && !isValidXrplAddress(supplied)) {
     return NextResponse.json(
@@ -127,5 +131,22 @@ export const GET = async (req: NextRequest) => {
       { status: 400 }
     );
   }
-  return paidGET(req);
+  return null;
 };
+
+// Payable on BOTH rails at the same price: USDC on Base (X-PAYMENT, CDP) or RLUSD on XRPL (PAYMENT-SIGNATURE, t54).
+export const GET = dualX402({
+  resource: "/api/x402/lending/exposure",
+  plan: "x402:lending-exposure",
+  amountRlusd: PRICE_PER_EXPOSURE_RLUSD,
+  amountUsdc: PRICE_PER_EXPOSURE_USDC,
+  name: "XLS-66 cross-broker lending exposure (full)",
+  description: LENDING_EXPOSURE_DESCRIPTION,
+  schemas: {
+    input: { type: "object", properties: { borrower: LENDING_EXPOSURE_INPUT_SCHEMA.properties.borrower }, required: ["borrower"] },
+    output: LENDING_EXPOSURE_OUTPUT_SCHEMA,
+  },
+  base: paidGET,
+  core: handler,
+  refuse,
+});

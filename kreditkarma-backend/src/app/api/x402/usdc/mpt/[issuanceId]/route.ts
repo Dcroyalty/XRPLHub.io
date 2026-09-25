@@ -12,6 +12,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { withX402 } from "x402-next";
 import { BASE_PAY_TO, BASE_NETWORK, PRICE_PER_MPT_USDC, cdpFacilitator } from "@/lib/x402Base";
 import { getMptRisk, MPT_ISSUANCE_ID_RE } from "@/lib/mpt";
+import { dualX402 } from "@/lib/x402Dual";
+import { PRICE_PER_MPT_RLUSD } from "@/lib/paycall";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -87,19 +89,21 @@ const handler = async (req: NextRequest): Promise<NextResponse<unknown>> => {
   }
 };
 
-export const GET = withX402(
+const MPT_DESCRIPTION =
+  "Full risk view of one XLS-33 Multi-Purpose Token issuance: what the issuer can do to a holder " +
+  "(clawback, freeze, require-auth, non-transferable) plus the issuer's XRPLScore, account age, " +
+  "xrp-ledger.toml-verified domain, and credentials held. Live reads, cross-checked against " +
+  "Bithomp. An issuance not found returns 'unknown', never 'does not exist'. Path: the 48-hex " +
+  "MPTokenIssuanceID. The free /api/mpt/{id} gives issuance facts + powers + issuer score only.";
+
+const paidGET = withX402(
   handler,
   BASE_PAY_TO,
   {
     price: `$${PRICE_PER_MPT_USDC}`,
     network: BASE_NETWORK,
     config: {
-      description:
-        "Full risk view of one XLS-33 Multi-Purpose Token issuance: what the issuer can do to a holder " +
-        "(clawback, freeze, require-auth, non-transferable) plus the issuer's XRPLScore, account age, " +
-        "xrp-ledger.toml-verified domain, and credentials held. Live reads, cross-checked against " +
-        "Bithomp. An issuance not found returns 'unknown', never 'does not exist'. Path: the 48-hex " +
-        "MPTokenIssuanceID. The free /api/mpt/{id} gives issuance facts + powers + issuer score only.",
+      description: MPT_DESCRIPTION,
       mimeType: "application/json",
       discoverable: true,
       outputSchema: MPT_RISK_OUTPUT_SCHEMA,
@@ -107,3 +111,31 @@ export const GET = withX402(
   },
   cdpFacilitator
 );
+
+// Payable on BOTH rails at the same price: USDC on Base (X-PAYMENT, CDP) or RLUSD on XRPL (PAYMENT-SIGNATURE, t54).
+// The path keeps its historical "usdc" segment so existing Base clients and listings keep working. No pre-challenge
+// refusal here on purpose: a discovery crawler probes the literal {mptokenIssuanceID} template and must still get the 402.
+export const GET = dualX402({
+  resource: "/api/x402/usdc/mpt/{mptokenIssuanceID}",
+  plan: "x402:mpt-risk",
+  amountRlusd: PRICE_PER_MPT_RLUSD,
+  amountUsdc: PRICE_PER_MPT_USDC,
+  name: "MPT issuer risk (full)",
+  description: MPT_DESCRIPTION,
+  schemas: {
+    input: {
+      type: "object",
+      properties: {
+        mptokenIssuanceID: {
+          type: "string",
+          pattern: "^[0-9A-Fa-f]{48}$",
+          description: "The MPTokenIssuanceID — 48 hex chars (XLS-33 192-bit id). Passed as the last URL path segment.",
+        },
+      },
+      required: ["mptokenIssuanceID"],
+    },
+    output: MPT_RISK_OUTPUT_SCHEMA,
+  },
+  base: paidGET,
+  core: handler,
+});

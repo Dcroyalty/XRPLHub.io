@@ -1,9 +1,13 @@
 // src/app/.well-known/x402/route.ts
 // Machine-readable x402 discovery document.
-// Advertises the THREE standard (PAYMENT-REQUIRED header) endpoints so
+// Advertises every XRPL-native (PAYMENT-REQUIRED header, network xrpl:0) endpoint so
 // xrpl-ai.org / x402scan auto-discovery finds and lists all of them — each with
 // an inputSchema (every query param, its values, an example) and an
 // outputSchema + outputExample so a crawler knows exactly what it gets back.
+// Seven resources are XRPL-native: score, report, tx (XRPL only) and the four that are payable on BOTH rails
+// (mpt, screen/ofac, lending/exposure, lending/underwrite — see src/lib/x402Dual.ts). The dual ones appear twice:
+// once as the Base/USDC entry and once as the XRPL/RLUSD entry, for the SAME URL. The plan-purchase resources
+// (checkout/usdc/*) stay Base-only, and usdc/score's XRPL twin is /api/x402/score.
 
 import { NextResponse } from "next/server";
 import {
@@ -19,6 +23,10 @@ import {
   PRICE_PER_SCORE_RLUSD,
   PRICE_PER_PRODUCT_RLUSD,
   PRICE_PER_TX_PRODUCT_RLUSD,
+  PRICE_PER_SCREEN_RLUSD,
+  PRICE_PER_MPT_RLUSD,
+  PRICE_PER_EXPOSURE_RLUSD,
+  PRICE_PER_UNDERWRITE_RLUSD,
   TREASURY_ADDRESS,
 } from "@/lib/paycall";
 import { BUILDABLE_SERVICE_IDS, SERVICE_COUNT } from "@/app/api/execute/serviceCatalog";
@@ -108,6 +116,7 @@ function usdcScoreResource(origin: string) {
     facilitator: CDP_FACILITATOR_URL,
     noSignup: true,
     amount: PRICE_PER_SCORE_USDC.toFixed(6),
+    xrplEquivalent: "https://www.xrplhub.io/api/x402/score (same score, RLUSD on the XRP Ledger, $0.02)",
     inputSchema: {
       type: "object",
       properties: { wallet: walletProp },
@@ -265,6 +274,31 @@ function usdcUnderwriteResource(origin: string) {
   };
 }
 
+const MPT_XRPL_DESCRIPTION =
+  "Full risk view of one XLS-33 Multi-Purpose Token issuance: issuer powers (clawback, freeze, " +
+  "require-auth, non-transferable) plus the issuer's XRPLScore, account age, xrp-ledger.toml-verified " +
+  "domain, and credentials held. Live reads, cross-checked against Bithomp. Not found returns " +
+  "'unknown', never 'does not exist'. Path segment: the 48-hex MPTokenIssuanceID.";
+
+const UNDERWRITE_XRPL_DESCRIPTION =
+  "Every input a LoanBroker needs for an XLS-66 underwriting decision in one call: cross-broker exposure, " +
+  "XRPLScore + grade, OFAC SDN screening with its own receipt, observation history + gaps, and one " +
+  "Merkle-anchored attestation over the whole bundle. FACTS ONLY — no recommended principal, rate, " +
+  "approve/decline, or probability of default. The broker decides. Not lending or underwriting advice.";
+
+const MPT_INPUT_SCHEMA = {
+  type: "object",
+  properties: {
+    mptokenIssuanceID: {
+      type: "string",
+      pattern: "^[0-9A-Fa-f]{48}$",
+      description: "The MPTokenIssuanceID — 48 hex chars (XLS-33 192-bit id). Passed as the last URL path segment.",
+      example: "0641C7D1F9C6BB3B75EA31B353A54E2EFAC423498EF25045",
+    },
+  },
+  required: ["mptokenIssuanceID"],
+};
+
 export async function GET(req: Request) {
   const origin = new URL(req.url).origin;
   const asset = {
@@ -331,6 +365,72 @@ export async function GET(req: Request) {
           outputSchema: TX_SCHEMA.output,
           outputExample: TX_SCHEMA.outputExample,
         },
+        // XRPL twins of the four dual-rail resources (same URL as the Base entries further down; same face value).
+        {
+          resource: `${origin}/api/x402/usdc/mpt/{mptokenIssuanceID}`,
+          method: "GET",
+          name: "MPT issuer risk (full)",
+          description: MPT_XRPL_DESCRIPTION,
+          ...common,
+          amount: PRICE_PER_MPT_RLUSD.toFixed(6),
+          inputSchema: MPT_INPUT_SCHEMA,
+        },
+        {
+          resource: `${origin}/api/x402/screen/ofac`,
+          method: "GET",
+          name: "OFAC SDN screening attestation",
+          description: SCREEN_OFAC_DESCRIPTION,
+          ...common,
+          amount: PRICE_PER_SCREEN_RLUSD.toFixed(6),
+          inputSchema: {
+            type: "object",
+            properties: { address: SCREEN_OFAC_INPUT_SCHEMA.properties.address },
+            required: ["address"],
+            description: "?address=<r-address> query parameter.",
+          },
+          outputSchema: SCREEN_OFAC_OUTPUT_SCHEMA,
+          outputExample: SCREEN_OFAC_OUTPUT_EXAMPLE,
+          attestsProcessNotGroundTruth: true,
+          verify: `${origin}/api/attest/verify?queryId={queryId}`,
+          terms: `${origin}/legal/screening`,
+        },
+        {
+          resource: `${origin}/api/x402/lending/exposure`,
+          method: "GET",
+          name: "XLS-66 cross-broker lending exposure (full)",
+          description: LENDING_EXPOSURE_DESCRIPTION,
+          ...common,
+          amount: PRICE_PER_EXPOSURE_RLUSD.toFixed(6),
+          inputSchema: {
+            type: "object",
+            properties: { borrower: LENDING_EXPOSURE_INPUT_SCHEMA.properties.borrower },
+            required: ["borrower"],
+            description: "?borrower=<r-address> query parameter.",
+          },
+          outputSchema: LENDING_EXPOSURE_OUTPUT_SCHEMA,
+          attestsObservedStateNotCompleteHistory: true,
+          amendmentGated: "LendingProtocol (XLS-66) — returns 503 (error amendment_not_active, not charged) until enabled on mainnet",
+          verify: `${origin}/api/attest/verify?queryId={queryId}`,
+        },
+        {
+          resource: `${origin}/api/x402/lending/underwrite`,
+          method: "GET",
+          name: "XLS-66 underwriting inputs (full bundle)",
+          description: UNDERWRITE_XRPL_DESCRIPTION,
+          ...common,
+          amount: PRICE_PER_UNDERWRITE_RLUSD.toFixed(6),
+          inputSchema: {
+            type: "object",
+            properties: {
+              borrower: { type: "string", pattern: "^r[1-9A-HJ-NP-Za-km-z]{24,34}$", description: "the borrower's XRPL address" },
+            },
+            required: ["borrower"],
+          },
+          factsOnlyNoRecommendation: true,
+          amendmentGated: "LendingProtocol (XLS-66) — 503 (error amendment_not_active, not charged) until enabled on mainnet",
+          verify: `${origin}/api/attest/verify?queryId={queryId}`,
+          disclaimer: UNDERWRITE_DISCLAIMER,
+        },
         usdcScoreResource(origin),
         usdcMptResource(origin),
         usdcScreenResource(origin),
@@ -371,7 +471,7 @@ export async function GET(req: Request) {
       // routes. `error` is always one of these keys; the value describes it.
       errorCodes: X402_ERROR_CODES,
       guarantees: {
-        settlement: "On /api/x402/{score,report,tx}: the on-ledger payment settles ONLY after the paid work returns success. A handler failure returns error:handler_failed and does NOT charge you — retry with the same PAYMENT-SIGNATURE within maxTimeoutSeconds.",
+        settlement: "On /api/x402/{score,report,tx} and on the XRPL rail of the dual-rail routes (mpt, screen/ofac, lending/exposure, lending/underwrite): the on-ledger payment settles ONLY after the paid work returns success. A handler failure returns error:handler_failed and does NOT charge you — retry with the same PAYMENT-SIGNATURE within maxTimeoutSeconds.",
         idempotency: "Send an Idempotency-Key header (or rely on the payment's invoiceId). A retried request replays the original response — you can never pay twice.",
       },
     },

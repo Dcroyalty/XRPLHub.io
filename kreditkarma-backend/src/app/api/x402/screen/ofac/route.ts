@@ -13,6 +13,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { withX402 } from "x402-next";
 import { createHash } from "crypto";
 import { BASE_PAY_TO, BASE_NETWORK, PRICE_PER_SCREEN_USDC, cdpFacilitator } from "@/lib/x402Base";
+import { dualX402 } from "@/lib/x402Dual";
+import { PRICE_PER_SCREEN_RLUSD } from "@/lib/paycall";
 import { prisma } from "@/lib/xrplscore-db";
 import { isValidXrplAddress } from "@/lib/engine";
 import {
@@ -20,7 +22,9 @@ import {
   NoSnapshotError,
   SCREEN_DISCLAIMER_SHORT,
   SCREEN_OFAC_DESCRIPTION,
+  SCREEN_OFAC_INPUT_SCHEMA,
   SCREEN_OFAC_OUTPUT_SCHEMA,
+  SCREEN_OFAC_OUTPUT_EXAMPLE,
 } from "@/lib/screen";
 import { SCREEN_CANON_VERSION } from "@/lib/screenCanon";
 
@@ -93,7 +97,7 @@ const paidGET = withX402(
 // A MISTYPED address is refused BEFORE the payment challenge: no 402 to pay against, no receipt, no attestation, no charge.
 // A bare request (no address) still gets the 402 challenge, so x402 discovery crawlers can index the route.
 // (The handler above re-checks it too; that check alone runs only after the payment was verified.)
-export const GET = async (req: NextRequest) => {
+const refuse = (req: NextRequest): Response | null => {
   const supplied = (req.nextUrl.searchParams.get("address") ?? "").trim();
   if (supplied && !isValidXrplAddress(supplied)) {
     return NextResponse.json(
@@ -101,5 +105,24 @@ export const GET = async (req: NextRequest) => {
       { status: 400 }
     );
   }
-  return paidGET(req);
+  return null;
 };
+
+// Payable on BOTH rails at the same price: USDC on Base (X-PAYMENT, CDP) or RLUSD on XRPL (PAYMENT-SIGNATURE, t54).
+// The XRPL rail runs this same handler; see src/lib/x402Dual.ts.
+export const GET = dualX402({
+  resource: "/api/x402/screen/ofac",
+  plan: "x402:screen-ofac",
+  amountRlusd: PRICE_PER_SCREEN_RLUSD,
+  amountUsdc: PRICE_PER_SCREEN_USDC,
+  name: "OFAC SDN screening attestation",
+  description: SCREEN_OFAC_DESCRIPTION,
+  schemas: {
+    input: { type: "object", properties: { address: SCREEN_OFAC_INPUT_SCHEMA.properties.address }, required: ["address"] },
+    output: SCREEN_OFAC_OUTPUT_SCHEMA,
+    outputExample: SCREEN_OFAC_OUTPUT_EXAMPLE,
+  },
+  base: paidGET,
+  core: handler,
+  refuse,
+});
