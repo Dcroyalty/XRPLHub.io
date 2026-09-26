@@ -9,18 +9,18 @@ datasource db {
 }
 
 model LedgerScore {
-  id            String         @id @default(cuid())
-  address       String         @unique
-  score         Int            // 300–850
-  tier          String         // Building / Fair / Good / Excellent / Exceptional
-  breakdown     String         // JSON: the 8 signal scores
-  rawData       String         // JSON: XrplScoreDetails snapshot
-  resultJson    String?        // JSON: the FULL XrplScoreResult — the 15-min display cache payload
-  scoredAt      DateTime?      // when resultJson's RPC data was fetched (the cache freshness clock)
-  calculatedAt  DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+  id           String    @id @default(cuid())
+  address      String    @unique
+  score        Int // 300–850
+  tier         String // Building / Fair / Good / Excellent / Exceptional
+  breakdown    String // JSON: the 8 signal scores
+  rawData      String // JSON: XrplScoreDetails snapshot
+  resultJson   String? // JSON: the FULL XrplScoreResult — the 15-min display cache payload
+  scoredAt     DateTime? // when resultJson's RPC data was fetched (the cache freshness clock)
+  calculatedAt DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
-  grants        GrantRequest[]
+  grants GrantRequest[]
 
   @@index([address])
 }
@@ -31,7 +31,7 @@ model LedgerScore {
 model XrplFactCache {
   address       String   @id
   firstTxLedger Int?
-  firstTxDate   Int?     // Ripple-epoch seconds
+  firstTxDate   Int? // Ripple-epoch seconds
   firstSeenAt   DateTime @default(now())
 }
 
@@ -49,51 +49,51 @@ model XrplCallStat {
 
 // ─── NEW: every individual score check, for progress-over-time tracking ──────
 model ScoreHistory {
-  id          String   @id @default(cuid())
-  address     String
-  score       Int      // 300–850
-  tier        String   // Building / Fair / Good / Excellent / Exceptional
-  percentile  Int?     // peer percentile at time of check
-  breakdown   String?  // JSON snapshot of the 8 signals
-  checkedAt   DateTime @default(now())
+  id         String   @id @default(cuid())
+  address    String
+  score      Int // 300–850
+  tier       String // Building / Fair / Good / Excellent / Exceptional
+  percentile Int? // peer percentile at time of check
+  breakdown  String? // JSON snapshot of the 8 signals
+  checkedAt  DateTime @default(now())
 
   @@index([address])
   @@index([checkedAt])
 }
 
 model GrantRequest {
-  id                String        @id @default(cuid())
-  walletAddress     String
-  category          String        // RENT / UTILITIES / GROCERIES / MEDICAL / OTHER
-  amountRequested   Float         // in USD equivalent
-  currency          String        @default("RLUSD")
-  description       String
-  urgency           String        // LOW / MEDIUM / HIGH / EMERGENCY
+  id              String @id @default(cuid())
+  walletAddress   String
+  category        String // RENT / UTILITIES / GROCERIES / MEDICAL / OTHER
+  amountRequested Float // in USD equivalent
+  currency        String @default("RLUSD")
+  description     String
+  urgency         String // LOW / MEDIUM / HIGH / EMERGENCY
 
   // Legacy review columns from a discontinued automated triage. Nothing writes them any more; they stay so historical
   // rows remain readable. Grants are reviewed and decided by a person.
-  aiScore           Float?
-  aiReasoning       String?
-  riskFlags         String?       // JSON array of flags
-  approvedAmount    Float?
+  aiScore        Float?
+  aiReasoning    String?
+  riskFlags      String? // JSON array of flags
+  approvedAmount Float?
 
   // Status lifecycle
-  status            String        @default("PENDING")   // PENDING → REVIEWING → APPROVED / REJECTED → PAID / FAILED
+  status String @default("PENDING") // PENDING → REVIEWING → APPROVED / REJECTED → PAID / FAILED
 
   // Payout
-  txHash            String?
-  paidAt            DateTime?
-  paidAmount        Float?
+  txHash     String?
+  paidAt     DateTime?
+  paidAmount Float?
 
   // Scoring context
-  ledgerScoreId     String?
-  ledgerScore       LedgerScore?  @relation(fields: [ledgerScoreId], references: [id])
-  scoreSnapshot     Int?
-  reviewedBy        String?       // admin address (historical rows may hold a legacy value)
-  rejectionReason   String?
+  ledgerScoreId   String?
+  ledgerScore     LedgerScore? @relation(fields: [ledgerScoreId], references: [id])
+  scoreSnapshot   Int?
+  reviewedBy      String? // admin address (historical rows may hold a legacy value)
+  rejectionReason String?
 
-  createdAt         DateTime      @default(now())
-  updatedAt         DateTime      @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([walletAddress])
   @@index([status])
@@ -101,22 +101,22 @@ model GrantRequest {
 }
 
 model ScoreCredential {
-  id            String    @id @default(cuid())
-  certId        String    @unique
+  id            String   @id @default(cuid())
+  certId        String   @unique
   walletAddress String
   score         Int
   grade         String
   percentile    Int?
   signature     String
-  issuedAt      DateTime  @default(now())
+  issuedAt      DateTime @default(now())
   expiresAt     DateTime
   amountPaid    String
-  currency      String    @default("XRP")
-  txHash        String?   @unique
+  currency      String   @default("XRP")
+  txHash        String?  @unique
   paymentUuid   String?
-  status        String    @default("PENDING")
-  revoked       Boolean   @default(false)
-  verifyCount   Int       @default(0)
+  status        String   @default("PENDING")
+  revoked       Boolean  @default(false)
+  verifyCount   Int      @default(0)
 
   @@index([walletAddress])
   @@index([certId])
@@ -144,7 +144,7 @@ model Donation {
   id          String   @id @default(cuid())
   fromAddress String
   amount      Float
-  currency    String   // XRP or RLUSD
+  currency    String // XRP or RLUSD
   txHash      String   @unique
   message     String?
   createdAt   DateTime @default(now())
@@ -155,7 +155,7 @@ model AdminLog {
   action    String
   actor     String
   target    String?
-  details   String?  // JSON
+  details   String? // JSON
   createdAt DateTime @default(now())
 }
 
@@ -168,13 +168,13 @@ model AdminLog {
 // -------- API keys ---------------------------------------------------------
 model ApiKey {
   id          String        @id @default(cuid())
-  keyPrefix   String        @unique              // first 16 chars, indexed lookup
-  keyHash     String                              // sha256 of full key; raw never stored
+  keyPrefix   String        @unique // first 16 chars, indexed lookup
+  keyHash     String // sha256 of full key; raw never stored
   name        String?
-  plan        String        @default("free")      // "free" | "starter" | "growth" | "scale"
+  plan        String        @default("free") // "free" | "starter" | "growth" | "scale"
   active      Boolean       @default(true)
-  expiresAt   DateTime?                            // paid keys: paidAt + PLAN_KEY_TTL_DAYS. null = never expires (free + admin keys)
-  ownerWallet String?       @unique               // set only for self-serve free keys — one per XRPL wallet
+  expiresAt   DateTime? // paid keys: paidAt + PLAN_KEY_TTL_DAYS. null = never expires (free + admin keys)
+  ownerWallet String?       @unique // set only for self-serve free keys — one per XRPL wallet
   createdAt   DateTime      @default(now())
   lastUsedAt  DateTime?
   usage       UsageRecord[]
@@ -187,8 +187,8 @@ model ApiKey {
 model FreeKeySignup {
   id        String   @id @default(cuid())
   ip        String
-  wallet    String?                              // set on a successful claim
-  step      String                               // "start" (SignIn payload created) | "claim" (key issued)
+  wallet    String? // set on a successful claim
+  step      String // "start" (SignIn payload created) | "claim" (key issued)
   createdAt DateTime @default(now())
 
   @@index([ip, createdAt])
@@ -200,7 +200,7 @@ model FreeKeySignup {
 // challenge is a free-key farm.
 model SignInChallenge {
   id         String    @id @default(cuid())
-  hex        String    @unique               // 32 random bytes, hex — what the wallet signs
+  hex        String    @unique // 32 random bytes, hex — what the wallet signs
   ip         String
   createdAt  DateTime  @default(now())
   consumedAt DateTime?
@@ -214,16 +214,16 @@ model SignInChallenge {
 // retrying agent that isn't sure its first call landed gets the SAME stored
 // response back instead of paying again. See src/lib/x402.ts serveX402Paid().
 model X402PaidRequest {
-  key         String    @id                 // Idempotency-Key header, else the payload invoiceId
-  resource    String                        // "/api/x402/score" etc.
-  invoiceId   String
-  status      String    @default("in_progress") // in_progress | completed | failed
-  settled     Boolean   @default(false)
-  txHash      String?
-  responseJson Json?                         // the exact success body to replay
-  httpStatus  Int?
-  createdAt   DateTime  @default(now())
-  completedAt DateTime?
+  key          String    @id // Idempotency-Key header, else the payload invoiceId
+  resource     String // "/api/x402/score" etc.
+  invoiceId    String
+  status       String    @default("in_progress") // in_progress | completed | failed
+  settled      Boolean   @default(false)
+  txHash       String?
+  responseJson Json? // the exact success body to replay
+  httpStatus   Int?
+  createdAt    DateTime  @default(now())
+  completedAt  DateTime?
 
   @@index([createdAt])
 }
@@ -233,32 +233,32 @@ model UsageRecord {
   id        String   @id @default(cuid())
   apiKeyId  String
   apiKey    ApiKey   @relation(fields: [apiKeyId], references: [id], onDelete: Cascade)
-  endpoint  String                               // "score", etc.
-  windowKey String                               // month bucket, e.g. "2026-08"
-  overage   Boolean  @default(false)             // true = billable overage call
+  endpoint  String // "score", etc.
+  windowKey String // month bucket, e.g. "2026-08"
+  overage   Boolean  @default(false) // true = billable overage call
   createdAt DateTime @default(now())
 
-  @@index([apiKeyId, createdAt])                  // per-minute rate limit
-  @@index([apiKeyId, windowKey])                  // monthly quota + billing
+  @@index([apiKeyId, createdAt]) // per-minute rate limit
+  @@index([apiKeyId, windowKey]) // monthly quota + billing
 }
 
 // -------- Checkout invoices -------------------------------------------------
 model Invoice {
   id             String    @id @default(cuid())
-  plan           String                            // plan being purchased
-  amountRlusd    Decimal   @db.Decimal(20, 6)      // USD-denominated price (always set)
-  currency       String    @default("RLUSD")       // RLUSD | XRP — what the buyer pays in
-  amountXrp      Decimal?  @db.Decimal(20, 6)      // exact XRP to charge (XRP invoices)
-  xrpUsdRate     Decimal?  @db.Decimal(20, 6)      // XRP/USD rate locked at quote time
-  destinationTag Int       @unique                 // 32-bit; one per invoice
-  status         String    @default("pending")     // pending | paid | expired
-  txHash         String?                            // set when matched on-ledger
-  deliveredRlusd Decimal?  @db.Decimal(20, 6)      // RLUSD that actually arrived
-  deliveredXrp   Decimal?  @db.Decimal(20, 6)      // XRP that actually arrived
+  plan           String // plan being purchased
+  amountRlusd    Decimal   @db.Decimal(20, 6) // USD-denominated price (always set)
+  currency       String    @default("RLUSD") // RLUSD | XRP — what the buyer pays in
+  amountXrp      Decimal?  @db.Decimal(20, 6) // exact XRP to charge (XRP invoices)
+  xrpUsdRate     Decimal?  @db.Decimal(20, 6) // XRP/USD rate locked at quote time
+  destinationTag Int       @unique // 32-bit; one per invoice
+  status         String    @default("pending") // pending | paid | expired
+  txHash         String? // set when matched on-ledger
+  deliveredRlusd Decimal?  @db.Decimal(20, 6) // RLUSD that actually arrived
+  deliveredXrp   Decimal?  @db.Decimal(20, 6) // XRP that actually arrived
   paidAt         DateTime?
   createdAt      DateTime  @default(now())
   expiresAt      DateTime
-  apiKeyId       String?                            // key issued on payment
+  apiKeyId       String? // key issued on payment
   apiKey         ApiKey?   @relation(fields: [apiKeyId], references: [id])
 
   @@index([destinationTag])
@@ -274,17 +274,17 @@ model Invoice {
 // deliberately, because a stale answer there means a revoked credential could
 // read as valid.
 model IndexedCredential {
-  id               String    @id @default(cuid())
-  objectIndex      String    @unique // the Credential ledger object's own 256-bit index — canonical id
+  id               String   @id @default(cuid())
+  objectIndex      String   @unique // the Credential ledger object's own 256-bit index — canonical id
   issuer           String
   subject          String
-  credentialType   String                              // hex
+  credentialType   String // hex
   accepted         Boolean
-  expirationRipple Int?                                 // ripple-epoch seconds; null = never expires
+  expirationRipple Int? // ripple-epoch seconds; null = never expires
   uri              String?
-  passNumber       Int                                  // last indexer pass that re-confirmed this row present
-  firstSeenAt      DateTime  @default(now())
-  lastSeenAt       DateTime  @updatedAt
+  passNumber       Int // last indexer pass that re-confirmed this row present
+  firstSeenAt      DateTime @default(now())
+  lastSeenAt       DateTime @updatedAt
 
   @@index([issuer])
   @@index([subject])
@@ -299,22 +299,22 @@ model IndexedCredential {
 // IndexerCheckpoint row, never presenting a partial walk as a full census.
 model IndexedMPT {
   id          String   @id @default(cuid())
-  issuanceId  String   @unique          // 48-hex MPTokenIssuanceID — canonical
+  issuanceId  String   @unique // 48-hex MPTokenIssuanceID — canonical
   issuer      String
-  sequence    Int?                       // creating-tx Sequence
+  sequence    Int? // creating-tx Sequence
   assetScale  Int      @default(0)
-  maxAmount   String?                    // MaximumAmount (uint64 as string); null = unlimited
+  maxAmount   String? // MaximumAmount (uint64 as string); null = unlimited
   outstanding String   @default("0")
-  transferFee Int      @default(0)       // raw TransferFee (tenths of a basis point)
+  transferFee Int      @default(0) // raw TransferFee (tenths of a basis point)
   flagsRaw    Int      @default(0)
-  metadata    String?                    // decoded MPTokenMetadata (JSON string, or raw text if not JSON)
-  name        String?                    // best-effort display name from the metadata
-  ticker      String?                    // metadata ticker / currency code, if any
-  searchText  String?                    // lowercased "name ticker currency" blob for case-insensitive search
-  holderCount Int?                       // null = unknown
-  ledgerIndex Int?                       // validated ledger the walk last confirmed this row against
-  sources     String   @default("")      // comma-separated: "walk", "bithomp"
-  passNumber  Int      @default(0)       // last walk pass that re-confirmed this row (0 = never seen by the walk)
+  metadata    String? // decoded MPTokenMetadata (JSON string, or raw text if not JSON)
+  name        String? // best-effort display name from the metadata
+  ticker      String? // metadata ticker / currency code, if any
+  searchText  String? // lowercased "name ticker currency" blob for case-insensitive search
+  holderCount Int? // null = unknown
+  ledgerIndex Int? // validated ledger the walk last confirmed this row against
+  sources     String   @default("") // comma-separated: "walk", "bithomp"
+  passNumber  Int      @default(0) // last walk pass that re-confirmed this row (0 = never seen by the walk)
   firstSeenAt DateTime @default(now())
   lastSeenAt  DateTime @updatedAt
 
@@ -328,13 +328,13 @@ model IndexedMPT {
 model IndexedMptIssuer {
   issuer          String    @id
   mptCount        Int       @default(0)
-  issuanceIdsHash String?                // sha256 of the sorted issuanceId list — cheap change detector
+  issuanceIdsHash String? // sha256 of the sorted issuanceId list — cheap change detector
   xrplScore       Int?
   grade           String?
   domain          String?
   blackholed      Boolean   @default(false)
   bithompCapped   Boolean   @default(false) // issuer has >100 issuances — Bithomp free tier can't page past 100,
-                                            // so our count is a floor and coverage can't be "complete-per-known-issuer"
+  // so our count is a floor and coverage can't be "complete-per-known-issuer"
   scoredAt        DateTime?
   lastRefreshedAt DateTime  @updatedAt
 }
@@ -345,22 +345,22 @@ model IndexedMptIssuer {
 // wasn't altered after the fact. See src/lib/mptAnchor.ts for the exact
 // canonicalisation + Merkle scheme (also echoed in GET /api/mpt/anchor).
 model MptAnchor {
-  id            String    @id @default(cuid())
-  canonVersion  String                     // e.g. "mpt-anchor-v1" — the canonicalisation algo id
-  merkleRoot    String                     // 64-hex SHA-256 Merkle root
-  issuanceCount Int
-  issuerCount   Int
-  coverage      String                     // "complete-per-known-issuer" | "partial"
-  freshnessFloorAt DateTime?               // oldest per-issuer refresh folded into this snapshot
-  memo          String                     // the exact UTF-8 memo payload written on-ledger
-  txHash        String?   @unique          // set once the anchor tx validates
-  ledgerIndex   Int?
-  account       String?                    // signing account (the issuer wallet)
-  feeDrops      String?
-  status        String    @default("pending") // pending | anchored | failed
-  error         String?
-  createdAt     DateTime  @default(now())
-  anchoredAt    DateTime?
+  id               String    @id @default(cuid())
+  canonVersion     String // e.g. "mpt-anchor-v1" — the canonicalisation algo id
+  merkleRoot       String // 64-hex SHA-256 Merkle root
+  issuanceCount    Int
+  issuerCount      Int
+  coverage         String // "complete-per-known-issuer" | "partial"
+  freshnessFloorAt DateTime? // oldest per-issuer refresh folded into this snapshot
+  memo             String // the exact UTF-8 memo payload written on-ledger
+  txHash           String?   @unique // set once the anchor tx validates
+  ledgerIndex      Int?
+  account          String? // signing account (the issuer wallet)
+  feeDrops         String?
+  status           String    @default("pending") // pending | anchored | failed
+  error            String?
+  createdAt        DateTime  @default(now())
+  anchoredAt       DateTime?
 
   @@index([createdAt])
   @@index([status])
@@ -373,13 +373,13 @@ model MptAnchor {
 model IndexerCheckpoint {
   id                      String    @id @default("credential")
   status                  String    @default("idle") // idle | running — explicit, not inferred from marker
-  marker                  String?   // current ledger_data pagination marker; null before the first page of a pass
+  marker                  String? // current ledger_data pagination marker; null before the first page of a pass
   passNumber              Int       @default(0) // increments each time a NEW pass starts
   passStartedAt           DateTime?
   lastCompletedPassAt     DateTime?
   lastCompletedPassNumber Int?
-  lastLedgerCloseTime     Int?      // ripple-epoch seconds observed during the most recent run —
-                                    // the "now" used for expiry math on the INDEXED (not live) endpoint
+  lastLedgerCloseTime     Int? // ripple-epoch seconds observed during the most recent run —
+  // the "now" used for expiry math on the INDEXED (not live) endpoint
   updatedAt               DateTime  @updatedAt
 }
 
@@ -396,18 +396,23 @@ model IndexerCheckpoint {
 // content hash changes AND the parse produced a sane XRP-address count.
 model SanctionListSnapshot {
   id               String   @id @default(cuid())
-  listName         String                       // "OFAC-SDN"
-  vintage          String                       // OFAC Publish_Date as ISO (YYYY-MM-DD)
-  publishRaw       String                       // the Publish_Date string exactly as OFAC wrote it
-  recordCount      Int                          // OFAC Record_Count for the whole list
-  addressCount     Int                          // XRP addresses we extracted
-  sha256           String                       // hex SHA-256 of canonicalArchive
+  listName         String // "OFAC-SDN"
+  vintage          String // OFAC Publish_Date as ISO (YYYY-MM-DD)
+  publishRaw       String // the Publish_Date string exactly as OFAC wrote it
+  recordCount      Int // OFAC Record_Count for the whole list
+  addressCount     Int // XRP addresses we extracted
+  sha256           String // hex SHA-256 of canonicalArchive
   sourceUrl        String
   fetchedAt        DateTime @default(now())
-  canonicalArchive Json                         // full normalised snapshot — retained forever
+  canonicalArchive Json // full normalised snapshot — retained forever
   createdAt        DateTime @default(now())
+  // v2 (multi-list, multi-chain; "sanctions-screen-v2"). archiveVersion 1 = the original OFAC-SDN XRP-only snapshots (kept
+  // forever, still valid for XRP-address screening); 2 = every screenable address on the list, per chain.
+  archiveVersion   Int      @default(1)
+  coverageJson     Json? // { <chain>: <address count> } — what this snapshot can screen
+  unparsedJson     Json? // address-like text we could NOT verify (EU/UK free text) — visible, never silent
 
-  addresses        SanctionedAddress[]
+  addresses SanctionedAddress[]
 
   @@unique([listName, sha256])
   @@index([listName, fetchedAt])
@@ -416,67 +421,80 @@ model SanctionListSnapshot {
 // One XRP address extracted from one snapshot. Per-snapshot rows, never deleted —
 // history is the full set of snapshots + their address rows.
 model SanctionedAddress {
-  id           String   @id @default(cuid())
+  id           String               @id @default(cuid())
   snapshotId   String
   snapshot     SanctionListSnapshot @relation(fields: [snapshotId], references: [id])
-  listName     String                          // "OFAC-SDN"
-  address      String                          // XRPL r-address, verbatim from the list
-  entryId      String                          // OFAC sdnEntry uid
-  entryName    String                          // the sdnEntry's own listed name
-  programs     String                          // comma-joined sanctions programs, e.g. "CYBER2"
-  addressField String                          // "Digital Currency Address - XRP"
-  idUid        String                          // the <id> element uid
-  createdAt    DateTime @default(now())
+  listName     String // "OFAC-SDN"
+  address      String // XRPL r-address, verbatim from the list
+  entryId      String // OFAC sdnEntry uid
+  entryName    String // the sdnEntry's own listed name
+  programs     String // comma-joined sanctions programs, e.g. "CYBER2"
+  addressField String // "Digital Currency Address - XRP"
+  idUid        String // the <id> element uid
+  createdAt    DateTime             @default(now())
+  // v2 columns (null / default on v1 rows). A v1 row is an XRP address matched on `address`.
+  chain        String               @default("xrpl") // xrpl | evm | btc | tron | other
+  currency     String? // OFAC idType currency / label written next to the address in EU-UK text
+  addressNorm  String? // the comparison key (EVM/bech32 lower-cased, others verbatim)
 
   @@index([snapshotId])
   @@index([listName, address])
+  @@index([snapshotId, addressNorm])
 }
 
 // One screening receipt. `leafHash` is SHA-256(0x00 || utf8(canonical leaf));
 // once `anchorId` is set the leaf is frozen into an on-ledger Merkle root.
 model ScreeningReceipt {
-  queryId        String   @id                  // UUIDv4
+  queryId        String           @id // UUIDv4
   subjectAddress String
-  requestedBy    String                        // "key:<keyPrefix>" | "x402:<paymentId>" | "mcp" | "public"
-  screenedAt     DateTime                      // instant of the comparison (ms precision; also in the leaf)
-  method         String   @default("exact-match")
-  ledgerIndex    Int      @default(0)          // validated ledger index pinned at screen time; 0 if unknown
-  listsJson      Json                          // canonical lists[]: [{ name, vintage, sha256 }]
-  resultJson     Json                          // canonical result: { listed } | { listed, matches[] }
-  engineVersion  String                        // "sanction-screen-v1" — IMMUTABLE per receipt
-  canonVersion   String   @default("ofac-screen-v1")
-  leafHash       String                        // 64-hex
-  snapshotId     String                        // the SanctionListSnapshot this screen ran against
+  requestedBy    String // "key:<keyPrefix>" | "x402:<paymentId>" | "mcp" | "public"
+  screenedAt     DateTime // instant of the comparison (ms precision; also in the leaf)
+  method         String           @default("exact-match")
+  ledgerIndex    Int              @default(0) // validated ledger index pinned at screen time; 0 if unknown
+  listsJson      Json // canonical lists[]: [{ name, vintage, sha256 }]
+  resultJson     Json // canonical result: { listed } | { listed, matches[] }
+  engineVersion  String // "sanction-screen-v1" — IMMUTABLE per receipt
+  canonVersion   String           @default("ofac-screen-v1")
+  leafHash       String // 64-hex
+  snapshotId     String // the SanctionListSnapshot this screen ran against
   anchorId       String?
   anchor         ScreeningAnchor? @relation(fields: [anchorId], references: [id])
-  createdAt      DateTime @default(now())
+  createdAt      DateTime         @default(now())
+  // v2 columns (canon "sanctions-screen-v2"): the chain of the subject, the caller's own reference (e.g. a Travel Rule
+  // transfer id — an opaque id, never personal data), the retention commitment in force at screening time, and the batch.
+  subjectChain   String           @default("xrpl")
+  reference      String?
+  retentionCode  String?
+  batchId        String? // set when screened through POST /api/screen/batch (all receipts of one call share it)
 
   @@index([subjectAddress])
   @@index([anchorId])
   @@index([createdAt])
+  @@index([requestedBy, screenedAt])
+  @@index([batchId])
 }
 
 // One daily Merkle anchor over a batch of receipts. Same wallet + scheme as
 // MptAnchor; separate memo type and batch.
 model ScreeningAnchor {
-  id           String   @id @default(cuid())
-  canonVersion String                          // "ofac-screen-v1"
-  merkleRoot   String                          // 64-hex
+  id           String    @id @default(cuid())
+  canonVersion String // "ofac-screen-v1"
+  merkleRoot   String // 64-hex
   leafCount    Int
   rangeStart   DateTime?
   rangeEnd     DateTime?
-  memo         String                          // exact UTF-8 memo payload written on-ledger
-  txHash       String?  @unique
+  memo         String // exact UTF-8 memo payload written on-ledger
+  txHash       String?   @unique
   ledgerIndex  Int?
   account      String?
   feeDrops     String?
-  closeTime    DateTime?                       // ledger close time of the anchor tx
-  status       String   @default("pending")    // pending | anchored | failed | misconfigured | superseded
+  closeTime    DateTime? // ledger close time of the anchor tx
+  status       String    @default("pending") // pending | anchored | failed | misconfigured | superseded
   error        String?
-  createdAt    DateTime @default(now())
+  createdAt    DateTime  @default(now())
   anchoredAt   DateTime?
 
-  receipts     ScreeningReceipt[]
+  receipts ScreeningReceipt[]
 
   @@index([status])
   @@index([createdAt])
@@ -494,30 +512,30 @@ model ScreeningAnchor {
 
 // One row per exposure query. IMMUTABLE — append only.
 model LendingExposureSnapshot {
-  id               String   @id @default(cuid())
-  queryId          String   @unique                 // also the attestation receipt id
-  borrower         String
-  ledgerIndex      Int
-  ledgerCloseAt    DateTime?
-  amendmentActive  Boolean
-  observedAt       DateTime @default(now())          // wall clock at query time
-  loanCount        Int      @default(0)              // loans visible at this ledger
-  brokerCount      Int      @default(0)
-  worstStatus      String   @default("none")
-  exposureByAsset  Json                              // { assetKey: { principalOutstanding, totalValueOutstanding, loanCount } }
-  events           Json                              // { defaulted, impaired, overdue, overdueGraceExpired }
-  visibleLoanIds   Json                              // sorted string[] — exactly which Loan objects were on the ledger
-  loans            Json                              // full per-loan detail array (the raw observation)
+  id                       String                 @id @default(cuid())
+  queryId                  String                 @unique // also the attestation receipt id
+  borrower                 String
+  ledgerIndex              Int
+  ledgerCloseAt            DateTime?
+  amendmentActive          Boolean
+  observedAt               DateTime               @default(now()) // wall clock at query time
+  loanCount                Int                    @default(0) // loans visible at this ledger
+  brokerCount              Int                    @default(0)
+  worstStatus              String                 @default("none")
+  exposureByAsset          Json // { assetKey: { principalOutstanding, totalValueOutstanding, loanCount } }
+  events                   Json // { defaulted, impaired, overdue, overdueGraceExpired }
+  visibleLoanIds           Json // sorted string[] — exactly which Loan objects were on the ledger
+  loans                    Json // full per-loan detail array (the raw observation)
   earliestNextPaymentDueAt DateTime?
-  xrplScore        Int?
-  grade            String?
-  requestedBy      String                            // "key:<prefix>" | "x402:<id>" | "mcp"
-  canonVersion     String   @default("lending-exposure-v1")
-  engineVersion    String   @default("lending-exposure-v1")
-  leafHash         String
-  anchorId         String?
-  anchor           LendingExposureAnchor? @relation(fields: [anchorId], references: [id])
-  createdAt        DateTime @default(now())
+  xrplScore                Int?
+  grade                    String?
+  requestedBy              String // "key:<prefix>" | "x402:<id>" | "mcp"
+  canonVersion             String                 @default("lending-exposure-v1")
+  engineVersion            String                 @default("lending-exposure-v1")
+  leafHash                 String
+  anchorId                 String?
+  anchor                   LendingExposureAnchor? @relation(fields: [anchorId], references: [id])
+  createdAt                DateTime               @default(now())
 
   @@index([borrower, observedAt])
   @@index([anchorId])
@@ -529,29 +547,29 @@ model LendingExposureSnapshot {
 // knowledge. `disappearedAt` is set once, when a previously-seen loan is absent
 // from a fresh query (the borrower or broker deleted it).
 model LendingLoanObservation {
-  id                    String   @id @default(cuid())
-  borrower              String
-  loanId                String                       // the Loan object's ledger index (64-hex)
-  loanBrokerId          String
-  brokerOwner           String?
-  asset                 String?                      // resolved Vault.Asset key
-  firstObservedAt       DateTime                     // IMMUTABLE once set
-  firstObservedLedger   Int
-  lastObservedAt        DateTime
-  lastObservedLedger    Int
-  observationCount      Int      @default(1)
-  lastKnownStatus       String                       // current | overdue | overdueGraceExpired | impaired | defaulted | paid
-  lastKnownPrincipal    String?
-  lastKnownTotalValue   String?
-  everImpaired          Boolean  @default(false)     // monotonic
-  everDefaulted         Boolean  @default(false)     // monotonic
-  everOverdue           Boolean  @default(false)     // monotonic
-  disappearedAt         DateTime?                    // set ONCE — loan no longer on the ledger
-  disappearedAfterLedger  Int?                       // last ledger we saw it
-  disappearedBeforeLedger Int?                       // first ledger we confirmed it gone
-  reappearedAt          DateTime?                    // should never happen post-LoanDelete; recorded if it does
-  createdAt             DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  id                      String    @id @default(cuid())
+  borrower                String
+  loanId                  String // the Loan object's ledger index (64-hex)
+  loanBrokerId            String
+  brokerOwner             String?
+  asset                   String? // resolved Vault.Asset key
+  firstObservedAt         DateTime // IMMUTABLE once set
+  firstObservedLedger     Int
+  lastObservedAt          DateTime
+  lastObservedLedger      Int
+  observationCount        Int       @default(1)
+  lastKnownStatus         String // current | overdue | overdueGraceExpired | impaired | defaulted | paid
+  lastKnownPrincipal      String?
+  lastKnownTotalValue     String?
+  everImpaired            Boolean   @default(false) // monotonic
+  everDefaulted           Boolean   @default(false) // monotonic
+  everOverdue             Boolean   @default(false) // monotonic
+  disappearedAt           DateTime? // set ONCE — loan no longer on the ledger
+  disappearedAfterLedger  Int? // last ledger we saw it
+  disappearedBeforeLedger Int? // first ledger we confirmed it gone
+  reappearedAt            DateTime? // should never happen post-LoanDelete; recorded if it does
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
 
   @@unique([borrower, loanId])
   @@index([borrower])
@@ -565,18 +583,18 @@ model LendingLoanObservation {
 // they are swept first. `lastSweptAt` / `lastSweptPass` drive stalest-first
 // round-robin and let a pass resume across cron windows without skipping anyone.
 model LendingBorrowerSweep {
-  borrower             String   @id
-  firstObservedAt      DateTime                       // first observation of this borrower, any source
-  addedToSweepAt       DateTime @default(now())
-  lastObservedAt       DateTime                       // last observation, any source (sweep or paid query)
-  lastSweptAt          DateTime?                      // last SWEEP observation specifically
+  borrower             String    @id
+  firstObservedAt      DateTime // first observation of this borrower, any source
+  addedToSweepAt       DateTime  @default(now())
+  lastObservedAt       DateTime // last observation, any source (sweep or paid query)
+  lastSweptAt          DateTime? // last SWEEP observation specifically
   lastSweptLedger      Int?
-  lastSweptPass        Int      @default(0)
-  sweepCount           Int      @default(0)
-  hasActiveOrImpaired  Boolean  @default(false)       // priority — refreshed on every observation
-  lastKnownWorstStatus String   @default("none")
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  lastSweptPass        Int       @default(0)
+  sweepCount           Int       @default(0)
+  hasActiveOrImpaired  Boolean   @default(false) // priority — refreshed on every observation
+  lastKnownWorstStatus String    @default("none")
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 
   @@index([hasActiveOrImpaired, lastSweptAt])
   @@index([lastSweptPass])
@@ -587,22 +605,22 @@ model LendingBorrowerSweep {
 // the observation summary. Carries no recommendation. The leaf commits to the
 // component leaf hashes; each component is also independently verifiable.
 model UnderwriteBundleReceipt {
-  queryId          String   @id
+  queryId          String                  @id
   borrower         String
   ledgerIndex      Int
   requestedBy      String
   exposureQueryId  String
   screeningQueryId String?
   xrplScore        Int?
-  screeningListed  Boolean  @default(false)
-  worstStatus      String   @default("none")
+  screeningListed  Boolean                 @default(false)
+  worstStatus      String                  @default("none")
   leafJson         Json
   leafHash         String
-  canonVersion     String   @default("underwrite-bundle-v1")
-  engineVersion    String   @default("underwrite-bundle-v1")
+  canonVersion     String                  @default("underwrite-bundle-v1")
+  engineVersion    String                  @default("underwrite-bundle-v1")
   anchorId         String?
   anchor           UnderwriteBundleAnchor? @relation(fields: [anchorId], references: [id])
-  createdAt        DateTime @default(now())
+  createdAt        DateTime                @default(now())
 
   @@index([borrower, createdAt])
   @@index([anchorId])
@@ -610,24 +628,24 @@ model UnderwriteBundleReceipt {
 }
 
 model UnderwriteBundleAnchor {
-  id           String   @id @default(cuid())
+  id           String    @id @default(cuid())
   canonVersion String
   merkleRoot   String
   leafCount    Int
   rangeStart   DateTime?
   rangeEnd     DateTime?
   memo         String
-  txHash       String?  @unique
+  txHash       String?   @unique
   ledgerIndex  Int?
   account      String?
   feeDrops     String?
   closeTime    DateTime?
-  status       String   @default("pending")
+  status       String    @default("pending")
   error        String?
-  createdAt    DateTime @default(now())
+  createdAt    DateTime  @default(now())
   anchoredAt   DateTime?
 
-  receipts     UnderwriteBundleReceipt[]
+  receipts UnderwriteBundleReceipt[]
 
   @@index([status])
   @@index([createdAt])
@@ -636,24 +654,24 @@ model UnderwriteBundleAnchor {
 // One daily Merkle anchor over a batch of exposure snapshots. Same wallet + hash
 // scheme as ScreeningAnchor / MptAnchor; separate memo type + batch.
 model LendingExposureAnchor {
-  id           String   @id @default(cuid())
+  id           String    @id @default(cuid())
   canonVersion String
   merkleRoot   String
   leafCount    Int
   rangeStart   DateTime?
   rangeEnd     DateTime?
   memo         String
-  txHash       String?  @unique
+  txHash       String?   @unique
   ledgerIndex  Int?
   account      String?
   feeDrops     String?
   closeTime    DateTime?
-  status       String   @default("pending")          // pending | anchored | failed | misconfigured | superseded
+  status       String    @default("pending") // pending | anchored | failed | misconfigured | superseded
   error        String?
-  createdAt    DateTime @default(now())
+  createdAt    DateTime  @default(now())
   anchoredAt   DateTime?
 
-  snapshots    LendingExposureSnapshot[]
+  snapshots LendingExposureSnapshot[]
 
   @@index([status])
   @@index([createdAt])
@@ -669,48 +687,49 @@ model MonitorSubscription {
   id                 String    @id @default(cuid())
   apiKeyId           String
   webhookUrl         String
-  webhookSecret      String                              // random, shown to the caller ONCE; signs deliveries (HMAC-SHA256)
-  status             String    @default("active")        // active | webhook_disabled | deleted
-  scoreDropPoints    Int?                                // null = score_drop events off (no default: no basis for one)
-  consumerAckAt      DateTime                            // when the caller ticked the consumer-use acknowledgement
-  consumerAckVersion String                              // which acknowledgement text they accepted
-  webhookFailures    Int       @default(0)               // consecutive failed delivery ATTEMPTS
+  webhookSecret      String // random, shown to the caller ONCE; signs deliveries (HMAC-SHA256)
+  status             String    @default("active") // active | webhook_disabled | deleted
+  scoreDropPoints    Int? // null = score_drop events off (no default: no basis for one)
+  consumerAckAt      DateTime // when the caller ticked the consumer-use acknowledgement
+  consumerAckVersion String // which acknowledgement text they accepted
+  webhookFailures    Int       @default(0) // consecutive failed delivery ATTEMPTS
   webhookDisabledAt  DateTime?
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
-  subjects           MonitorSubject[]
-  events             MonitorEvent[]
+  subjects MonitorSubject[]
+  events   MonitorEvent[]
 
   @@index([apiKeyId])
   @@index([status])
 }
 
 model MonitorSubject {
-  id                     String    @id @default(cuid())
-  subscriptionId         String
-  subscription           MonitorSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
-  address                String
-  createdAt              DateTime  @default(now())
+  id             String              @id @default(cuid())
+  subscriptionId String
+  subscription   MonitorSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  address        String // canonical: EVM / bech32 lower-cased, everything else verbatim
+  chain          String              @default("xrpl") // xrpl | evm | btc | tron. Non-xrpl subjects get a SANCTIONS-ONLY check (no score, no ledger state, no loans).
+  createdAt      DateTime            @default(now())
 
-  nextCheckAt            DateTime  @default(now())
-  lastCheckedAt          DateTime?
-  lastObservationAt      DateTime?
-  lastSeenFingerprint    String?                         // newest account_tx hash at the last successful check
-  scoredFingerprint      String?                         // the fingerprint the last FRESH score was computed at
-  lastScoredAt           DateTime?
-  lastScore              Int?
-  lastMethodology        String?
-  scorePeak              Int?                            // highest fresh score since subscribe / last score_drop alert
-  peakMethodology        String?
+  nextCheckAt             DateTime  @default(now())
+  lastCheckedAt           DateTime?
+  lastObservationAt       DateTime?
+  lastSeenFingerprint     String? // newest account_tx hash at the last successful check
+  scoredFingerprint       String? // the fingerprint the last FRESH score was computed at
+  lastScoredAt            DateTime?
+  lastScore               Int?
+  lastMethodology         String?
+  scorePeak               Int? // highest fresh score since subscribe / last score_drop alert
+  peakMethodology         String?
   lastScoredObservationId String?
-  sanctionListed         Boolean?
-  lastSanctions          Json?                           // { listed, list, vintage, sha256, receiptQueryId, screenedAt } from the last screen
-  lastScreenSnapshotId   String?
-  everHadLoan            Boolean   @default(false)
-  loanStates             Json?                           // { <loanId>: <status> } as of the last successful loan read
-  consecutiveFailures    Int       @default(0)
-  degradedNotifiedAt     DateTime?
+  sanctionListed          Boolean?
+  lastSanctions           Json? // { listed, list, vintage, sha256, receiptQueryId, screenedAt } from the last screen
+  lastScreenSnapshotId    String?
+  everHadLoan             Boolean   @default(false)
+  loanStates              Json? // { <loanId>: <status> } as of the last successful loan read
+  consecutiveFailures     Int       @default(0)
+  degradedNotifiedAt      DateTime?
 
   @@unique([subscriptionId, address])
   @@index([nextCheckAt])
@@ -720,11 +739,11 @@ model MonitorSubject {
 // One immutable, attested observation. `recordJson` is the canonical leaf as an object;
 // `canonicalJson` the exact bytes hashed. Never updated except `anchorId`.
 model MonitorObservation {
-  observationId String   @id                            // UUIDv4 — also the queryId for /api/attest/verify
+  observationId String         @id // UUIDv4 — also the queryId for /api/attest/verify
   apiKeyId      String
   subject       String
-  kind          String                                  // baseline | change | event | heartbeat
-  ledgerIndex   Int      @default(0)
+  kind          String // baseline | change | event | heartbeat
+  ledgerIndex   Int            @default(0)
   ledgerCloseAt DateTime?
   recordJson    Json
   canonicalJson String
@@ -733,7 +752,7 @@ model MonitorObservation {
   engineVersion String
   anchorId      String?
   anchor        MonitorAnchor? @relation(fields: [anchorId], references: [id])
-  createdAt     DateTime @default(now())
+  createdAt     DateTime       @default(now())
 
   @@index([apiKeyId, subject, createdAt])
   @@index([subject, createdAt])
@@ -743,21 +762,21 @@ model MonitorObservation {
 // One daily Merkle anchor over a batch of monitor observations. Same wallet + scheme as
 // ScreeningAnchor / MptAnchor; separate memo type + batch.
 model MonitorAnchor {
-  id           String   @id @default(cuid())
+  id           String    @id @default(cuid())
   canonVersion String
   merkleRoot   String
   leafCount    Int
   rangeStart   DateTime?
   rangeEnd     DateTime?
   memo         String
-  txHash       String?  @unique
+  txHash       String?   @unique
   ledgerIndex  Int?
   account      String?
   feeDrops     String?
   closeTime    DateTime?
-  status       String   @default("pending")          // pending | anchored | failed | misconfigured | superseded
+  status       String    @default("pending") // pending | anchored | failed | misconfigured | superseded
   error        String?
-  createdAt    DateTime @default(now())
+  createdAt    DateTime  @default(now())
   anchoredAt   DateTime?
 
   observations MonitorObservation[]
@@ -768,21 +787,41 @@ model MonitorAnchor {
 
 // The webhook outbox. One row per event; delivery state lives on the row.
 model MonitorEvent {
-  id             String   @id @default(cuid())
+  id             String              @id @default(cuid())
   subscriptionId String
   subscription   MonitorSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
   subject        String
-  type           String                                 // score_drop | sanctions_hit | sanctions_delisted | first_loan_observed | loan_overdue | loan_impaired | loan_defaulted | monitoring_degraded
+  type           String // score_drop | sanctions_hit | sanctions_delisted | first_loan_observed | loan_overdue | loan_impaired | loan_defaulted | monitoring_degraded
   payload        Json
   observationId  String?
-  createdAt      DateTime @default(now())
-  state          String   @default("pending")           // pending | delivered | failed
-  attempts       Int      @default(0)
-  nextAttemptAt  DateTime @default(now())
+  createdAt      DateTime            @default(now())
+  state          String              @default("pending") // pending | delivered | failed
+  attempts       Int                 @default(0)
+  nextAttemptAt  DateTime            @default(now())
   deliveredAt    DateTime?
   lastStatus     Int?
   lastError      String?
 
   @@index([subscriptionId, createdAt])
   @@index([state, nextAttemptAt])
+}
+
+// A wallet's request for its XRPLScore credential ("we issue, they accept"). Queued here; an operator issues from the offline issuer
+// key (scripts/issue-queued-credentials.cjs) after re-scoring. `scoreAtRequest` is informational — the tier is re-checked at issuance.
+model CredentialRequest {
+  id             String    @id @default(cuid())
+  subject        String
+  tier           String // "min600" … "min750" as computed at request time
+  credentialType String
+  scoreAtRequest Int
+  status         String    @default("queued") // queued | issued | failed | declined
+  ipHash         String? // sha256(ip + daily salt) — abuse limiting only; never the raw address
+  requestedAt    DateTime  @default(now())
+  issuedAt       DateTime?
+  issuedTxHash   String?
+  note           String?
+
+  @@index([subject])
+  @@index([status, requestedAt])
+  @@index([ipHash, requestedAt])
 }

@@ -1,21 +1,21 @@
 // src/app/api/attest/anchor/route.ts
 // GET  /api/attest/anchor — the published canonicalisation spec for OFAC
-//   screening receipts, the latest on-ledger anchor, and pipeline health.
+//   screening receipts (v2 current; v1 retained for receipts already issued), the latest on-ledger anchor, and pipeline health.
 //   Mirrors GET /api/mpt/anchor.
-// POST /api/attest/anchor (admin) — refresh the SDN snapshot and anchor any
+// POST /api/attest/anchor (admin) — refresh every sanctions list (OFAC-SDN, EU-FSF, UK-SL) and anchor any
 //   unanchored receipts NOW. ?force=1 skips the ~20h interval gate.
 
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/xrplscore-db";
 import { isAdmin, adminUnauthorized } from "@/lib/adminAuth";
 import {
-  SCREEN_CANON_SPEC,
-  SCREEN_CANON_VERSION,
+  SCREEN_CANON_SPEC_V1,
+  SCREEN_CANON_SPEC_V2,
   SCREEN_ENGINE_VERSION,
 } from "@/lib/screenCanon";
 import { SCREEN_MEMO_TYPE, maybeAnchorScreeningReceipts } from "@/lib/screenAnchor";
 import { anchorSigningKeyPresent } from "@/lib/anchorMemo";
-import { refreshSdnSnapshot, OFAC_SDN_LIST_NAME } from "@/lib/ofac";
+import { LIST_NAMES, currentSnapshot, lastChecked, refreshAllLists } from "@/lib/sanctionLists";
 import { ANCHOR_ACCOUNT } from "@/lib/mptAnchor";
 import { EXPECTED_ISSUER } from "@/lib/credentials";
 import { SCREEN_DISCLAIMER_SHORT } from "@/lib/screen";
@@ -48,7 +48,7 @@ function anchorView(a: NonNullable<Awaited<ReturnType<typeof prisma.screeningAnc
 }
 
 export async function GET() {
-  const [latest, lastFailure, lastAttempt, totalReceipts, unanchored, anchoredCount, snap] = await Promise.all([
+  const [latest, lastFailure, lastAttempt, totalReceipts, unanchored, anchoredCount, snaps] = await Promise.all([
     prisma.screeningAnchor.findFirst({ where: { status: "anchored" }, orderBy: { createdAt: "desc" } }),
     prisma.screeningAnchor.findFirst({
       where: { status: { in: ["failed", "misconfigured"] } },
@@ -58,11 +58,14 @@ export async function GET() {
     prisma.screeningReceipt.count(),
     prisma.screeningReceipt.count({ where: { anchorId: null } }),
     prisma.screeningAnchor.count({ where: { status: "anchored" } }),
-    prisma.sanctionListSnapshot.findFirst({
-      where: { listName: OFAC_SDN_LIST_NAME },
-      orderBy: { fetchedAt: "desc" },
-    }),
+    Promise.all(
+      LIST_NAMES.map(async (name) => {
+        const s = await currentSnapshot(prisma, name);
+        return { name, snap: s, checkedAt: await lastChecked(prisma, name) };
+      })
+    ),
   ]);
+  const missing = snaps.filter((x) => !x.snap).map((x) => x.name);
 
   const signingKeyPresent = anchorSigningKeyPresent();
   const lastFailureNewer =
@@ -70,11 +73,11 @@ export async function GET() {
 
   let status: "ok" | "misconfigured" | "failing" | "pending" | "no-snapshot";
   let message: string;
-  if (!snap) {
+  if (missing.length) {
     status = "no-snapshot";
     message =
-      "No OFAC SDN snapshot ingested yet — screening is not ready. An operator can POST /api/attest/anchor, " +
-      "or wait for the daily cron.";
+      `No snapshot ingested yet for: ${missing.join(", ")} — screening is not ready (it fails closed rather than screen fewer lists). ` +
+      "An operator can POST /api/attest/anchor, or wait for the daily cron.";
   } else if (lastFailureNewer && lastFailure) {
     status = lastFailure.status === "misconfigured" ? "misconfigured" : "failing";
     message =
@@ -92,7 +95,7 @@ export async function GET() {
 
   return NextResponse.json(
     {
-      product: "OFAC SDN screening attestation",
+      product: "Sanctions screening attestation (OFAC SDN, EU FSF, UK Sanctions List)",
       status,
       message,
       disclaimer: SCREEN_DISCLAIMER_SHORT,
@@ -100,25 +103,27 @@ export async function GET() {
 
       engine: {
         version: SCREEN_ENGINE_VERSION,
-        rules: SCREEN_CANON_SPEC.engine,
+        rules: SCREEN_CANON_SPEC_V2.engine,
         versionBumpPolicy:
           "engineVersion is immutable per receipt. It is bumped (v2, v3, …) in the same commit as any change " +
           "to address normalisation, match semantics, which idType(s) are extracted, which list(s) are compared, " +
-          "or which snapshot is selected. Ingesting a newer SDN snapshot is NOT a bump — that is `vintage`.",
+          "or which snapshot is selected. Ingesting a newer list snapshot is NOT a bump — that is `vintage`. Receipts issued under sanction-screen-v1 (OFAC only) keep that engine version forever.",
       },
 
-      listSnapshot: snap
-        ? {
-            listName: snap.listName,
-            vintage: snap.vintage,
-            publishDate: snap.publishRaw,
-            sha256: snap.sha256,
-            recordCount: snap.recordCount,
-            addressCount: snap.addressCount,
-            source: snap.sourceUrl,
-            fetchedAt: snap.fetchedAt.toISOString(),
-          }
-        : null,
+      listSnapshots: snaps.map(({ name, snap, checkedAt }) =>
+        snap
+          ? {
+              listName: name,
+              vintage: snap.vintage,
+              sha256: snap.sha256,
+              recordCount: snap.recordCount,
+              addressCount: snap.addressCount,
+              coverage: snap.coverage,
+              lastCheckedAt: checkedAt ? checkedAt.toISOString() : null,
+            }
+          : { listName: name, snapshot: null }
+      ),
+      allListsAndLimits: "https://www.xrplhub.io/api/screen/lists",
 
       anchorAccount: ANCHOR_ACCOUNT,
       isNotTheCredentialIssuer: EXPECTED_ISSUER,
@@ -137,16 +142,17 @@ export async function GET() {
         endpoint: "/api/attest/verify?queryId=<uuid>",
         summary:
           "Rebuild the receipt leaf, fold its inclusion proof to the Merkle root, confirm that root is in the " +
-          "MemoData of the anchor tx, and confirm the cited SDN snapshot hash by re-fetching that OFAC publication.",
-        canonicalisation: SCREEN_CANON_SPEC,
+          "MemoData of the anchor tx, and confirm each cited list's snapshot hash against the archive we retain (or by re-obtaining that publication).",
+        canonicalisation: SCREEN_CANON_SPEC_V2,
+        canonicalisationV1: SCREEN_CANON_SPEC_V1,
         onLedger: {
           account: ANCHOR_ACCOUNT,
-          accountNote: SCREEN_CANON_SPEC.onLedger.accountNote,
+          accountNote: SCREEN_CANON_SPEC_V2.onLedger.accountNote,
           transactionType: "AccountSet",
           memoType: SCREEN_MEMO_TYPE,
           memoTypeHex: MEMO_TYPE_HEX,
           memoFormat: "application/json",
-          memoDataIs: SCREEN_CANON_SPEC.onLedger.memoDataIs,
+          memoDataIs: SCREEN_CANON_SPEC_V2.onLedger.memoDataIs,
         },
       },
     },
@@ -158,8 +164,8 @@ export async function POST(req: Request) {
   if (!isAdmin(req)) return adminUnauthorized();
   const force = new URL(req.url).searchParams.get("force") === "1";
 
-  const sdn = await refreshSdnSnapshot(prisma);
+  const lists = await refreshAllLists(prisma, { deadlineMs: Date.now() + 40_000, force });
   const anchor = await maybeAnchorScreeningReceipts(prisma, { force });
 
-  return NextResponse.json({ sdn, anchor, forced: force });
+  return NextResponse.json({ lists, anchor, forced: force });
 }

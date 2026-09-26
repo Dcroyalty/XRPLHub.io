@@ -6,7 +6,7 @@
 
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/xrplscore-db";
-import { isValidXrplAddress } from "@/lib/xrplscore";
+import { recogniseAddress } from "@/lib/chainAddress";
 import { authKey, err } from "@/lib/monitorApi";
 import { MONITOR_DISCLAIMER } from "@/lib/monitorCanon";
 
@@ -18,8 +18,9 @@ export async function GET(req: Request) {
   if (!auth.ok) return auth.res;
   const key = auth.key;
   const url = new URL(req.url);
-  const subject = (url.searchParams.get("subject") ?? "").trim();
-  if (!isValidXrplAddress(subject)) return err(400, "bad_request", "Provide a valid XRPL address: ?subject=r...");
+  const subjectRec = recogniseAddress((url.searchParams.get("subject") ?? "").trim());
+  if (!subjectRec) return err(400, "bad_request", "Provide a valid address on a supported chain (XRPL r-address, EVM 0x, Bitcoin, Tron): ?subject=...");
+  const subject = subjectRec.normalized;
   const limit = Math.min(200, Math.max(1, Number(url.searchParams.get("limit") ?? 50) || 50));
   const beforeRaw = url.searchParams.get("before");
   const before = beforeRaw ? new Date(beforeRaw) : null;

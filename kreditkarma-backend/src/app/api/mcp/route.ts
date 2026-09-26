@@ -41,6 +41,7 @@ import { describeService, missingRequiredParams, paymentResourceUrl, priceInfo, 
 import { SERVICE_CATALOG, SERVICE_COUNT, BUILDABLE_SERVICE_IDS, serviceParamLines } from '@/app/api/execute/serviceCatalog';
 import { prisma } from '@/lib/xrplscore-db';
 import { screenOfac, NoSnapshotError } from '@/lib/screen';
+import { SCREEN_CANON_VERSION } from '@/lib/screenCanon';
 import { isValidXrplAddress } from '@/lib/engine';
 import { runExposureQuery, priorObservation } from '@/lib/lendingExposure';
 
@@ -666,7 +667,7 @@ async function toolScreenAddressOfac(args: Record<string, unknown>): Promise<str
       {
         attestation: {
           queryId: out.queryId,
-          canonVersion: 'ofac-screen-v1',
+          canonVersion: SCREEN_CANON_VERSION,
           engineVersion: out.leaf.engineVersion,
           leafHash: out.leafHash,
           verify: `${API_URL}/api/attest/verify?queryId=${out.queryId}`,

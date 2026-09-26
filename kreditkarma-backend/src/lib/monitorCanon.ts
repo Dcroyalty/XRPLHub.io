@@ -18,7 +18,9 @@
 import { leafHash } from "./merkle";
 
 export const MONITOR_CANON_VERSION = "monitor-observation-v1";
-export const MONITOR_ENGINE_VERSION = "monitor-observation-v1";
+// The ENGINE version (a promise about what a check does) moved to v2 on 2026-09-25: the sanctions step now checks every list and non-XRPL
+// subjects are sanctions-only. The CANON (leaf keys, hashing, memo type) is unchanged and still "monitor-observation-v1".
+export const MONITOR_ENGINE_VERSION = "monitor-engine-v2";
 export const MONITOR_MEMO_TYPE = `XRPLHub-Monitor-Attestation/${MONITOR_CANON_VERSION}`;
 
 /** Bump when the acknowledgement text changes; subscribers must accept the CURRENT version. */
@@ -32,18 +34,23 @@ export const CONSUMER_ACK_TEXT =
 
 export type ObservationKind = "baseline" | "change" | "event" | "heartbeat";
 export type ScoreStatus = "fresh" | "not_rescored" | "unavailable";
-export type AccountStatus = "active" | "not_activated";
+/** "not_applicable": the subject is not on the XRP Ledger (a sanctions-only subject: EVM / Bitcoin / Tron address). */
+export type AccountStatus = "active" | "not_activated" | "not_applicable";
 
 export const LOAN_STATUSES = ["current", "overdue", "overdueGraceExpired", "impaired", "defaulted", "paid"] as const;
 export type LoanStatusKey = (typeof LOAN_STATUSES)[number];
 
 export interface MonitorSanctions {
   listed: boolean;
-  list: string; // "OFAC-SDN"
-  vintage: string; // the SDN snapshot this observation checked against
-  sha256: string; // that snapshot's hash
+  // With several lists these three carry the SET (see sanctionSetDescriptor in monitorEngine.ts): names joined by "+", "<name>@<vintage>" joined by ";",
+  // and the SHA-256 of the "<name>:<snapshot sha256>" lines. The receipt named below is the per-list authority.
+  list: string; // e.g. "EU-FSF+OFAC-SDN+UK-SL"
+  vintage: string; // e.g. "EU-FSF@2026-09-22;OFAC-SDN@2026-09-23;UK-SL@2026-09-21"
+  sha256: string; // the list-set hash
   checkedAt: string; // RFC 3339 — when this membership check was made
   receiptQueryId: string; // the last attested ScreeningReceipt for this wallet (baseline or last listed-ness change)
+  /** NOT part of the canonical leaf (canonMonitorJson picks explicit keys): which lists the address was found on. Kept in subject state only. */
+  matchedLists?: string[];
 }
 
 export interface MonitorLoans {
@@ -80,8 +87,10 @@ export const MONITOR_CANON_SPEC = {
       "Per watched wallet, at most once per check: the newest account_tx entry + account_info (the account-state " +
       "fingerprint); a FRESH scoreWallet() only when the fingerprint changed since the last fresh score, the last " +
       "fresh score is over 7 days old, or none exists; an exact-match membership check of the wallet against the " +
-      "current OFAC SDN snapshot (an attested screening receipt is written at baseline and whenever the wallet's " +
-      "listed-ness changes); and, only while the XLS-66 amendment is enabled, the borrower's Loan objects.",
+      "current snapshot of every list (OFAC-SDN, EU-FSF, UK-SL) — with several lists the leaf's list/vintage/sha256 fields carry the list SET " +
+      "and the receipt it names is the per-list authority (an attested screening receipt is written at baseline and whenever the wallet's " +
+      "listed-ness changes); and, only while the XLS-66 amendment is enabled, the borrower's Loan objects. A subject on another chain " +
+      "(EVM / Bitcoin / Tron) gets the sanctions check only and its observations say accountStatus \"not_applicable\".",
     sparse:
       "Observations are written on: subscription (baseline), any change in account state / score / sanctions / " +
       "loans (change), any emitted event (event), and at most weekly when nothing changed (heartbeat). A quiet day " +
@@ -98,7 +107,7 @@ export const MONITOR_CANON_SPEC = {
       "observationId", // UUIDv4
       "subject", // the XRPL address watched
       "kind", // baseline | change | event | heartbeat
-      "accountStatus", // active | not_activated
+      "accountStatus", // active | not_activated | not_applicable (non-XRPL subject)
       "ledgerIndex", // validated ledger the observation was pinned to
       "ledgerCloseAt", // RFC 3339 UTC of that ledger's close, or null
       "fingerprint", // newest account_tx hash, or null

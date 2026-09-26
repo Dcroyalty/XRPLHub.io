@@ -15,7 +15,7 @@ webhook; this file says what it watches and what you must still do by hand.
 
 | When (UTC) | Route | Does |
 |---|---|---|
-| 06:00 daily | `/api/cron/index-credentials` | OFAC SDN refresh → **continuous-monitoring pass** (checks, observations, webhook delivery) → XLS-66 borrower sweep (no-op until activation) → daily Merkle anchors (OFAC screening, lending, underwrite, monitoring) → heartbeat → cross-check of the other cron |
+| 06:00 daily | `/api/cron/index-credentials` | sanctions-list refresh (OFAC SDN, EU FSF, UK Sanctions List — each independent, each integrity-gated) → **continuous-monitoring pass** (checks, observations, webhook delivery) → XLS-66 borrower sweep (no-op until activation) → daily Merkle anchors (OFAC screening, lending, underwrite, monitoring) → heartbeat → cross-check of the other cron |
 | 07:00 daily | `/api/cron/index-mpts` | MPT registry refresh + anchor → health probe (alerts on anything red) → **watchdog (full)** → heartbeat → weekly "alive" message |
 
 Both need `CRON_SECRET` (set in Vercel production). Vercel does not retry a cron invocation; each run resumes where
@@ -54,7 +54,8 @@ Already-live features (Credentials/XLS-70, PermissionedDomains, MPTokensV1) are 
 | Anchor wallet `r9dQS1…XuJXb` | ~1.0 XRP spendable; an anchor costs ~0.00001 XRP (≤4 a day) — decades of headroom | top up if the base reserve is ever raised | watchdog `anchor-wallet` (warn < 0.5, red < 0.25) |
 | Neon database (project `kreditkarma`) | 10.8 MB of the 512 MB free-tier branch limit; **6-hour point-in-time history only**; maintenance window Sundays 05:00–06:00 UTC | upgrade plan if it fills | watchdog `db-size` (warn 70%, red 90%) |
 | `UsageRecord` table | one row per metered API call, never pruned — the first table to grow under real load (≈1M calls/month ≈ 1 GB/year) | prune or upgrade | `db-size` |
-| OFAC SDN feed | new snapshot ingested daily (latest vintage 2026-09-18) | none | watchdog `ofac-sdn` (warn 4d, red 8d stale) — screening keeps using the stale list meanwhile |
+| Sanctions feeds (OFAC SDN, EU FSF, UK Sanctions List) | each list re-confirmed daily; a new snapshot only when its content changes (EU/UK change rarely). A refused (gated) snapshot alerts and the previous one stays in force. Screening FAILS CLOSED (503) if any list has no snapshot. | none; the EU download uses a public token URL and the UK file location has moved once (OFSI closed 2026-01-28) — a publisher format change shows up as a refused snapshot + alert | watchdog `ofac-sdn` (covers all three; freshness = last confirmed; warn 4d, red 8d) |
+| Screening retention promise (`retain-10y-no-prune/v1`) | receipts, leaves, anchors and every list snapshot's canonical archive are never pruned by any process (only the derived per-address lookup rows of a snapshot >6 h superseded are dropped; the archive stays). Growth ≈ 75 KB/day compressed for OFAC vintages + receipts. | **Owner decision:** a 10-year promise is not backed by a 512 MB free-tier database with 6-hour history. Move to a paid plan and/or archive `GET /api/attest/export` off-platform before relying on it. | watchdog `db-size` |
 | Public XRPL nodes (8 hard-coded hosts) | all healthy today; several are hobbyist hosts | edit `XRPL_NODES` in `src/lib/xrplNodes.ts` | watchdog `xrpl-nodes` (warn ≤ 5 healthy, red ≤ 2) |
 | Bithomp API key (free tier 10 req/min, 2K/day) | accepted | replace if revoked | watchdog `bithomp-key` (red on 401/403) — without it the MPT registry silently stops refreshing holder counts |
 | XRP/USD price sources (CoinGecko + Coinbase, keyless) | both up | none | watchdog `xrp-price` (warn if BOTH fail: XRP checkout is refused) |

@@ -1,8 +1,11 @@
 // POST /api/monitor/subscribe
 // Register wallets to watch and one webhook endpoint for their events. API key required (a free key
 // works, with a 3-wallet limit). The consumer-use acknowledgement is REQUIRED and stored with a timestamp.
+// XRP Ledger addresses get the full daily check (account state, fresh score, sanctions, loans). An address on another chain
+// (EVM / Bitcoin / Tron) gets the SANCTIONS check only, against every list (OFAC-SDN, EU-FSF, UK-SL): if a counterparty screened clean
+// today is listed tomorrow, a sanctions_hit event fires. (Event type name: sanctions_hit — and sanctions_delisted when it comes off.)
 //
-//   { "addresses": ["r...", ...≤25], "webhookUrl": "https://...", "scoreDropPoints": 30,
+//   { "addresses": ["r... | 0x... | bc1.../1.../3... | T...", ...≤25], "webhookUrl": "https://...", "scoreDropPoints": 30,
 //     "subscriptionId": "<add to an existing subscription>",
 //     "acknowledgement": { "accepted": true, "version": "<from GET /api/monitor>" } }
 //
@@ -11,7 +14,7 @@
 
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/xrplscore-db";
-import { isValidXrplAddress } from "@/lib/xrplscore";
+import { recogniseAddress, type Chain } from "@/lib/chainAddress";
 import { authKey, err, ackRequired, ackOk, capabilities, slotUsage, capacityRefusal, BATCH_CAP, SUBSCRIBES_PER_HOUR } from "@/lib/monitorApi";
 import { CONSUMER_ACK_VERSION, MONITOR_DISCLAIMER } from "@/lib/monitorCanon";
 import { baselineSubjects, maxTotalSubjects } from "@/lib/monitorEngine";
@@ -37,11 +40,17 @@ export async function POST(req: Request) {
   if (!ackOk(body)) return ackRequired();
 
   // ── addresses ──
-  if (!Array.isArray(body.addresses) || body.addresses.length === 0) return err(400, "bad_request", "addresses must be a non-empty array of XRPL r-addresses.");
+  if (!Array.isArray(body.addresses) || body.addresses.length === 0) return err(400, "bad_request", "addresses must be a non-empty array of addresses (XRPL r-address, EVM 0x, Bitcoin, or Tron).");
   if (body.addresses.length > BATCH_CAP) return err(400, "batch_too_large", `At most ${BATCH_CAP} addresses per call.`, { batchCap: BATCH_CAP });
-  const addresses = [...new Set(body.addresses.map((a) => String(a).trim()))];
-  const invalid = addresses.filter((a) => !isValidXrplAddress(a));
-  if (invalid.length) return err(400, "bad_request", "Some addresses are not valid XRPL r-addresses.", { invalid: invalid.slice(0, 10) });
+  const recs = new Map<string, { chain: Chain }>(); // canonical comparison string -> chain (EVM / bech32 lower-cased, others verbatim)
+  const invalid: string[] = [];
+  for (const raw of body.addresses) {
+    const rec = recogniseAddress(raw);
+    if (!rec) invalid.push(String(raw).slice(0, 100));
+    else recs.set(rec.normalized, { chain: rec.chain });
+  }
+  if (invalid.length) return err(400, "bad_request", "Some addresses are not valid on a supported chain (XRPL r-address, EVM 0x, Bitcoin, Tron) or fail their checksum.", { invalid: invalid.slice(0, 10) });
+  const addresses = [...recs.keys()];
 
   // ── threshold ──
   let scoreDropPoints: number | null = null;
@@ -101,7 +110,7 @@ export async function POST(req: Request) {
     });
     subscriptionId = created.id;
   }
-  await prisma.monitorSubject.createMany({ data: fresh.map((address) => ({ subscriptionId, address, nextCheckAt: now })), skipDuplicates: true });
+  await prisma.monitorSubject.createMany({ data: fresh.map((address) => ({ subscriptionId, address, chain: recs.get(address)?.chain ?? "xrpl", nextCheckAt: now })), skipDuplicates: true });
   const rows = await prisma.monitorSubject.findMany({ where: { subscriptionId, address: { in: fresh } }, select: { id: true, address: true } });
 
   // ── baseline observations, synchronously (bounded) ──
@@ -126,6 +135,8 @@ export async function POST(req: Request) {
       ...(existing ? {} : { webhookSecret: secret, webhookSecretNote: "Shown once. Store it now — it is used to verify X-XRPLHub-Signature on every delivery. Rotate with PATCH { rotateSecret: true }." }),
       subjects: after.map((s) => ({
         address: s.address,
+        chain: s.chain,
+        coverage: s.chain === "xrpl" ? "full (account state, fresh score, sanctions on every list, loans)" : "sanctions only, on every list (no score, no ledger state)",
         status: s.lastCheckedAt ? "baselined" : "pending",
         observationId: obsBy.get(s.address) ?? null,
         xrplScore: s.lastScore,

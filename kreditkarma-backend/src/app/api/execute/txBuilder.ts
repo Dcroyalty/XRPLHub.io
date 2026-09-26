@@ -21,6 +21,7 @@ import {
   type Builder, type BuildResult, type BuildStep, type Params,
 } from './buildKit';
 import { richBuilders } from './serviceBuilders';
+import { planScoreDomain } from '@/lib/domainKit';
 
 // ── Per-product builders ──────────────────────────────────────────────
 // account = the customer's own wallet (the signer). A builder may be async (it can read the
@@ -230,6 +231,13 @@ const builders: Record<string, Builder> = {
     return SAFE({ TransactionType: 'CredentialCreate', Account: account, Subject: subject, CredentialType: typeHex }, 'Issue Credential');
   },
   permdomain: (account, p) => {
+    // XRPLScore-gated domain: minTier (min600|min650|min700|min750) accepts that tier AND every tier above it (a wallet holds only its
+    // highest tier — listing one tier silently rejects better wallets). Optional alsoAccept "rIssuer:type,…" and domainId (to update).
+    if (str(p.minTier)) {
+      const plan = planScoreDomain({ owner: account, minTier: p.minTier, alsoAccept: p.alsoAccept, domainId: p.domainId });
+      if (!plan.ok) return BAD(plan.error);
+      return SAFE(plan.txjson as unknown as Record<string, unknown>, plan.updatesDomainId ? 'Update Permissioned Domain (XRPLScore-gated)' : 'Create Permissioned Domain (XRPLScore-gated)');
+    }
     const credType = str(p.credentialType), issuer = str(p.acceptedIssuer || account);
     if (!credType) return NEED(['credentialType']);
     const typeHex = Buffer.from(credType, 'utf8').toString('hex').toUpperCase();

@@ -63,6 +63,8 @@ a finished count).
 - GET ${origin}/api/credentials/account?address=r... — every credential this account holds (issuer, type, accepted, expired, expiry), live. Default walks the owner directory (bounded ~20s; may return coverage:"partial" for an exchange-scale account). Add &issuer=r... (and &type=<name|hex> unless it is XRPLHub's issuer) for a direct ledger lookup that is always fast and complete.
 - GET ${origin}/api/credentials/issuer?address=r... — everything an issuer has issued: types, subject count, acceptance rate, from the census
 - GET ${origin}/api/domains/eligible?address=r...&domain=<64-hex DomainID> — does this account hold a credential satisfying this permissioned domain, live
+- GET|POST ${origin}/api/domains/build?account=r...&minTier=min650 — free plan for a Permissioned Domain gated on XRPLScore credentials (the floor tier AND every tier above it are listed for you); the unsigned PermissionedDomainSet is the storefront service permdomain, delivered over x402. Guide: ${origin}/api/domains/guide
+- POST ${origin}/api/credentials/request { "subject": "r..." } — a wallet requests its XRPLScore credential (fresh score ≥ 600 → queued; we issue, the wallet accepts). GET the same URL with ?subject= for status and the unsigned CredentialAccept.
 
 ## Multi-Purpose Token (MPT, XLS-33) registry + issuer risk (free)
 
@@ -82,25 +84,28 @@ and "partial" must be read as a floor, not the whole population.
 - GET ${origin}/api/mpt/permanence — free, live: which MPT permanence regime applies right now (DynamicMPT amendment state read from the ledger) and the wording that follows
 - GET ${origin}/api/x402/usdc/mpt/<48-hex id> — $0.01 USDC on Base or RLUSD on XRPL (x402): full issuer risk — account age, xrp-ledger.toml-verified domain, credentials held, Bithomp cross-check
 
-## OFAC SDN screening attestation
+## Sanctions screening attestation (OFAC SDN + EU + UK)
 
-Compare one XRPL address against a vintage-pinned snapshot of the US Treasury
-OFAC SDN list (exact address-string match only) and get a factual receipt that
-is Merkle-anchored on-ledger daily. The receipt attests to PROCESS, not ground
-truth: it records that the address was compared against a named list snapshot
-(identified by its OFAC publish date and the SHA-256 of the exact file) at a
-stated time, and what the comparison found. A "no match" means the address did
-not appear on that list version — it is NOT a statement that the address is
-clean, safe, or unsanctioned. It is not legal or compliance advice, makes no
-compliance decision, and does not discharge your own screening obligations.
-Scope: OFAC SDN only (no EU/UK/UN, no Consolidated list, no name/alias/fuzzy
-matching, no 1-hop graph analysis). Full terms: ${origin}/legal/screening
+Compare one address (XRP Ledger, EVM, Bitcoin or Tron) against the current snapshot of every sanctions list we hold that names crypto
+addresses — OFAC SDN, the EU consolidated financial sanctions list, the UK Sanctions List — by exact address-string match on the
+address's own chain, and get a factual receipt that is Merkle-anchored on-ledger daily. The receipt attests to PROCESS, not ground
+truth: it names EVERY list it used, each list's published version and file SHA-256, and how many addresses that list names on the
+subject's chain. A "no match" means the address did not appear on those list versions — it is NOT a statement that the address is
+clean, safe, or unsanctioned. Honest scope: the EU and UK lists are name/entity-based and name only a handful of crypto addresses in
+free text (none on the XRP Ledger), so screening against them is partial by nature; the UN list names no addresses and is NOT screened;
+no name/alias/fuzzy matching. We never claim that using this satisfies MiCA, the Travel Rule or any obligation. Receipts and list
+snapshots are retained at least 10 years and never pruned. Full terms: ${origin}/legal/screening
 
-- GET ${origin}/api/screen/ofac?address=r... — API key (a free key works), metered. Returns queryId, the list {name, vintage, sha256}, result {listed, matches[]}, a one-sentence factual statement, the canonical leaf, and the disclaimer.
-- GET ${origin}/api/x402/screen/ofac?address=r... — $0.01 USDC on Base or RLUSD on XRPL (x402), no key, no signup. Same receipt.
-- GET ${origin}/api/attest/verify?queryId=<uuid> — free: the receipt + Merkle inclusion proof + anchor tx hash + ledger close time + list hash. Verify without trusting XRPLHub. Add &include=snapshot for the full canonical list archive.
-- GET ${origin}/api/attest/anchor — free: the frozen ofac-screen-v1 canonicalisation spec, the sanction-screen-v1 engine rules + version-bump policy, the current SDN snapshot, and the latest on-ledger anchor.
-- engineVersion "sanction-screen-v1" is immutable per receipt — it changes only if the match algorithm changes (normalisation, match rule, extracted idTypes, source lists, snapshot selection). A newer SDN snapshot is a new vintage, not a version bump.
+- GET|POST ${origin}/api/screen?address=...&lists=OFAC-SDN,EU-FSF,UK-SL&reference=<your opaque id> — API key (a free key works), metered. One receipt.
+- POST ${origin}/api/screen/batch { "addresses": [...up to 100] } — API key. One receipt per address, all in the same anchor batch (each valid address counts as one call).
+- GET ${origin}/api/screen/lists — free: every list, what it really contains, its current vintage/hash, addresses per chain, when last confirmed, what is not screened.
+- GET ${origin}/api/attest/export?from=2026-09-01&to=2026-10-01&format=json|csv — API key: every receipt your key produced in the range, with inclusion proofs and anchor tx hashes, for an auditor.
+- GET ${origin}/api/screen/ofac?address=r... — API key: the original OFAC-only XRP endpoint (same receipt format).
+- GET ${origin}/api/x402/screen/ofac?address=r... — $0.01 USDC on Base or RLUSD on XRPL (x402), no key, no signup. OFAC-only receipt.
+- GET ${origin}/api/attest/verify?queryId=<uuid> — free: the receipt + Merkle inclusion proof + anchor tx hash + ledger close time + every list's hash. Verify without trusting XRPLHub. Add &include=snapshot&list=<NAME> for a list's full canonical archive.
+- GET ${origin}/api/attest/anchor — free: the frozen canonicalisation specs (sanctions-screen-v2 current; ofac-screen-v1 for earlier receipts), the engine rules, the current snapshots, and the latest on-ledger anchor.
+- Continuous re-screening: POST ${origin}/api/monitor/subscribe watches addresses on any supported chain; a counterparty screened clean today that is listed tomorrow fires a sanctions_hit webhook (with a fresh receipt).
+- engineVersion "sanction-screen-v2" (v1 = OFAC-only receipts, kept as issued) is immutable per receipt — it changes only if the match algorithm changes. A newer list snapshot is a new vintage, not a version bump.
 
 ## XLS-66 cross-broker lending exposure (debt aggregation)
 

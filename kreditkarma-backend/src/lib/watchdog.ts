@@ -15,6 +15,7 @@
 // you. Persistent red/warn findings re-alert every 3 / 7 days; a recovery sends one message.
 
 import tls from "tls";
+import { LIST_NAMES, currentSnapshot, lastChecked } from "./sanctionLists";
 import type { PrismaClient } from "@prisma/client";
 import { notifyError, notifyInfo } from "./notify";
 import { xrplRpc, XRPL_NODES } from "./xrplNodes";
@@ -72,12 +73,21 @@ async function checkHeartbeat(prisma: PrismaClient, name: string): Promise<Findi
 
 // ── individual checks ────────────────────────────────────────────────────────
 async function checkSdn(prisma: PrismaClient): Promise<Finding> {
-  const snap = await prisma.sanctionListSnapshot.findFirst({ where: { listName: "OFAC-SDN" }, orderBy: { fetchedAt: "desc" } });
-  if (!snap) return { key: "ofac-sdn", level: "warn", message: "no OFAC SDN snapshot has ever been ingested" };
-  const age = (Date.now() - snap.fetchedAt.getTime()) / DAY;
-  if (age > 8) return { key: "ofac-sdn", level: "red", message: `newest OFAC SDN snapshot is ${age.toFixed(1)} days old (vintage ${snap.vintage}) — the daily refresh is failing or OFAC's feed changed; screening keeps using the stale list` };
-  if (age > 4) return { key: "ofac-sdn", level: "warn", message: `newest OFAC SDN snapshot is ${age.toFixed(1)} days old (vintage ${snap.vintage})` };
-  return { key: "ofac-sdn", level: "ok", message: `SDN vintage ${snap.vintage}, ${age.toFixed(1)}d old` };
+  // All three lists. Freshness = when the list was last CONFIRMED (EU/UK publish rarely; their content can be old and current).
+  const rows = await Promise.all(LIST_NAMES.map(async (name) => ({ name, snap: await currentSnapshot(prisma, name), checkedAt: await lastChecked(prisma, name) })));
+  const missing = rows.filter((r) => !r.snap).map((r) => r.name);
+  if (missing.length) return { key: "ofac-sdn", level: "warn", message: `no snapshot has ever been ingested for: ${missing.join(", ")} — screening is unavailable (fails closed)` };
+  let worst: Finding | null = null;
+  const parts: string[] = [];
+  for (const { name, snap, checkedAt } of rows) {
+    if (!snap) continue;
+    const seen = Math.max(snap.fetchedAt.getTime(), checkedAt ? checkedAt.getTime() : 0);
+    const age = (Date.now() - seen) / DAY;
+    parts.push(`${name} ${snap.vintage} (confirmed ${age.toFixed(1)}d ago)`);
+    if (age > 8) return { key: "ofac-sdn", level: "red", message: `${name} was last confirmed ${age.toFixed(1)} days ago (vintage ${snap.vintage}) — the daily refresh is failing or the publisher's feed changed; screening keeps using the stale list` };
+    if (age > 4 && !worst) worst = { key: "ofac-sdn", level: "warn", message: `${name} was last confirmed ${age.toFixed(1)} days ago (vintage ${snap.vintage})` };
+  }
+  return worst ?? { key: "ofac-sdn", level: "ok", message: parts.join("; ") };
 }
 
 async function checkUnanchored(prisma: PrismaClient): Promise<Finding> {

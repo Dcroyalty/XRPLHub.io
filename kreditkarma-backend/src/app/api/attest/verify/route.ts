@@ -6,21 +6,15 @@
 // Merkle inclusion proof (rebuilt from the anchored batch), the on-ledger anchor
 // tx + ledger close time, and the source data hash — everything an auditor needs
 // to verify WITHOUT trusting XRPLHub.
-//   ?include=snapshot  — screening: the full canonical OFAC list archive.
+//   ?include=snapshot&list=<NAME>  — screening: the full canonical archive of one list the receipt used (default: its first list).
 
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/xrplscore-db";
-import {
-  SCREEN_CANON_SPEC,
-  canonScreenJson,
-  screenLeafHash,
-  merkleRootFromLeafHashes,
-  merkleInclusionProof,
-  renderStatement,
-  type ScreenLeaf,
-} from "@/lib/screenCanon";
-import { SCREEN_MEMO_TYPE } from "@/lib/screenAnchor";
+import { screenCanonSpecFor } from "@/lib/screenCanon";
+import { merkleInclusionProof, merkleRootFromLeafHashes } from "@/lib/merkle";
 import { SCREEN_DISCLAIMER_SHORT } from "@/lib/screen";
+import { rebuildReceipt, loadAnchorContexts, proofFor } from "@/lib/screenRebuild";
+import { LIMITATIONS, RETENTION_VIEW } from "@/lib/screenView";
 import { LENDING_CANON_SPEC, canonLendingLeaf, lendingLeafHash, type LendingExposureLeaf } from "@/lib/lendingCanon";
 import { LENDING_MEMO_TYPE } from "@/lib/lendingAnchor";
 import { LENDING_DISCLAIMER } from "@/lib/lendingExposure";
@@ -57,118 +51,94 @@ export async function GET(req: Request) {
   );
 }
 
-// ── OFAC screening ───────────────────────────────────────────────────────────
+// ── Sanctions screening (canon v1 = OFAC only, v2 = multi-list / multi-chain) ───────────────────────────
 async function verifyScreening(queryId: string, url: URL) {
   const receipt = (await prisma.screeningReceipt.findUnique({ where: { queryId } }))!;
-  const snap = await prisma.sanctionListSnapshot.findUnique({ where: { id: receipt.snapshotId } });
+  const lists = receipt.listsJson as unknown as Array<{ name: string; vintage: string; sha256: string; chainAddressCount?: number }>;
+
+  const snapshotFor = (name: string, sha256: string) =>
+    prisma.sanctionListSnapshot.findFirst({ where: { listName: name, sha256 }, orderBy: { fetchedAt: "asc" } });
+  const snapView = (snap: NonNullable<Awaited<ReturnType<typeof snapshotFor>>>) => ({
+    listName: snap.listName,
+    vintage: snap.vintage,
+    publishDate: snap.publishRaw,
+    sha256: snap.sha256,
+    recordCount: snap.recordCount,
+    addressCount: snap.addressCount,
+    source: snap.sourceUrl,
+    fetchedAt: snap.fetchedAt.toISOString(),
+    archiveVersion: snap.archiveVersion,
+    coverage: snap.coverageJson ?? null,
+  });
 
   if (url.searchParams.get("include") === "snapshot") {
-    if (!snap) return NextResponse.json({ error: "not_found", message: "snapshot missing" }, { status: 404 });
-    return NextResponse.json(
-      {
-        listName: snap.listName,
-        vintage: snap.vintage,
-        publishDate: snap.publishRaw,
-        sha256: snap.sha256,
-        recordCount: snap.recordCount,
-        addressCount: snap.addressCount,
-        source: snap.sourceUrl,
-        fetchedAt: snap.fetchedAt.toISOString(),
-        canonicalArchive: snap.canonicalArchive,
-      },
-      { headers: { "Cache-Control": "public, max-age=300" } }
-    );
+    const want = url.searchParams.get("list") ?? lists[0]?.name;
+    const ref = lists.find((l) => l.name === want);
+    const snap = ref ? await snapshotFor(ref.name, ref.sha256) : null;
+    if (!snap) return NextResponse.json({ error: "not_found", message: `This receipt did not use a list named ${want ?? "(none)"}. It used: ${lists.map((l) => l.name).join(", ")}.` }, { status: 404 });
+    return NextResponse.json({ ...snapView(snap), canonicalArchive: snap.canonicalArchive }, { headers: { "Cache-Control": "public, max-age=300" } });
   }
 
-  const lists = receipt.listsJson as unknown as ScreenLeaf["lists"];
-  const result = receipt.resultJson as unknown as ScreenLeaf["result"];
-  const leaf: ScreenLeaf = {
-    queryId: receipt.queryId,
-    subjectAddress: receipt.subjectAddress,
-    requestedBy: receipt.requestedBy,
-    lists,
-    method: "exact-match",
-    result,
-    engineVersion: receipt.engineVersion,
-    ledgerIndex: receipt.ledgerIndex,
-    screenedAt: receipt.screenedAt.toISOString(),
-  };
-  const canonicalJson = canonScreenJson(leaf);
-  const recomputedLeafHash = screenLeafHash(leaf);
+  const rb = rebuildReceipt(receipt);
+  const listSnapshots = [];
+  for (const l of lists) {
+    const snap = await snapshotFor(l.name, l.sha256);
+    listSnapshots.push({
+      ...(snap ? snapView(snap) : { listName: l.name, vintage: l.vintage, sha256: l.sha256, note: "snapshot row not found" }),
+      archive: `https://www.xrplhub.io/api/attest/verify?queryId=${queryId}&include=snapshot&list=${encodeURIComponent(l.name)}`,
+    });
+  }
 
   const base = {
-    product: "ofac-screening",
+    product: receipt.canonVersion === "ofac-screen-v1" ? "ofac-screening" : "sanctions-screening",
     queryId,
     canonVersion: receipt.canonVersion,
     engineVersion: receipt.engineVersion,
     receipt: {
       subjectAddress: receipt.subjectAddress,
+      subjectChain: receipt.subjectChain,
+      reference: receipt.reference,
       requestedBy: receipt.requestedBy,
-      screenedAt: leaf.screenedAt,
+      batchId: receipt.batchId,
+      screenedAt: rb.leaf.screenedAt,
       method: "exact-match" as const,
       ledgerIndex: receipt.ledgerIndex,
+      retention: receipt.retentionCode,
       lists,
-      result,
+      result: receipt.resultJson,
     },
-    statement: renderStatement(leaf),
-    leaf: {
-      canonicalJson,
-      leafHash: recomputedLeafHash,
-      storedLeafHash: receipt.leafHash,
-      leafHashMatches: recomputedLeafHash === receipt.leafHash,
-    },
-    listSnapshot: snap
-      ? {
-          listName: snap.listName,
-          vintage: snap.vintage,
-          publishDate: snap.publishRaw,
-          sha256: snap.sha256,
-          recordCount: snap.recordCount,
-          addressCount: snap.addressCount,
-          source: snap.sourceUrl,
-          fetchedAt: snap.fetchedAt.toISOString(),
-          archive: `https://www.xrplhub.io/api/attest/verify?queryId=${queryId}&include=snapshot`,
-        }
-      : null,
-    canonicalisation: SCREEN_CANON_SPEC,
+    statement: rb.statement,
+    leaf: { canonicalJson: rb.canonicalJson, leafHash: rb.recomputedLeafHash, storedLeafHash: receipt.leafHash, leafHashMatches: rb.leafHashMatches },
+    listSnapshots,
+    // kept for callers of the v1 shape: the first list's snapshot
+    listSnapshot: listSnapshots[0] ?? null,
+    canonicalisation: screenCanonSpecFor(receipt.canonVersion),
+    retention: RETENTION_VIEW,
+    limitations: LIMITATIONS,
     disclaimer: SCREEN_DISCLAIMER_SHORT,
   };
 
   if (!receipt.anchorId) {
-    return NextResponse.json(
-      {
-        ...base,
-        status: "pending",
-        anchor: null,
-        note: "Recorded but not yet anchored on-ledger. The daily Merkle anchor will include it.",
-      },
-      { headers: { "Cache-Control": "no-store" } }
-    );
+    return NextResponse.json({ ...base, status: "pending", anchor: null, note: "Recorded but not yet anchored on-ledger. The daily Merkle anchor will include it." }, { headers: { "Cache-Control": "no-store" } });
   }
 
-  const anchor = await prisma.screeningAnchor.findUnique({ where: { id: receipt.anchorId } });
-  const batch = await prisma.screeningReceipt.findMany({
-    where: { anchorId: receipt.anchorId },
-    orderBy: { queryId: "asc" },
-    select: { queryId: true, leafHash: true },
-  });
-  const idx = batch.findIndex((b) => b.queryId === queryId);
-  const leafHashes = batch.map((b) => b.leafHash);
-  const proof = idx >= 0 ? merkleInclusionProof(leafHashes, idx) : [];
-  const recomputedRoot = merkleRootFromLeafHashes(leafHashes);
+  const ctxs = await loadAnchorContexts(prisma, [receipt.anchorId]);
+  const ctx = ctxs.get(receipt.anchorId);
+  const { index, proof } = ctx ? proofFor(ctx, queryId) : { index: -1, proof: [] };
+  const memoType = ctx?.memoType ?? "";
 
   return NextResponse.json(
     {
       ...base,
-      status: anchor?.status === "anchored" ? "anchored" : anchor?.status ?? "unknown",
-      anchor: anchorBlock(anchor, recomputedRoot, proof, idx, SCREEN_MEMO_TYPE),
+      status: ctx?.anchor.status === "anchored" ? "anchored" : ctx?.anchor.status ?? "unknown",
+      anchor: ctx ? anchorBlock(ctx.anchor, ctx.recomputedRoot, proof, index, memoType) : null,
       recipe: [
         "1. Rebuild the leaf JSON from `receipt` using canonicalisation.record.keys order (sort `lists` by name; if result.listed, sort `matches` by [list, entryId]). No whitespace.",
         "2. leafHash = SHA-256( 0x00 || utf8(leafJson) ) — must equal `leaf.leafHash`.",
         "3. Fold `anchor.inclusionProof`: h = SHA-256( 0x01 || (step.position=='left' ? step.hash||h : h||step.hash) ).",
         "4. The result must equal `anchor.merkleRoot`.",
-        "5. Fetch tx `anchor.txHash`; it is an AccountSet from `anchor.account`; decode MemoData from hex; its `root` must equal `anchor.merkleRoot`, MemoType hex must decode to " + SCREEN_MEMO_TYPE + ".",
-        "6. Re-obtain OFAC SDN publication " + (lists[0]?.vintage ?? "<vintage>") + " and confirm its SHA-256 equals `listSnapshot.sha256`.",
+        "5. Fetch tx `anchor.txHash`; it is an AccountSet from `anchor.account`; decode MemoData from hex; its `root` must equal `anchor.merkleRoot`, MemoType hex must decode to " + memoType + ".",
+        "6. For every entry of `listSnapshots`, re-obtain that list's publication for the stated vintage and confirm its SHA-256 equals `sha256` (or fetch the archive we retained).",
       ],
     },
     { headers: { "Cache-Control": "public, max-age=30" } }

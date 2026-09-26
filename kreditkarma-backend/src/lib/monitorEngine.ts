@@ -16,7 +16,7 @@
 //   • no default-probability alert, no recommendation. score_drop only fires against a threshold the
 //     SUBSCRIBER set (there is no stored basis for a default).
 
-import { randomUUID } from "crypto";
+import { createHash, randomUUID } from "crypto";
 import type { PrismaClient, Prisma } from "@prisma/client";
 import {
   MONITOR_ENGINE_VERSION,
@@ -34,8 +34,9 @@ import {
 } from "./monitorCanon";
 import { scoreWallet, AccountNotFoundError } from "./xrplscore";
 import { xrplRpc } from "./xrplNodes";
-import { runOfacScreen } from "./screen";
-import { currentSdnSnapshot } from "./ofac";
+import { screenAddress } from "./screen";
+import { currentSnapshot, LIST_NAMES } from "./sanctionLists";
+import { recogniseAddress } from "./chainAddress";
 import { lendingProtocolActive, validatedLedger, fetchBorrowerLoans } from "./lendingLedger";
 import { deriveLoanStatus, runExposureQuery } from "./lendingExposure";
 import { notifyError } from "./notify";
@@ -77,6 +78,10 @@ export const EVENT_TYPES: EventType[] = [
 // ── State + dependency shapes ────────────────────────────────────────────────
 export interface SubjectState {
   address: string;
+  /** xrpl | evm | btc | tron. Non-xrpl subjects get the SANCTIONS check only. */
+  chain: string;
+  /** What attested screening receipts written for this subject are stamped with: "monitor:<apiKeyId>". */
+  keyRef: string;
   lastCheckedAt: Date | null;
   lastObservationAt: Date | null;
   lastSeenFingerprint: string | null;
@@ -106,20 +111,21 @@ export interface MonitorDeps {
     | { ok: true; score: number; grade: string; methodology: string; signals: Record<string, number> }
     | { ok: false; reason: "not_activated" | "unavailable" }
   >;
-  /** Cheap exact-match membership of the address in a stored SDN snapshot — no receipt is written. */
-  sdnMembership(address: string, snapshotId: string): Promise<{ ok: true; listed: boolean } | { ok: false }>;
-  /** Full attested screening receipt (written at baseline and when listed-ness changes). */
-  screen(address: string): Promise<
+  /** Cheap exact-match membership of the address in the CURRENT snapshot of EVERY list — no receipt is written. */
+  sanctionsMembership(address: string, chain: string, lists: SanctionSetSnapshot[]): Promise<{ ok: true; listed: boolean; matchedLists: string[] } | { ok: false }>;
+  /** Full attested screening receipt naming every list (written at baseline and when listed-ness changes). */
+  screen(
+    address: string,
+    chain: string,
+    requestedBy: string
+  ): Promise<
     | {
         ok: true;
         listed: boolean;
-        list: string;
-        vintage: string;
-        sha256: string;
         receiptQueryId: string;
         screenedAt: string;
         snapshotId: string;
-        matches: Array<{ entryId: string; entryName: string }>;
+        matches: Array<{ list: string; entryId: string; entryName: string }>;
       }
     | { ok: false }
   >;
@@ -131,10 +137,23 @@ export interface MonitorDeps {
   newId(): string;
 }
 
+/** One list's current snapshot, as the sanctions step needs it. */
+export interface SanctionSetSnapshot {
+  name: string;
+  id: string;
+  vintage: string;
+  sha256: string;
+  archiveVersion: number;
+  coverage: Record<string, number>;
+}
+
+const listCovers = (l: SanctionSetSnapshot, chain: string) => (l.archiveVersion < 2 ? chain === "xrpl" : l.coverage[chain] !== undefined);
+
 export interface CheckContext {
   now: Date;
   ledger: { index: number; closeAt: Date | null };
-  currentSnapshot: { id: string; vintage: string; sha256: string } | null;
+  /** The current snapshot of every list, or null if ANY list has none (the sanctions step then FAILS — it never checks fewer lists). */
+  sanctionLists: SanctionSetSnapshot[] | null;
   loansActive: boolean;
   scoreBudget: { remaining: number };
 }
@@ -172,24 +191,54 @@ function worst(loans: Array<{ status: LoanStatusKey }>): string {
 }
 
 /**
- * Decide what one check of one wallet observed. Reads go through `deps`; nothing here touches the
+ * The list-set descriptor written into a leaf's `sanctions` block. Canon "monitor-observation-v1" (frozen) has three single-list
+ * strings — `list`, `vintage`, `sha256`. With several lists they carry the SET, deterministically:
+ *   list    = names joined with "+"                          e.g. "EU-FSF+OFAC-SDN+UK-SL"
+ *   vintage = "<name>@<vintage>" joined with ";"             e.g. "EU-FSF@2026-09-22;OFAC-SDN@2026-09-23;UK-SL@2026-09-21"
+ *   sha256  = SHA-256 of the lines "<name>:<snapshot sha256>" (sorted by name, joined by \n) — the list-set hash
+ * The receipt named by `receiptQueryId` (a "sanctions-screen-v2" receipt) carries each list's own version, file hash and
+ * per-chain address count, and is the authority.
+ */
+export function sanctionSetDescriptor(lists: Array<{ name: string; vintage: string; sha256: string }>): { list: string; vintage: string; sha256: string } {
+  const sorted = [...lists].sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+  return {
+    list: sorted.map((l) => l.name).join("+"),
+    vintage: sorted.map((l) => `${l.name}@${l.vintage}`).join(";"),
+    sha256: createHash("sha256").update(sorted.map((l) => `${l.name}:${l.sha256}`).join("\n"), "utf8").digest("hex"),
+  };
+}
+
+/**
+ * Decide what one check of one subject observed. Reads go through `deps`; nothing here touches the
  * database, so every branch is unit-testable. Returns `failed` whenever a REQUIRED read could not be
  * completed — no observation, no event, no score.
+ *
+ * A subject on the XRP Ledger gets the full check (account state, fresh score, sanctions, loans). A subject on another
+ * chain (EVM / Bitcoin / Tron — a counterparty a VASP screens) has none of that to observe: it gets the SANCTIONS check only,
+ * and its observations say `accountStatus: "not_applicable"`.
  */
 export async function evaluateSubject(state: SubjectState, cfg: SubscriptionCfg, deps: MonitorDeps, ctx: CheckContext): Promise<CheckResult> {
   const now = ctx.now;
   const isBaseline = state.lastCheckedAt === null;
+  const isXrpl = state.chain === "xrpl";
   const events: EventDraft[] = [];
 
-  // 1. account-state fingerprint (cheap)
-  const fp = await deps.fingerprint(state.address);
-  if (!fp.ok) return { outcome: "failed", reason: "account state could not be read from the XRP Ledger" };
-  const fingerprint = fp.latestTxHash;
-  const fingerprintChanged = !isBaseline && fingerprint !== state.lastSeenFingerprint;
+  // 1. account-state fingerprint (cheap) — XRP Ledger subjects only
+  let fingerprint: string | null = null;
+  let fingerprintChanged = false;
+  let fpStatus: AccountStatus = "not_applicable";
+  if (isXrpl) {
+    const fp = await deps.fingerprint(state.address);
+    if (!fp.ok) return { outcome: "failed", reason: "account state could not be read from the XRP Ledger" };
+    fingerprint = fp.latestTxHash;
+    fpStatus = fp.accountStatus;
+    fingerprintChanged = !isBaseline && fingerprint !== state.lastSeenFingerprint;
+  }
 
-  // 2. score — FRESH or not at all
+  // 2. score — FRESH or not at all (XRP Ledger subjects only)
   const scoreDue =
-    fp.accountStatus === "active" &&
+    isXrpl &&
+    fpStatus === "active" &&
     (state.lastScoredAt === null ||
       state.scoredFingerprint !== fingerprint ||
       now.getTime() - state.lastScoredAt.getTime() >= RESCORE_AFTER_MS);
@@ -198,7 +247,7 @@ export async function evaluateSubject(state: SubjectState, cfg: SubscriptionCfg,
   let methodology: string | null = null;
   let grade: string | null = null;
   let signals: Record<string, number> | null = null;
-  let accountStatus: AccountStatus = fp.accountStatus;
+  let accountStatus: AccountStatus = fpStatus;
   let scoreDeferred = false;
 
   if (scoreDue && ctx.scoreBudget.remaining > 0) {
@@ -221,50 +270,77 @@ export async function evaluateSubject(state: SubjectState, cfg: SubscriptionCfg,
     scoreStatus = state.lastScoredObservationId ? "not_rescored" : "unavailable";
   }
 
-  // 3. sanctions — a cheap membership check against the CURRENT SDN snapshot every check. OFAC publishes a new
-  //    vintage almost daily, but the XRP address set rarely changes, so an attested screening receipt is written only
-  //    at baseline and when this wallet's listed-ness changes (not once per wallet per vintage).
+  // 3. sanctions — a cheap membership check against the CURRENT snapshot of EVERY list, every check. The lists publish
+  //    often but the addresses on them rarely change, so an attested screening receipt (which names every list, its
+  //    version and its hash) is written only at baseline and when this subject's listed-ness changes.
+  //    If the lists are not all ready the check FAILS (no observation, no all-clear) — it never silently checks fewer lists.
   let sanctions: MonitorSanctions | null = state.lastSanctions;
   let lastScreenSnapshotId = state.lastScreenSnapshotId;
   let sanctionListed = state.sanctionListed;
   let sanctionsChanged = false;
-  if (ctx.currentSnapshot) {
-    const m = await deps.sdnMembership(state.address, ctx.currentSnapshot.id);
-    if (!m.ok) return { outcome: "failed", reason: "the sanctions list could not be read" };
+  {
+    if (!ctx.sanctionLists) return { outcome: "failed", reason: "the sanctions lists are not all available yet" };
+    const lists = ctx.sanctionLists;
+    if (lists.some((l) => !listCovers(l, state.chain))) return { outcome: "failed", reason: "a sanctions list does not yet cover this address type" };
+    const desc = sanctionSetDescriptor(lists);
+    const m = await deps.sanctionsMembership(state.address, state.chain, lists);
+    if (!m.ok) return { outcome: "failed", reason: "the sanctions lists could not be read" };
     let listed = m.listed;
     let receiptQueryId = state.lastSanctions?.receiptQueryId ?? null;
-    let matches: Array<{ entryId: string; entryName: string }> = [];
+    let matches: Array<{ list: string; entryId: string; entryName: string }> = [];
+    let matchedLists: string[] = m.matchedLists;
     if (isBaseline || m.listed !== state.sanctionListed || receiptQueryId === null) {
-      const sc = await deps.screen(state.address);
+      const sc = await deps.screen(state.address, state.chain, state.keyRef);
       if (!sc.ok) return { outcome: "failed", reason: "the sanctions screen could not be completed" };
       listed = sc.listed; // the attested receipt is authoritative
       receiptQueryId = sc.receiptQueryId;
       matches = sc.matches;
+      matchedLists = [...new Set(sc.matches.map((x) => x.list))];
       lastScreenSnapshotId = sc.snapshotId;
     }
     const prev = state.sanctionListed;
+    const base = { lists: lists.map((l) => ({ name: l.name, vintage: l.vintage, sha256: l.sha256 })), receiptQueryId, subjectChain: state.chain };
     if (listed && prev !== true) {
+      const first = matches[0] ? lists.find((l) => l.name === matches[0].list) : undefined;
       events.push({
         type: "sanctions_hit",
-        data: { list: ctx.currentSnapshot ? "OFAC-SDN" : "OFAC-SDN", vintage: ctx.currentSnapshot.vintage, sha256: ctx.currentSnapshot.sha256, receiptQueryId, matches, atSubscription: isBaseline, note: "Exact address-string match against the OFAC SDN list version named. Not a legal or compliance determination." },
+        data: {
+          // `list`/`vintage`/`sha256` (the list the address was found on) keep their original meaning for existing subscribers;
+          // `lists` names EVERY list that was checked, and `matches` says where it was found.
+          list: matches[0]?.list ?? desc.list,
+          vintage: first?.vintage ?? desc.vintage,
+          sha256: first?.sha256 ?? desc.sha256,
+          matchedLists,
+          matches,
+          ...base,
+          atSubscription: isBaseline,
+          note: "Exact address-string match against the list version(s) named. Not a legal or compliance determination.",
+        },
       });
     } else if (!listed && prev === true) {
       events.push({
         type: "sanctions_delisted",
-        data: { list: "OFAC-SDN", vintage: ctx.currentSnapshot.vintage, sha256: ctx.currentSnapshot.sha256, receiptQueryId, note: "The address did not appear on the list version named; it had appeared on an earlier one." },
+        data: {
+          list: desc.list,
+          vintage: desc.vintage,
+          sha256: desc.sha256,
+          previouslyListedOn: state.lastSanctions?.matchedLists ?? null,
+          ...base,
+          note: "The address did not appear on the list version(s) named; it had appeared on an earlier one.",
+        },
       });
     }
     sanctionsChanged = isBaseline || prev !== listed;
     sanctionListed = listed;
-    sanctions = { listed, list: "OFAC-SDN", vintage: ctx.currentSnapshot.vintage, sha256: ctx.currentSnapshot.sha256, checkedAt: now.toISOString(), receiptQueryId: receiptQueryId as string };
+    sanctions = { listed, ...desc, checkedAt: now.toISOString(), receiptQueryId: receiptQueryId as string, matchedLists: listed ? matchedLists : [] };
   }
 
-  // 4. loans — only while XLS-66 is enabled (read from the ledger each pass)
+  // 4. loans — only while XLS-66 is enabled (read from the ledger each pass); XRP Ledger subjects only
   let loansBlock: MonitorLoans = { amendmentActive: false, loanCount: null, worstStatus: null, statusCounts: null };
   let loanStates: Record<string, string> | null = state.loanStates;
   let everHadLoan = state.everHadLoan;
   let loansChanged = false;
-  if (ctx.loansActive) {
+  if (isXrpl && ctx.loansActive) {
     const nowRipple = (ctx.ledger.closeAt ? Math.floor(ctx.ledger.closeAt.getTime() / 1000) : Math.floor(now.getTime() / 1000)) - RIPPLE_EPOCH_OFFSET;
     const l = await deps.loans(state.address, nowRipple);
     if (!l.ok) return { outcome: "failed", reason: "loan objects could not be read from the XRP Ledger" };
@@ -370,7 +446,7 @@ export async function evaluateSubject(state: SubjectState, cfg: SubscriptionCfg,
     next.lastMethodology = methodology;
     if (wroteFresh) next.lastScoredObservationId = observationId;
   }
-  return { outcome: "checked", observation, events, next, attestLoans: ctx.loansActive && (loansChanged || events.some((e) => e.type.startsWith("loan_") || e.type === "first_loan_observed")) };
+  return { outcome: "checked", observation, events, next, attestLoans: isXrpl && ctx.loansActive && (loansChanged || events.some((e) => e.type.startsWith("loan_") || e.type === "first_loan_observed")) };
 }
 
 // ── Real dependencies ────────────────────────────────────────────────────────
@@ -401,30 +477,33 @@ export function realDeps(prisma: PrismaClient, requestedBy: string): MonitorDeps
         return { ok: false, reason: "unavailable" };
       }
     },
-    async sdnMembership(address, snapshotId) {
+    async sanctionsMembership(address, chain, lists) {
       try {
-        const hit = await prisma.sanctionedAddress.findFirst({ where: { snapshotId, listName: "OFAC-SDN", address }, select: { id: true } });
-        return { ok: true, listed: !!hit };
+        const rec = recogniseAddress(address);
+        if (!rec || rec.chain !== chain) return { ok: false };
+        const matchedLists: string[] = [];
+        for (const l of lists) {
+          const where = l.archiveVersion < 2 ? { snapshotId: l.id, address: rec.address } : { snapshotId: l.id, chain: rec.chain, addressNorm: rec.normalized };
+          const hit = await prisma.sanctionedAddress.findFirst({ where, select: { id: true } });
+          if (hit) matchedLists.push(l.name);
+        }
+        return { ok: true, listed: matchedLists.length > 0, matchedLists };
       } catch {
         return { ok: false };
       }
     },
-    async screen(address) {
+    async screen(address, _chain, screenRequestedBy) {
       try {
         const led = await validatedLedger();
-        const o = await runOfacScreen(prisma, address, requestedBy, led.index);
-        const list = o.leaf.lists[0];
+        const o = await screenAddress(prisma, address, screenRequestedBy, led.index); // every list; the receipt names each one
         const res = o.leaf.result;
         return {
           ok: true,
           listed: res.listed,
-          list: list?.name ?? "OFAC-SDN",
-          vintage: list?.vintage ?? "",
-          sha256: list?.sha256 ?? "",
           receiptQueryId: o.queryId,
           screenedAt: o.leaf.screenedAt,
           snapshotId: o.snapshotId,
-          matches: res.listed ? res.matches.map((m) => ({ entryId: m.entryId, entryName: m.entryName })) : [],
+          matches: res.listed ? res.matches.map((m) => ({ list: m.list, entryId: m.entryId, entryName: m.entryName })) : [],
         };
       } catch {
         return { ok: false };
@@ -455,6 +534,8 @@ type SubjectRow = Prisma.MonitorSubjectGetPayload<{ include: { subscription: tru
 function toState(r: SubjectRow): SubjectState {
   return {
     address: r.address,
+    chain: r.chain,
+    keyRef: `monitor:${r.subscription.apiKeyId}`,
     lastCheckedAt: r.lastCheckedAt,
     lastObservationAt: r.lastObservationAt,
     lastSeenFingerprint: r.lastSeenFingerprint,
@@ -492,11 +573,22 @@ export interface PassResult {
   delivery?: DeliveryStats;
 }
 
+/** Current snapshot of EVERY list, or null if any list has none. */
+async function loadSanctionLists(prisma: PrismaClient): Promise<SanctionSetSnapshot[] | null> {
+  const out: SanctionSetSnapshot[] = [];
+  for (const name of LIST_NAMES) {
+    const snap = await currentSnapshot(prisma, name).catch(() => null);
+    if (!snap) return null;
+    out.push({ name, id: snap.id, vintage: snap.vintage, sha256: snap.sha256, archiveVersion: snap.archiveVersion, coverage: snap.coverage });
+  }
+  return out;
+}
+
 async function buildContext(prisma: PrismaClient, scoreBudget: number): Promise<CheckContext | null> {
   const ledger = await validatedLedger();
   if (!ledger.index) return null; // cannot pin a ledger => cannot attest anything
-  const snap = await currentSdnSnapshot(prisma).catch(() => null);
-  return { now: new Date(), ledger, currentSnapshot: snap ? { id: snap.id, vintage: snap.vintage, sha256: snap.sha256 } : null, loansActive: await lendingProtocolActive(), scoreBudget: { remaining: scoreBudget } };
+  const sanctionLists = await loadSanctionLists(prisma);
+  return { now: new Date(), ledger, sanctionLists, loansActive: await lendingProtocolActive(), scoreBudget: { remaining: scoreBudget } };
 }
 
 async function persistOne(prisma: PrismaClient, row: SubjectRow, res: CheckResult, deps: MonitorDeps, ctx: CheckContext, tally: { events: number; observations: number; degradedRaised: number }, recordFailures = true): Promise<void> {

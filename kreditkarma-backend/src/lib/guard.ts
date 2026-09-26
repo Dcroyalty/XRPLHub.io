@@ -19,6 +19,8 @@ export interface GuardResult {
   retryAfterSeconds?: number;
 }
 
+const BATCH_EXTRA = "screen-batch-extra";
+
 function monthKey(d = new Date()): string {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
 }
@@ -32,8 +34,10 @@ export async function guard(apiKeyId: string, plan: Plan): Promise<GuardResult> 
   const minuteAgo = new Date(now.getTime() - 60_000);
 
   // 1) Per-minute rate limit
+  // "screen-batch-extra" rows are the 2nd..Nth unit of a batch: they count toward the MONTHLY quota, not the per-minute
+  // request limit (a batch is one request).
   const lastMinute = await prisma.usageRecord.count({
-    where: { apiKeyId, createdAt: { gte: minuteAgo } },
+    where: { apiKeyId, createdAt: { gte: minuteAgo }, endpoint: { not: BATCH_EXTRA } },
   });
   if (lastMinute >= plan.rateLimitPerMin) {
     return {
@@ -71,4 +75,35 @@ export async function guard(apiKeyId: string, plan: Plan): Promise<GuardResult> 
     remaining: Math.max(0, plan.monthlyQuota - used - 1),
     overage: overQuota,
   };
+}
+
+/**
+ * Like guard(), for one request that consumes `units` of the monthly quota (a batch screen: one unit per screened address).
+ * The per-minute limit counts the request once. Refused as a whole if the quota cannot cover every unit — never partially served.
+ */
+export async function guardUnits(apiKeyId: string, plan: Plan, units: number): Promise<GuardResult> {
+  if (units <= 1) return guard(apiKeyId, plan);
+  const now = new Date();
+  const minuteAgo = new Date(now.getTime() - 60_000);
+  const lastMinute = await prisma.usageRecord.count({ where: { apiKeyId, createdAt: { gte: minuteAgo }, endpoint: { not: BATCH_EXTRA } } });
+  if (lastMinute >= plan.rateLimitPerMin) {
+    return { ok: false, status: 429, reason: `Rate limit exceeded (${plan.rateLimitPerMin}/min)`, retryAfterSeconds: 60 };
+  }
+  const mk = monthKey(now);
+  const used = await prisma.usageRecord.count({ where: { apiKeyId, windowKey: mk } });
+  if (!plan.overage && used + units > plan.monthlyQuota) {
+    return {
+      ok: false,
+      status: 429,
+      reason: `This batch needs ${units} calls but only ${Math.max(0, plan.monthlyQuota - used)} remain of your monthly quota (${plan.monthlyQuota}). Nothing was screened or charged.`,
+      remaining: Math.max(0, plan.monthlyQuota - used),
+    };
+  }
+  await prisma.usageRecord.createMany({
+    data: [
+      { apiKeyId, endpoint: "screen-batch", windowKey: mk, overage: false },
+      ...Array.from({ length: units - 1 }, () => ({ apiKeyId, endpoint: BATCH_EXTRA, windowKey: mk, overage: false })),
+    ],
+  });
+  return { ok: true, status: 200, remaining: Math.max(0, plan.monthlyQuota - used - units), overage: false };
 }

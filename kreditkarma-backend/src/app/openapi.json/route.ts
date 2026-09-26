@@ -927,6 +927,101 @@ export async function GET(req: Request) {
         },
       },
 
+      "/api/screen": {
+        get: {
+          operationId: "screenAddress",
+          summary: "Sanctions screening attestation — OFAC SDN + EU + UK, XRPL/EVM/Bitcoin/Tron (API key)",
+          description:
+            "Compare one address against the current snapshot of every sanctions list we hold that names crypto addresses (OFAC-SDN, EU-FSF, UK-SL) by exact address-string match on the address's own chain. " +
+            "The receipt names every list, its version and file hash, and how many addresses it names on that chain. Attests to PROCESS, not ground truth: 'no match' is not 'clean'. " +
+            "The EU and UK lists are name-based and name few crypto addresses; the UN list is not screened. Not legal advice; using it does not satisfy any obligation. " +
+            "Optional reference = your own opaque id (never personal data). Fails closed: 400 for an unsupported address, 503 if any list is not loaded. Retention: at least 10 years, never pruned. POST { address, lists, reference } also works.",
+          tags: ["Screening"],
+          parameters: [
+            { name: "address", in: "query", required: true, description: "XRPL, EVM (0x…), Bitcoin or Tron address.", schema: { type: "string" } },
+            { name: "lists", in: "query", required: false, description: "Comma list of OFAC-SDN,EU-FSF,UK-SL (default all).", schema: { type: "string" } },
+            { name: "reference", in: "query", required: false, description: "Your opaque reference (<=64 chars).", schema: { type: "string" } },
+          ],
+          responses: { "200": ok("The screening receipt.", { type: "object" }, {}), "400": { description: "Unsupported or invalid address." }, "401": { description: "Missing or invalid API key." }, "503": { description: "A list is not loaded yet; screening is unavailable rather than partial." } },
+        },
+      },
+
+      "/api/screen/batch": {
+        post: {
+          operationId: "screenBatch",
+          summary: "Batch sanctions screening — up to 100 addresses, one receipt each (API key)",
+          description: "Screen up to 100 addresses (mixed chains) in one call against the same list snapshots. One receipt per address, all stored together so they land in the same on-ledger anchor batch, sharing a batchId. Each valid address counts as one call against your quota; an invalid address is reported per item.",
+          tags: ["Screening"],
+          requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["addresses"], properties: { addresses: { type: "array", maxItems: 100, items: { oneOf: [{ type: "string" }, { type: "object", properties: { address: { type: "string" }, reference: { type: "string" } } }] } }, lists: { type: "string" } } } } } },
+          responses: { "200": ok("Per-address results and the batchId.", { type: "object" }, {}), "400": { description: "Bad request or more than 100 addresses." }, "429": { description: "Quota cannot cover the whole batch; nothing was screened." }, "503": { description: "A list is not loaded yet." } },
+        },
+      },
+
+      "/api/screen/lists": {
+        get: {
+          operationId: "screeningLists",
+          summary: "Which sanctions lists are screened, what each really contains, and the versions in force (free)",
+          description: "Per list: publisher, what it really contains (the EU and UK lists are name-based with few addresses), current vintage, content hash, addresses per chain, last confirmed; what is not screened (UN); supported chains; integrity gates; retention; limitations.",
+          tags: ["Screening"],
+          security: [],
+          responses: { "200": ok("List catalogue.", { type: "object" }, {}) },
+        },
+      },
+
+      "/api/attest/export": {
+        get: {
+          operationId: "exportScreeningReceipts",
+          summary: "Auditor export — every receipt your key produced in a date range, with proofs (API key)",
+          description: "Every screening receipt (its own screens and its monitoring subscriptions') in [from, to), oldest first, each with the exact list versions, canonical leaf, leaf hash, Merkle inclusion proof and the anchor transaction hash, as JSON or CSV. Not-yet-anchored receipts are included with status pending. Max 366 days per request; paginate with cursor.",
+          tags: ["Screening"],
+          parameters: [
+            { name: "from", in: "query", required: false, description: "Inclusive; date or ISO time (default: 30 days before to).", schema: { type: "string" } },
+            { name: "to", in: "query", required: false, description: "Exclusive; date or ISO time (default now).", schema: { type: "string" } },
+            { name: "format", in: "query", required: false, schema: { type: "string", enum: ["json", "csv"] } },
+            { name: "limit", in: "query", required: false, schema: { type: "integer", minimum: 1, maximum: 1000 } },
+            { name: "cursor", in: "query", required: false, schema: { type: "string" } },
+          ],
+          responses: { "200": ok("The export.", { type: "object" }, {}), "400": { description: "Bad range/cursor." }, "401": { description: "Missing or invalid API key." } },
+        },
+      },
+
+      "/api/domains/build": {
+        get: {
+          operationId: "buildScoreDomain",
+          summary: "Plan a Permissioned Domain gated on XRPLScore credential tiers (free plan; the transaction is the paid 'permdomain' service)",
+          description: "Given the domain-owner account and the lowest tier to admit (min600|min650|min700|min750), returns the exact accepted-credential list (the floor tier AND every tier above it — a wallet holds only its highest tier), cost, member steps, and the x402 resource that delivers the unsigned PermissionedDomainSet. Optional alsoAccept and domainId (update). Unsigned only.",
+          tags: ["Credentials"],
+          security: [],
+          parameters: [
+            { name: "account", in: "query", required: true, schema: { type: "string" } },
+            { name: "minTier", in: "query", required: true, schema: { type: "string", enum: ["min600", "min650", "min700", "min750"] } },
+            { name: "alsoAccept", in: "query", required: false, schema: { type: "string" } },
+            { name: "domainId", in: "query", required: false, schema: { type: "string" } },
+          ],
+          responses: { "200": ok("The plan.", { type: "object" }, {}), "400": { description: "Bad request." } },
+        },
+      },
+
+      "/api/credentials/request": {
+        post: {
+          operationId: "requestScoreCredential",
+          summary: "Request your XRPLScore credential — we issue, you accept",
+          description: "Scores the wallet fresh; if it clears 600 a request is queued for its tier (202). A person issues queued credentials from an offline key; the wallet then signs CredentialAccept (GET the same URL with ?subject= for status and the unsigned accept). Below 600: not_eligible, nothing queued.",
+          tags: ["Credentials"],
+          security: [],
+          requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["subject"], properties: { subject: { type: "string" } } } } } },
+          responses: { "202": ok("Queued.", { type: "object" }, {}), "200": ok("Already held / not eligible.", { type: "object" }, {}), "429": { description: "Too many requests." } },
+        },
+        get: {
+          operationId: "scoreCredentialRequestStatus",
+          summary: "Status of a credential request, with the unsigned CredentialAccept when it is due",
+          tags: ["Credentials"],
+          security: [],
+          parameters: [{ name: "subject", in: "query", required: true, schema: { type: "string" } }],
+          responses: { "200": ok("Status.", { type: "object" }, {}) },
+        },
+      },
+
       "/api/x402/screen/ofac": {
         get: {
           operationId: "x402ScreenOfac",

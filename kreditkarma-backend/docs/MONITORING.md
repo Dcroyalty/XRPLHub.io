@@ -25,7 +25,7 @@ matching addendum (§5A).
 
 `score_drop` (only if the subscriber sets `scoreDropPoints`; measured from the highest fresh score since subscribing or
 the last alert; never across a methodology change — there is **no default threshold**), `sanctions_hit` /
-`sanctions_delisted` (exact match against the OFAC SDN list), `first_loan_observed`, `loan_overdue`, `loan_impaired`,
+`sanctions_delisted` (exact match against EVERY sanctions list we hold — OFAC SDN, EU FSF, UK Sanctions List — on the subject's own chain; subjects may be XRP Ledger, EVM, Bitcoin or Tron addresses, and a non-XRPL subject gets the sanctions check only), `first_loan_observed`, `loan_overdue`, `loan_impaired`,
 `loan_defaulted` (**dormant until XLS-66 is enabled, then automatic**), and `monitoring_degraded` (we could not observe
 the wallet for 3 daily runs — says nothing about the wallet).
 
@@ -49,9 +49,9 @@ anchor wallet with memo type `XRPLHub-Monitor-Attestation/monitor-observation-v1
 `scoreWallet()` during that observation, never the display cache — enforced by `canonMonitorJson` and the
 build-time gate `scripts/check-attestation-freshness.mjs`). An unchanged wallet carries `xrplScore: null`,
 `scoreStatus: "not_rescored"` and `scoreObservationRef` pointing at its last fresh observation. Sanctions: the
-observation states which SDN snapshot it checked; an attested screening receipt is written at baseline and whenever
-a wallet's listed-ness changes (OFAC publishes a new vintage almost daily; a receipt per wallet per vintage would
-not be sustainable).
+observation states which list snapshots it checked (multi-list set descriptor: `list` = `EU-FSF+OFAC-SDN+UK-SL`, `vintage` = `EU-FSF@…;OFAC-SDN@…;UK-SL@…`, `sha256` = hash of the per-list hashes; the receipt named by `receiptQueryId` carries each list's own version and hash and is the authority; `sanctions_hit` data adds `matchedLists`, `matches`, `lists`); an attested screening receipt is written at baseline and whenever
+a wallet's listed-ness changes (lists publish new vintages often; a receipt per wallet per vintage would
+not be sustainable). A counterparty screened clean today that is listed tomorrow fires `sanctions_hit` at the next daily pass, with a fresh receipt naming every list..
 
 ## Capacity — what the one daily monitoring run can honestly handle
 

@@ -4,6 +4,7 @@
 // the health check itself can never throw.
 
 import { prisma } from "@/lib/xrplscore-db";
+import { LIST_NAMES, currentSnapshot, lastChecked } from "./sanctionLists";
 import { xummConfigured, xummPing } from "@/lib/xumm";
 import { facilitatorSupported } from "@/lib/x402";
 import { alertingArmed } from "@/lib/notify";
@@ -134,25 +135,24 @@ async function checkAnchor(): Promise<Check> {
 }
 
 async function checkScreening(): Promise<Check> {
-  // OFAC SDN screening attestation pipeline: is a snapshot present and fresh,
-  // and did the last anchor succeed. A stale/missing snapshot is the failure
-  // that matters — every screen would attest against nothing.
+  // Sanctions screening attestation pipeline: is a snapshot present and fresh FOR EVERY LIST, and did the last anchor succeed.
+  // A stale/missing snapshot is the failure that matters — every screen would attest against nothing (screening fails closed: 503).
   try {
-    const [snap, lastFail, lastOk, unanchored] = await Promise.all([
-      prisma.sanctionListSnapshot.findFirst({ where: { listName: "OFAC-SDN" }, orderBy: { fetchedAt: "desc" } }),
+    const [snaps, lastFail, lastOk, unanchored] = await Promise.all([
+      Promise.all(LIST_NAMES.map(async (name) => ({ name, snap: await currentSnapshot(prisma, name), checkedAt: await lastChecked(prisma, name) }))),
       prisma.screeningAnchor.findFirst({ where: { status: { in: ["failed", "misconfigured"] } }, orderBy: { createdAt: "desc" } }),
       prisma.screeningAnchor.findFirst({ where: { status: "anchored" }, orderBy: { createdAt: "desc" } }),
       prisma.screeningReceipt.count({ where: { anchorId: null } }),
     ]);
-    if (!snap) {
-      return { name: "screening-ofac", level: "warn", detail: "no OFAC SDN snapshot ingested yet — screening returns 503" };
-    }
-    const ageDays = (Date.now() - snap.fetchedAt.getTime()) / 86_400_000;
-    if (snap.addressCount === 0) {
-      return { name: "screening-ofac", level: "down", detail: `latest OFAC SDN snapshot (${snap.vintage}) has 0 XRP addresses — integrity gate should have blocked this` };
-    }
-    if (ageDays > 21) {
-      return { name: "screening-ofac", level: "warn", detail: `OFAC SDN snapshot is ${Math.floor(ageDays)}d old (${snap.vintage}) — the daily refresh may be stuck` };
+    const missing = snaps.filter((x) => !x.snap).map((x) => x.name);
+    if (missing.length) return { name: "screening-ofac", level: "warn", detail: `no snapshot ingested yet for ${missing.join(", ")} — screening returns 503 (fails closed)` };
+    for (const { name, snap, checkedAt } of snaps) {
+      if (!snap) continue;
+      // Freshness = when we last CONFIRMED the list (EU/UK publish rarely, so their fetchedAt can be old and correct).
+      const seen = Math.max(snap.fetchedAt.getTime(), checkedAt ? checkedAt.getTime() : 0);
+      const ageDays = (Date.now() - seen) / 86_400_000;
+      if (snap.addressCount === 0 && name === "OFAC-SDN") return { name: "screening-ofac", level: "down", detail: `latest ${name} snapshot (${snap.vintage}) names 0 addresses — integrity gate should have blocked this` };
+      if (ageDays > 21) return { name: "screening-ofac", level: "warn", detail: `${name} last confirmed ${Math.floor(ageDays)}d ago (vintage ${snap.vintage}) — the daily refresh may be stuck` };
     }
     const failNewer = lastFail && (!lastOk || lastFail.createdAt > lastOk.createdAt);
     if (failNewer && lastFail) {
@@ -160,7 +160,7 @@ async function checkScreening(): Promise<Check> {
       const level: Level = lastFail.status === "misconfigured" && !keyed ? "down" : "warn";
       return { name: "screening-ofac", level, detail: `last screening anchor ${lastFail.status}: ${lastFail.error ?? "no detail"}${unanchored ? ` (${unanchored} receipt(s) unanchored)` : ""}` };
     }
-    return { name: "screening-ofac", level: "ok", detail: `OFAC SDN ${snap.vintage}, ${snap.addressCount} XRP addr; ${unanchored} receipt(s) awaiting the next anchor` };
+    return { name: "screening-ofac", level: "ok", detail: `${snaps.map(({ name, snap }) => `${name} ${snap?.vintage} (${snap?.addressCount} addr)`).join("; ")}; ${unanchored} receipt(s) awaiting the next anchor` };
   } catch (e) {
     return { name: "screening-ofac", level: "warn", detail: e instanceof Error ? e.message : "check failed" };
   }

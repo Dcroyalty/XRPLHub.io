@@ -287,10 +287,13 @@ export const SERVICE_CATALOG: ServiceDef[] = [
       P("credentialType", "string", true, "Credential type string (hex-encoded for you)", "kyc-basic"),
     ] },
   { id: "permdomain", label: "Set permissioned domain", category: "Identity", tier: "safe",
-    gives: "A PermissionedDomainSet txjson accepting a credential (Issuer, CredentialType).",
+    gives: "A PermissionedDomainSet txjson accepting a credential (Issuer, CredentialType) — or, with minTier, gated on XRPLScore credentials (that tier and every tier above it).",
     params: [
-      P("credentialType", "string", true, "Accepted credential type", "kyc-basic"),
+      P("credentialType", "string", false, "Accepted credential type (required unless minTier is given)", "kyc-basic"),
       P("acceptedIssuer", "address", false, "Accepted issuer (default: you)", "rIssuer..."),
+      P("minTier", "string", false, "Gate on XRPLScore credentials: lowest tier to admit (min600, min650, min700 or min750); every higher tier is added for you", "min650"),
+      P("alsoAccept", "string", false, "With minTier: other accepted credentials as rIssuer:type,rIssuer:type (10 credentials in total)", "rIssuer...:kyc-basic"),
+      P("domainId", "string", false, "Update an existing domain you own (its 64-hex DomainID); omit to create a new one", "ABCD…"),
     ] },
 ];
 

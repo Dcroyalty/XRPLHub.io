@@ -18,7 +18,7 @@ import { notifyError, pingHealthcheck } from "@/lib/notify";
 import { runMonitorPass } from "@/lib/monitorEngine";
 import { maybeAnchorMonitorObservations } from "@/lib/monitorAnchor";
 import { recordHeartbeat, runWatchdog } from "@/lib/watchdog";
-import { refreshSdnSnapshot } from "@/lib/ofac";
+import { refreshAllLists } from "@/lib/sanctionLists";
 import { maybeAnchorScreeningReceipts } from "@/lib/screenAnchor";
 import { maybeAnchorLendingReceipts } from "@/lib/lendingAnchor";
 import { maybeAnchorUnderwriteReceipts } from "@/lib/underwriteAnchor";
@@ -55,15 +55,11 @@ export async function GET(req: Request) {
         ? await runIndexerPass(prisma, { budgetMs: 12_000 })
         : { census: "disabled" as const };
 
-    const sdn = await refreshSdnSnapshot(prisma).catch(async (e) => {
-      // refreshSdnSnapshot alerts on fetch/parse/integrity failures itself; this catches anything ELSE it throws
-      // (database, unexpected) — that must not pass silently either.
-      await notifyError("cron/index-credentials sdn-refresh", e);
-      return {
-        action: "blocked-error" as const,
-        listName: "OFAC-SDN",
-        detail: e instanceof Error ? e.message : "refresh threw",
-      };
+    // Every sanctions list (OFAC-SDN, EU-FSF, UK-SL). Each list is independent: one failing or gated list never blocks the others,
+    // and each alerts on its own fetch/parse/integrity failures. This catches anything ELSE that throws (database, unexpected).
+    const sdn = await refreshAllLists(prisma, { deadlineMs: t0 + 22_000 }).catch(async (e) => {
+      await notifyError("cron/index-credentials sanctions-refresh", e);
+      return [{ action: "blocked-error" as const, listName: "ALL", detail: e instanceof Error ? e.message : "refresh threw" }];
     });
 
     // Continuous monitoring: after the SDN refresh (so a new list is visible to sanctions checks), before the
