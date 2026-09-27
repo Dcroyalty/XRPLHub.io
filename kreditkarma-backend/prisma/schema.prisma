@@ -806,14 +806,21 @@ model MonitorEvent {
   @@index([state, nextAttemptAt])
 }
 
-// A wallet's request for its XRPLScore credential ("we issue, they accept"). Queued here; an operator issues from the offline issuer
-// key (scripts/issue-queued-credentials.cjs) after re-scoring. `scoreAtRequest` is informational — the tier is re-checked at issuance.
+// A request for one of XRPLHub's XLS-70 credentials ("we issue, they accept"). Queued here; an operator issues from
+// the offline issuer key (scripts/issue-queued-credentials.cjs), which branches on `kind`.
+//   kind "score"        — io.xrplhub.score.v1.<tier>, requested by the subject wallet (POST /api/credentials/request).
+//                          `tier`/`scoreAtRequest` apply; re-checked at issuance (issue-credential.cjs).
+//   kind "mpt-declared" — io.xrplhub.mpt.v1.declared, queued AUTOMATICALLY after a successful mptissue purchase
+//                          (src/lib/mptCredential.ts) — no request step. `subjectRef` is the issuanceId that
+//                          triggered it; `tier`/`scoreAtRequest` are unused for this kind.
 model CredentialRequest {
   id             String    @id @default(cuid())
+  kind           String    @default("score") // "score" | "mpt-declared"
   subject        String
-  tier           String // "min600" … "min750" as computed at request time
+  tier           String // "min600" … "min750" (kind=score); unused for kind=mpt-declared
   credentialType String
-  scoreAtRequest Int
+  scoreAtRequest Int? // kind=score only
+  subjectRef     String? // kind=mpt-declared: the MPTokenIssuanceID that triggered this request
   status         String    @default("queued") // queued | issued | failed | declined
   ipHash         String? // sha256(ip + daily salt) — abuse limiting only; never the raw address
   requestedAt    DateTime  @default(now())
@@ -824,4 +831,5 @@ model CredentialRequest {
   @@index([subject])
   @@index([status, requestedAt])
   @@index([ipHash, requestedAt])
+  @@index([kind, status])
 }

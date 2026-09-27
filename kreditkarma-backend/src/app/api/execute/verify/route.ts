@@ -15,6 +15,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/xrplscore-db';
 import { registerNewMptIssuance } from '@/lib/mptRegister';
+import { queueMptDeclaredCredential } from '@/lib/mptCredential';
 import { fetchLedgerTx, recordStepDelivered, type DeliveryResult } from '@/lib/paymentGate';
 import { prismaPurchaseStore } from '@/lib/paymentStore';
 
@@ -47,7 +48,11 @@ async function confirmDelivery(serviceTxHash: string, payTxHash: string) {
   }
   let mpt: Awaited<ReturnType<typeof registerNewMptIssuance>> | undefined;
   if (rec.productId === 'mptissue') {
-    mpt = await registerNewMptIssuance(prisma, String(svc.tx.Account ?? ''), svc.tx).catch(() => undefined);
+    const issuer = String(svc.tx.Account ?? '');
+    mpt = await registerNewMptIssuance(prisma, issuer, svc.tx).catch(() => undefined);
+    // Best-effort: an io.xrplhub.mpt.v1.declared credential request, queued for a person to issue later (never
+    // blocks or fails the delivery response — see src/lib/mptCredential.ts).
+    if (issuer) void queueMptDeclaredCredential(prisma, issuer, mpt?.issuanceId ?? null).catch(() => {});
   }
   return NextResponse.json({ status: 'delivered', ...base, mptIssuanceId: mpt?.issuanceId ?? null, registry: mpt });
 }

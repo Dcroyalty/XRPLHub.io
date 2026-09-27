@@ -217,3 +217,40 @@ Credentials are immutable; the only lever is `CredentialDelete`.
   this file are final and reviewed. A mistake caught at that stage is a
   one-transaction fix. (In practice the mainnet credential above was issued to
   an external public wallet, unsolicited and unaccepted; see the disclosure in §5.)
+
+---
+
+## 9. Second credential family: `io.xrplhub.mpt.v1.declared`
+
+A second, unrelated credential family, sharing the same issuer wallet as the score credential (the `CredentialType`
+string, not the issuer address, scopes `io.xrplhub.*` namespaces — see §1).
+
+| | |
+|---|---|
+| **Namespace** | `io.xrplhub.mpt.v1` |
+| **CredentialType** | `io.xrplhub.mpt.v1.declared` (one type — no tiers) |
+| **Attests** | A backing declaration and the issuer flags of **at least one** MPT this account has issued were **recorded** on-ledger through XRPLHub, at issuance time. |
+| **Does NOT attest** | That the declaration is true. That it is "reviewed" or "verified" — it is deliberately never called either. That **every** MPT this account has issued carries a declaration; an issuer can mint further MPTs later with a different one, or none, and this credential does not track that. |
+
+**Why "declared" and not "reviewed":** `src/lib/mptBacking.ts`'s hard line — *"XRPLHub publishes what the issuer
+declared. We do not verify it, we cannot verify it, and a declaration is not evidence. An unbacked token and a token
+whose issuer merely claims backing look identical on-ledger."* A credential named "reviewed" would misstate that.
+
+**Trigger — automatic, not opt-in.** Queued the instant a `mptissue` purchase delivers (`src/lib/mptCredential.ts`,
+called from `src/app/api/execute/verify/route.ts`), because the issuer has already engaged us by buying the service —
+unlike the score credential, there is no separate request step. Still "we issue, they accept": a queued request sits
+in the same `CredentialRequest` table (`kind: "mpt-declared"`) until a person issues it from the offline key
+(`scripts/issue-mpt-credential.cjs`, run via `scripts/issue-queued-credentials.cjs`), and it is not usable for gating
+until the subject signs `CredentialAccept`.
+
+**Expiration:** 90 days, same validity window as the score credential, for integrator consistency. Note the
+underlying fact can go stale before expiry if DynamicMPT (XLS-94) is active and the issuer rewrites the metadata —
+this credential does not currently detect that; a future improvement is having the daily MPT-registry pass compare
+each declaration against what was recorded at issuance and flag (or `CredentialDelete`) a stale one.
+
+**URI:** `https://www.xrplhub.io/verify/mpt-issuer/<subjectAddress>` — shows the on-ledger credential status and
+every MPT this account has issued, with its declaration, live.
+
+**Reserve:** 0.2 XRP per pending credential, same mechanics as §6. Funding the issuer wallet for the score credential
+alone assumed one credential family; a second family issuing on its own trigger (every `mptissue` purchase, not just
+a subject who asks) changes the worst-case pending count and should be re-budgeted before this is issued at volume.
