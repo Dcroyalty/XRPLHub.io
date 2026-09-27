@@ -21,6 +21,7 @@ import { bithompMptLookup, bithompConfigured } from "./bithomp";
 import { reportLink, credentialsAccountLink, mptFullLink, type RelatedLink } from "./related";
 import { MPT_LSF_CAN_HOLD_CONFIDENTIAL } from "./mptFlags";
 import { getMptRegimeView, issuanceMutability } from "./mptPermanence";
+import { verifyDomainTwoWay } from "./domainVerify";
 
 export const MPT_ISSUANCE_ID_RE = /^[0-9A-Fa-f]{48}$/; // 192-bit MPTokenIssuanceID
 
@@ -100,29 +101,13 @@ export interface MptRisk {
     accountAgeDays?: number | null;
     blackholed?: boolean;
     domain?: string | null;
-    domainVerified?: boolean; // issuer address listed in the domain's xrp-ledger.toml
+    domainVerified?: boolean; // TWO-WAY: the account's own Domain field AND that domain's xrp-ledger.toml listing this account under [[ACCOUNTS]]
+    domainVerifiedReason?: string; // why (or why not) — which direction failed, or HTTP status, or the toml URL that confirmed it
     credentialsHeld?: number;
     credentials?: { issuer: string; type: string; accepted: boolean; expired: boolean }[];
   } | null;
   related?: RelatedLink[];
   tier: "basic" | "full";
-}
-
-/** Best-effort check: is `address` listed in https://<domain>/.well-known/xrp-ledger.toml ? */
-async function verifyDomain(domain: string, address: string): Promise<boolean> {
-  const host = domain.replace(/^https?:\/\//, "").replace(/\/.*$/, "");
-  if (!host || !/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(host)) return false;
-  try {
-    const res = await fetch(`https://${host}/.well-known/xrp-ledger.toml`, {
-      signal: AbortSignal.timeout(6000),
-      headers: { accept: "text/plain" },
-    });
-    if (!res.ok) return false;
-    const toml = await res.text();
-    return toml.includes(address);
-  } catch {
-    return false;
-  }
 }
 
 export async function getMptRisk(issuanceId: string, opts: { full?: boolean } = {}): Promise<MptRisk> {
@@ -258,7 +243,11 @@ export async function getMptRisk(issuanceId: string, opts: { full?: boolean } = 
     const hasSignerList = Array.isArray(d.signer_lists) && d.signer_lists.length > 0;
     blackholed = masterDisabled && !hasSignerList && !d.RegularKey;
   }
-  const domainVerified = domain ? await verifyDomain(domain, issuer) : false;
+  // Two-way: `domain` is already the account's OWN Domain field (direction 1, above), so this checks only direction 2 —
+  // does that domain's xrp-ledger.toml list this exact account under [[ACCOUNTS]]? See domainVerify.ts.
+  const domainCheck = domain ? await verifyDomainTwoWay(domain, issuer) : null;
+  const domainVerified = domainCheck?.ok ?? false;
+  const domainVerifiedReason = domainCheck?.reason ?? "no Domain field set on this account";
   const credList: LiveCredential[] = creds.status === "fulfilled" ? creds.value : [];
 
   const related: RelatedLink[] = [reportLink(issuer)];
@@ -269,7 +258,7 @@ export async function getMptRisk(issuanceId: string, opts: { full?: boolean } = 
     source: { ledger: "MPTokenIssuance present on the validated ledger (live read)", bithompIndex: bithompStr, interpretation: "exists" },
     issuer, issuance, issuerPowers, backingDeclaration, confidential, mutability,
     issuerRisk: {
-      xrplScore, grade: gradeStr, accountAgeDays, blackholed, domain, domainVerified,
+      xrplScore, grade: gradeStr, accountAgeDays, blackholed, domain, domainVerified, domainVerifiedReason,
       credentialsHeld: credList.length,
       credentials: credList.map((c) => ({
         issuer: c.issuer, type: c.credentialTypeDecoded, accepted: c.accepted, expired: c.expired,

@@ -615,7 +615,8 @@ export async function GET(req: Request) {
                       accountAgeDays: { type: "integer", nullable: true },
                       blackholed: { type: "boolean" },
                       domain: { type: "string", nullable: true },
-                      domainVerified: { type: "boolean", description: "Issuer address is listed in the domain's xrp-ledger.toml." },
+                      domainVerified: { type: "boolean", description: "Two-way check: the account's own Domain field, AND that domain's xrp-ledger.toml lists this exact account under [[ACCOUNTS]]." },
+                        domainVerifiedReason: { type: "string", description: "why (or why not) verified — which direction failed, HTTP status, or the confirming toml URL." },
                       credentialsHeld: { type: "integer" },
                       credentials: { type: "array", items: { type: "object" } },
                     },
@@ -635,7 +636,7 @@ export async function GET(req: Request) {
                 issuerPowers: { clawback: true, canFreeze: false, currentlyFrozen: false, requiresAuth: false, transferable: false },
                 issuerRisk: {
                   xrplScore: 475, grade: "Building", accountAgeDays: 80, blackholed: false,
-                  domain: "ipfs://Qm…", domainVerified: false, credentialsHeld: 2, credentials: [],
+                  domain: "ipfs://Qm…", domainVerified: false, domainVerifiedReason: "the account's Domain field does not decode to a plausible hostname", credentialsHeld: 2, credentials: [],
                 },
               }
             ),
