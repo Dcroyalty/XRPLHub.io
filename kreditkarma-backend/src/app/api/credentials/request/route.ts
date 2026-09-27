@@ -73,15 +73,15 @@ export async function POST(req: Request) {
     // ledger read failed: fall through — the operator's issuance step re-checks before creating anything
   }
 
-  const open = await prisma.credentialRequest.findFirst({ where: { subject, status: "queued" }, orderBy: { requestedAt: "desc" } });
+  const open = await prisma.credentialRequest.findFirst({ where: { subject, kind: "score", status: "queued" }, orderBy: { requestedAt: "desc" } });
   if (open) {
     return NextResponse.json({ status: "queued", requestId: open.id, subject, tier: open.tier, credentialType: open.credentialType, requestedAt: open.requestedAt.toISOString(), message: "Your request is already queued. Check back with GET /api/credentials/request?subject=…" });
   }
 
   const ipHash = ipHashOf(req);
   const [recent, queued] = await Promise.all([
-    prisma.credentialRequest.count({ where: { ipHash, requestedAt: { gte: new Date(Date.now() - 86_400_000) } } }),
-    prisma.credentialRequest.count({ where: { status: "queued" } }),
+    prisma.credentialRequest.count({ where: { ipHash, kind: "score", requestedAt: { gte: new Date(Date.now() - 86_400_000) } } }),
+    prisma.credentialRequest.count({ where: { kind: "score", status: "queued" } }),
   ]);
   if (recent >= PER_IP_PER_DAY) return NextResponse.json({ error: "rate_limited", message: "Too many requests from this source today. Try again tomorrow." }, { status: 429, headers: { "Retry-After": "86400" } });
   if (queued >= MAX_QUEUED) return NextResponse.json({ error: "queue_full", message: "The credential queue is full right now; requests reopen as it is processed." }, { status: 503, headers: { "Retry-After": "86400" } });
@@ -125,7 +125,7 @@ export async function GET(req: Request) {
   if (!isValidXrplAddress(subject)) return NextResponse.json({ error: "bad_request", message: "Provide ?subject=r… (a valid XRPL address)." }, { status: 400 });
 
   const [latest, held] = await Promise.all([
-    prisma.credentialRequest.findFirst({ where: { subject }, orderBy: { requestedAt: "desc" } }),
+    prisma.credentialRequest.findFirst({ where: { subject, kind: "score" }, orderBy: { requestedAt: "desc" } }),
     heldFromUs(subject).catch(() => null),
   ]);
   const live = held?.filter((h) => !h.expired) ?? [];

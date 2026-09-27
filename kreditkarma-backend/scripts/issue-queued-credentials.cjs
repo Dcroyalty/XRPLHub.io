@@ -38,15 +38,15 @@ const val = (f) => { const i = args.indexOf(f); return i >= 0 ? args[i + 1] : un
   const queued = await prisma.credentialRequest.findMany({ where: { status: 'queued' }, orderBy: { requestedAt: 'asc' }, take: max });
   console.log(`${queued.length} queued request(s):`);
   for (const q of queued) {
-    const detail = q.kind === 'mpt-declared' ? `mpt-declared  issuance=${q.subjectRef}` : `${q.tier}  score@request=${q.scoreAtRequest}`;
+    const detail = q.kind === 'mpt-declared' ? `mpt-declared  issuance=${q.subjectRef}` : q.kind === 'screen-nomatch' ? `screen-nomatch  requestQueryId=${q.subjectRef}` : `${q.tier}  score@request=${q.scoreAtRequest}`;
     console.log(`  ${q.id}  ${q.subject}  ${detail}  ${q.requestedAt.toISOString()}`);
   }
   console.log(`issuing all of them would tie up ${(queued.length * 0.2).toFixed(1)} XRP of issuer reserve until the subjects accept.`);
   if (!has('--issue')) { console.log('\n(list only — add --issue to issue them)'); return; }
 
   for (const q of queued) {
-    const scriptName = q.kind === 'mpt-declared' ? 'issue-mpt-credential.cjs' : 'issue-credential.cjs';
-    console.log(`\n=== issuing ${q.id} → ${q.subject} (${q.kind === 'mpt-declared' ? 'mpt-declared' : q.tier}) via ${scriptName} ===`);
+    const scriptName = q.kind === 'mpt-declared' ? 'issue-mpt-credential.cjs' : q.kind === 'screen-nomatch' ? 'issue-screen-credential.mjs' : 'issue-credential.cjs';
+    console.log(`\n=== issuing ${q.id} → ${q.subject} (${q.kind === 'score' ? q.tier : q.kind}) via ${scriptName} ===`);
     try {
       const out = execFileSync(process.execPath, [path.join(__dirname, scriptName), 'issue', q.subject], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
       process.stdout.write(out);

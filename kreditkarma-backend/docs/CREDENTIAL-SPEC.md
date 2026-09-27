@@ -254,3 +254,44 @@ every MPT this account has issued, with its declaration, live.
 **Reserve:** 0.2 XRP per pending credential, same mechanics as §6. Funding the issuer wallet for the score credential
 alone assumed one credential family; a second family issuing on its own trigger (every `mptissue` purchase, not just
 a subject who asks) changes the worst-case pending count and should be re-budgeted before this is issued at volume.
+
+---
+
+## 10. Third credential family: `io.xrplhub.screen.v2.nomatch`
+
+A third credential family, same issuer wallet as the other two.
+
+| | |
+|---|---|
+| **Namespace** | `io.xrplhub.screen.v2` (tied to the screening engine version, `sanction-screen-v2`) |
+| **CredentialType** | `io.xrplhub.screen.v2.nomatch` (one type — no tiers) |
+| **Attests** | At issuance, the subject XRP Ledger address did NOT appear on the current snapshot of every sanctions list XRPLHub screens (OFAC-SDN, EU-FSF, UK-SL). |
+| **Does NOT attest** | That the address, or anyone associated with it, is clean, safe, lawful, or unsanctioned. That using it satisfies any screening, AML, or compliance obligation. Never called "clean", "screened-ok", or "verified" anywhere — deliberately named "nomatch", matching the receipts' own vocabulary. |
+
+**Scope note:** screening itself covers XRP Ledger, EVM, Bitcoin and Tron addresses, but a `Credential`'s `Subject`
+must be an XRP Ledger account (XLS-70 is XRPL-only) — so this credential can only ever be issued for an XRPL address.
+
+**Opt-in only — never unsolicited.** Unlike the score credential, this is issued only through
+`POST /api/credentials/screen-request { subject }`, which screens the address FRESH first: an address currently
+listed gets no queued request (200, `not_eligible`), and the screening receipt is still recorded and anchored either
+way, like every screen. A clean result queues a `CredentialRequest` (`kind: "screen-nomatch"`).
+
+**Expiration: 30 days** — shorter than the other two families' 90, because the underlying fact changes: a wallet
+screened clean today can be listed tomorrow. This is the operationally expensive credential the brief flagged —
+every live holder needs re-screening and re-issuance roughly monthly to stay covered, not once.
+
+**Issuance re-checks fresh, every time.** `scripts/issue-screen-credential.mjs` re-screens (calling the same
+`screenAll()` engine the live site runs, not a second implementation) immediately before signing, and refuses if the
+address is listed at that moment — the request-time screen (possibly hours or days old) is never trusted for the
+actual issuance decision. Run via `scripts/issue-queued-credentials.cjs`, same as the other two families.
+
+**URI:** `https://www.xrplhub.io/verify/screening/<subjectAddress>` — the on-ledger credential status plus the most
+recent screening receipts on file for that address, live.
+
+**Reserve:** 0.2 XRP per pending credential — see the live finding below.
+
+> **Operational finding (2026-09-27, live check):** the credential issuer wallet (`rmWjCGeLtuLGerEuvHDkrsr46ej2Ni13f`)
+> holds **1.300009 XRP** against a **1.2 XRP** reserve requirement (1 XRP base + 0.2 XRP × 1 existing pending object),
+> leaving roughly **0.1 XRP** of headroom — enough for at most one more pending credential across ALL THREE families
+> combined. **Fund this wallet before issuing anything from the `screen-nomatch` or `mpt-declared` queues at any
+> real volume**; the 30-day churn of this family alone will otherwise stall on the very first re-issuance cycle.
