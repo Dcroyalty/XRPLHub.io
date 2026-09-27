@@ -30,14 +30,17 @@ const same = (label, a, b, an, bn) => {
 
 // ── extract the id sets ──────────────────────────────────────────────────────
 const page = read("src/app/page.tsx");
-const ps = page.indexOf("const RAW_PRODUCTS = [");
-const pe = page.indexOf("] as const;", ps);
-if (ps < 0 || pe < 0) fail("page.tsx: could not find the RAW_PRODUCTS block");
-const pageIds = [...page.slice(ps, pe).matchAll(/\{ id:'([a-z0-9]+)'/g)].map((m) => m[1]);
-if (new Set(pageIds).size !== pageIds.length) fail("page.tsx: duplicate product ids on the page");
+// RAW_PRODUCTS lives in src/lib/serviceContent.ts (the one source for both the client homepage and the
+// server-rendered per-service pages) — read the id set from there, not from page.tsx.
+const content = read("src/lib/serviceContent.ts");
+const ps = content.indexOf("export const RAW_PRODUCTS = [");
+const pe = content.indexOf("] as const;", ps);
+if (ps < 0 || pe < 0) fail("serviceContent.ts: could not find the RAW_PRODUCTS block");
+const pageIds = [...content.slice(ps, pe).matchAll(/\{ id:'([a-z0-9]+)'/g)].map((m) => m[1]);
+if (new Set(pageIds).size !== pageIds.length) fail("serviceContent.ts: duplicate product ids");
 
 // featured products render in their own grid above the ordered one, so they are not in TOP_ORDER
-const featuredIds = page.slice(ps, pe).split("\n  { id:'").slice(1)
+const featuredIds = content.slice(ps, pe).split("\n  { id:'").slice(1)
   .filter((b) => /featured:true/.test(b.slice(0, 300)))
   .map((b) => b.slice(0, b.indexOf("'")));
 const to = page.indexOf("const TOP_ORDER = [");
