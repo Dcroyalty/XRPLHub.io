@@ -114,7 +114,15 @@ import { PRODUCTS, type Product } from '@/lib/serviceContent';
 // Per-product fields the customer fills AFTER payment so we build the exact
 // transaction. Defaults + placeholders keep input clean; the engine validates.
 // Products NOT listed here need no params — they execute straight to Xaman sign.
-type ExecField = { key:string; label:string; placeholder?:string; type?:'text'|'number'|'select'; options?:string[]; default?:string; help?:string; required?:boolean };
+type PickerKind = 'checks'|'nfts'|'mpts'|'holders';
+type ExecField = { key:string; label:string; placeholder?:string; type?:'text'|'number'|'select'|'picker'|'datetime'; options?:string[]; default?:string; help?:string; required?:boolean; pickerType?:PickerKind };
+// Ripple epoch = seconds since 2000-01-01T00:00:00Z (946,684,800s after the Unix epoch) — same constant every server
+// file that handles Ripple time defines locally (e.g. src/lib/lendingExposure.ts); used here only to turn a
+// datetime-local picker into the raw seconds EscrowCreate.FinishAfter needs.
+const RIPPLE_EPOCH_OFFSET = 946_684_800;
+// Ripple's official RLUSD mainnet issuer (source of truth: src/lib/rlusd.ts RLUSD_ISSUER) — autofills the "…issuer"
+// field when someone types RLUSD into a paired currency field, so they don't have to go find and paste it.
+const WELL_KNOWN_ISSUERS: Record<string,string> = { RLUSD: 'rMxCKbEDwqr76QuheSUMdEGf4B9xJ8m5De' };
 const EXEC_FIELDS: Record<string, ExecField[]> = {
   // Wallet security (caution tier handled server-side)
   multisig: [
@@ -161,7 +169,7 @@ const EXEC_FIELDS: Record<string, ExecField[]> = {
     { key:'redeemable', label:'Redeemable for the underlying?', type:'select', options:['unspecified','yes','no'], default:'unspecified', help:'Can a holder exchange the token for what backs it?' },
   ],
   mptsend: [
-    { key:'mptIssuanceId', label:'MPT Issuance ID', placeholder:'00000000…', required:true },
+    { key:'mptIssuanceId', label:'MPT Issuance ID', placeholder:'00000000…', required:true, type:'picker', pickerType:'mpts', help:'A token you have issued.' },
     { key:'destination', label:'Send to wallet', placeholder:'rXXX…', required:true },
     { key:'amount', label:'Amount', type:'number', required:true },
   ],
@@ -173,7 +181,7 @@ const EXEC_FIELDS: Record<string, ExecField[]> = {
     { key:'limit', label:'Your trust limit', type:'number', default:'1000000000', help:'At least the amount you are sending.' },
   ],
   freezeline: [
-    { key:'holder', label:'Holder address to freeze', placeholder:'rXXX…', required:true },
+    { key:'holder', label:'Holder address to freeze', placeholder:'rXXX…', required:true, type:'picker', pickerType:'holders', help:'A wallet with a trust line to you.' },
     { key:'currency', label:'Currency code', placeholder:'USD', required:true },
   ],
   // DeFi
@@ -237,9 +245,9 @@ const EXEC_FIELDS: Record<string, ExecField[]> = {
     { key:'royalty', label:'Royalty %', type:'number', default:'0', help:'0–50%' },
     { key:'taxon', label:'Collection taxon', type:'number', default:'0' },
   ],
-  nftburn: [{ key:'nftokenId', label:'NFToken ID to burn', placeholder:'000800…', required:true }],
+  nftburn: [{ key:'nftokenId', label:'NFToken ID to burn', placeholder:'000800…', required:true, type:'picker', pickerType:'nfts' }],
   nftoffer: [
-    { key:'nftokenId', label:'NFToken ID', placeholder:'000800…', required:true },
+    { key:'nftokenId', label:'NFToken ID', placeholder:'000800…', required:true, type:'picker', pickerType:'nfts', help:'An NFT you currently own — this creates a SELL offer.' },
     { key:'amount', label:'Sale price (XRP)', type:'number', required:true },
   ],
   // Payments
@@ -248,14 +256,14 @@ const EXEC_FIELDS: Record<string, ExecField[]> = {
     { key:'amount', label:'Check amount (XRP)', type:'number', required:true },
   ],
   checkcash: [
-    { key:'checkId', label:'Check ID', placeholder:'object hash', required:true },
+    { key:'checkId', label:'Check ID', placeholder:'object hash', required:true, type:'picker', pickerType:'checks', help:'A check written to you (only the recipient can cash a check).' },
     { key:'amount', label:'Amount to cash (XRP)', type:'number', required:true },
   ],
-  checkcancel: [{ key:'checkId', label:'Check ID to cancel', placeholder:'object hash', required:true }],
+  checkcancel: [{ key:'checkId', label:'Check ID to cancel', placeholder:'object hash', required:true, type:'picker', pickerType:'checks', help:'A check you wrote, or one written to you.' }],
   escrow: [
     { key:'destination', label:'Release to wallet', placeholder:'rXXX…', required:true },
     { key:'amount', label:'XRP to lock', type:'number', required:true },
-    { key:'finishAfter', label:'Release after (Ripple time, seconds)', type:'number', help:'Seconds since 2000-01-01; we can help compute this', required:true },
+    { key:'finishAfter', label:'Release at', type:'datetime', help:'Pick the date and time — we compute the Ripple-time seconds for you.', required:true },
   ],
   // Identity / compliance
   identity: [
@@ -556,6 +564,71 @@ function ConnectWalletModal({ show, onClose, onConnected }: { show:boolean; onCl
   );
 }
 
+// "What I hold" picker for an ID-shaped field (Check ID, NFToken ID, MPT Issuance ID, trust-line holder address).
+// Fetches GET /api/execute/mine once per (account, pickerType) and offers the results as a <select>; a manual-entry
+// toggle is always available — this is a convenience, never a hard requirement (an item beyond the 200-item cap, or
+// one the picker can't see for some reason, can still be typed by hand).
+function PickerField({ field, value, onChange, account }: { field: ExecField; value: string; onChange: (v: string) => void; account: string }) {
+  const [items, setItems] = useState<{ id: string; label: string; meta?: Record<string, string> }[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [manual, setManual] = useState(false);
+  useEffect(() => {
+    if (!account || !field.pickerType) { setItems(null); return; }
+    let dead = false;
+    setLoading(true);
+    fetch(`${API_URL}/api/execute/mine?type=${field.pickerType}&account=${encodeURIComponent(account)}`)
+      .then(r => r.json())
+      .then(d => { if (!dead) setItems(Array.isArray(d?.items) ? d.items : []); })
+      .catch(() => { if (!dead) setItems([]); })
+      .finally(() => { if (!dead) setLoading(false); });
+    return () => { dead = true; };
+  }, [account, field.pickerType]);
+
+  if (!account) return <input value={value} onChange={e=>onChange(e.target.value)} placeholder={field.placeholder||''} style={{ ...INP, fontFamily:"'IBM Plex Mono',monospace", fontSize:13 }} />;
+  if (manual || (items && items.length === 0)) {
+    return (
+      <div>
+        <input value={value} onChange={e=>onChange(e.target.value)} placeholder={field.placeholder||''} style={{ ...INP, fontFamily:"'IBM Plex Mono',monospace", fontSize:13 }} />
+        {items && items.length === 0 && !loading && <p style={{ fontSize:11,color:'rgba(255,255,255,.3)',marginTop:4 }}>Nothing found for this wallet — paste the ID directly.</p>}
+        {!manual ? null : <button type="button" onClick={()=>setManual(false)} style={{ fontSize:11,color:'#10b981',background:'none',border:'none',cursor:'pointer',marginTop:4,padding:0 }}>← pick from a list instead</button>}
+      </div>
+    );
+  }
+  return (
+    <div>
+      <select value={value} onChange={e=>onChange(e.target.value)} disabled={loading} style={{ ...INP, fontSize:13 }}>
+        <option value="">{loading ? 'Loading…' : `Select — ${items?.length ?? 0} found`}</option>
+        {(items||[]).map(it => <option key={it.id} value={it.id}>{it.label}</option>)}
+      </select>
+      <button type="button" onClick={()=>setManual(true)} style={{ fontSize:11,color:'rgba(255,255,255,.35)',background:'none',border:'none',cursor:'pointer',marginTop:4,padding:0 }}>or type an ID manually</button>
+    </div>
+  );
+}
+
+// Escrow's FinishAfter needs raw Ripple-time seconds; nobody should have to compute that by hand. Renders a normal
+// date/time picker and converts to seconds on every change, plus a plain-English confirmation of what was picked.
+function DateTimeField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [local, setLocal] = useState('');
+  const handle = (v: string) => {
+    setLocal(v);
+    if (!v) { onChange(''); return; }
+    const ms = new Date(v).getTime();
+    if (Number.isNaN(ms)) { onChange(''); return; }
+    onChange(String(Math.floor(ms / 1000) - RIPPLE_EPOCH_OFFSET));
+  };
+  const picked = local ? new Date(local) : null;
+  return (
+    <div>
+      <input type="datetime-local" value={local} onChange={e=>handle(e.target.value)} style={{ ...INP, fontSize:13, colorScheme:'dark' }} />
+      {picked && !Number.isNaN(picked.getTime()) && (
+        <p style={{ fontSize:11,color:'rgba(255,255,255,.35)',marginTop:4 }}>
+          Releases {picked.toLocaleString()} — Ripple time {value} ({picked.getTime() > Date.now() ? `in ~${Math.max(1, Math.round((picked.getTime()-Date.now())/86400000))} day(s)` : 'in the past — pick a future time'}).
+        </p>
+      )}
+    </div>
+  );
+}
+
 // ─── PRODUCT MODAL (real polling payment gate) ───
 function ProductModal({ show, onClose, product, connectedWallet }: { show:boolean; onClose:()=>void; product:Product|null; connectedWallet:string }) {
   const [currency, setCurrency] = useState<Currency>('RLUSD');
@@ -800,7 +873,17 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
     const isMpt = product.id === 'mptissue';
     const fields: ExecField[] = [...(EXEC_FIELDS[product.id] || []), ...(isMpt ? (mptPerm?.lockFields ?? []) : [])];
     const helpFor = (f: ExecField) => (isMpt && mptPerm?.formHelp?.[f.key]) || f.help;
-    const setF = (k:string,v:string) => setExForm(f=>({...f,[k]:v}));
+    const setF = (k:string,v:string) => setExForm(f => {
+      const next = {...f,[k]:v};
+      // Well-known-issuer autofill: typing a currency we know (today: RLUSD) into a paired "…Currency" field fills
+      // the sibling "…Issuer" field, if that field exists on this service and is still empty.
+      const issuerKey = k === 'currency' ? 'issuer' : k.endsWith('Currency') ? k.slice(0, -('Currency'.length)) + 'Issuer' : null;
+      if (issuerKey && fields.some(fl => fl.key === issuerKey)) {
+        const known = WELL_KNOWN_ISSUERS[v.trim().toUpperCase()];
+        if (known && !f[issuerKey]) next[issuerKey] = known;
+      }
+      return next;
+    });
     return (
       <Overlay show={show} onClose={handleClose} wide>
         <div style={{ fontSize:10,fontWeight:700,color:product.color,letterSpacing:'.12em',textTransform:'uppercase',marginBottom:5,fontFamily:"'IBM Plex Mono',monospace" }}>Step 2 · Execute Service</div>
@@ -835,6 +918,10 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
                   <select value={exForm[f.key] ?? f.default ?? f.options[0]} onChange={e=>setF(f.key,e.target.value)} style={{ ...INP, fontSize:13 }}>
                     {f.options.map(o => <option key={o} value={o}>{o}</option>)}
                   </select>
+                ) : f.type==='picker' ? (
+                  <PickerField field={f} value={exForm[f.key] ?? ''} onChange={v=>setF(f.key,v)} account={connectedWallet} />
+                ) : f.type==='datetime' ? (
+                  <DateTimeField value={exForm[f.key] ?? ''} onChange={v=>setF(f.key,v)} />
                 ) : (
                   <input type={f.type==='number'?'number':'text'} value={exForm[f.key] ?? f.default ?? ''} onChange={e=>setF(f.key,e.target.value)} placeholder={f.placeholder||''} style={{ ...INP, fontFamily:(f.key.toLowerCase().includes('address')||f.key.includes('issuer')||f.key.includes('destination')||f.key.includes('wallet')||f.key.includes('Id')||f.key.includes('holder')||f.key.includes('subject'))?"'IBM Plex Mono',monospace":'inherit', fontSize:f.type==='number'?14:13 }} />
                 )}
