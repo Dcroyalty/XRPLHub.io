@@ -295,3 +295,33 @@ recent screening receipts on file for that address, live.
 > leaving roughly **0.1 XRP** of headroom — enough for at most one more pending credential across ALL THREE families
 > combined. **Fund this wallet before issuing anything from the `screen-nomatch` or `mpt-declared` queues at any
 > real volume**; the 30-day churn of this family alone will otherwise stall on the very first re-issuance cycle.
+
+---
+
+## 11. Fourth credential family: `io.xrplhub.domain.v1.verified`
+
+A fourth credential family, same issuer wallet as the other three. Depends on item 0 of the 2026-09-27 build (the
+real two-way `xrp-ledger.toml` check, `src/lib/domainVerify.ts`) — it could not be built honestly before that fix.
+
+| | |
+|---|---|
+| **Namespace** | `io.xrplhub.domain.v1` |
+| **CredentialType** | `io.xrplhub.domain.v1.verified` (one type — no tiers) |
+| **Attests** | At issuance, the account's own ledger `Domain` field AND that domain's `xrp-ledger.toml` confirmed a two-way link (the domain lists this exact account under `[[ACCOUNTS]]`). |
+| **Does NOT attest** | Identity, KYC, or anything about the account's trustworthiness or intentions, or the content of that domain. A domain-control check only — the same one the MPT issuer risk page already runs, made portable. |
+
+**Opt-in, free to request** — `POST /api/credentials/domain-request { subject }` runs the live two-way check right
+now; either direction failing means nothing is queued, and the response says exactly which one and why (the same
+`reason` string `domainVerify.ts` produces everywhere else). No purchase gate: this is a low-friction ecosystem trust
+signal, not a paid product.
+
+**Expiration: 90 days**, matching the score/MPT-declared families. A domain-hijack or DNS-reassignment window of up
+to 90 days is a real, if small, exposure — flagged, not solved.
+
+**Issuance re-checks fresh, every time**, both directions — `scripts/issue-domain-credential.mjs` reads the account's
+current `Domain` field and re-runs `verifyDomainTwoWay()` immediately before signing (the same function the live site
+uses, not a second implementation), refusing if either side no longer holds.
+
+**URI:** `https://www.xrplhub.io/verify/domain/<subjectAddress>` — shows the on-ledger credential status AND runs the
+live check again on every page load, so a reader can see whether the link that was true at issuance is still true
+today.
