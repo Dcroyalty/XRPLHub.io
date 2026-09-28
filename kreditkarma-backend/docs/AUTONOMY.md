@@ -50,7 +50,7 @@ Already-live features (Credentials/XLS-70, PermissionedDomains, MPTokensV1) are 
 | **kreditkarma.us** | expires **2027-05-04** (now only redirects to www) | Porkbun auto-renew | same |
 | **XRPNS names** (`xrplhub.xrp`, `kreditkarma.xrp`, `ledgerscore.xrp`) | expire **2027-05-25 / 2027-05-11 / 2027-05-21** | **NOT automatic** — renew at app.xrpns.com/renewal | watchdog `xns-expiry` (warn 60d, red 14d) |
 | TLS certificates (Let's Encrypt via Vercel) | `www.xrplhub.io` valid to 2026-10-22; `xrplhub.com` 2026-11-24; `www.kreditkarma.us` 2026-12-11 | Vercel renews ~30 days before expiry | watchdog `tls-cert` (red < 10 days) |
-| Mainnet XLS-70 credential (`io.xrplhub.score.v1.min750`) | expires **2026-12-03** | **Manual** — the issuer seed is deliberately off Vercel; `scripts/issue-credential.cjs` on your machine. Letting it lapse only makes `/api/credentials/verify` say "expired" | watchdog `credential-expiry` (warn 45d, red 14d) |
+| Mainnet XLS-70 credentials — 4 families now (score, mpt-declared, screen-nomatch, domain-verified) | the one issued credential (`io.xrplhub.score.v1.min750`) expires **2026-12-03**; see §5 for the other three families' request queues, which are hand-issued the same way | **Manual, by design** — see §5 | watchdog `credential-expiry` covers only the score credential today (warn 45d, red 14d) — **the other three families and the request queue itself have no watchdog coverage; see §5's gap note** |
 | Anchor wallet `r9dQS1…XuJXb` | ~1.0 XRP spendable; an anchor costs ~0.00001 XRP (≤4 a day) — decades of headroom | top up if the base reserve is ever raised | watchdog `anchor-wallet` (warn < 0.5, red < 0.25) |
 | Neon database (project `kreditkarma`) | 10.8 MB of the 512 MB free-tier branch limit; **6-hour point-in-time history only**; maintenance window Sundays 05:00–06:00 UTC | upgrade plan if it fills | watchdog `db-size` (warn 70%, red 90%) |
 | `UsageRecord` table | one row per metered API call, never pruned — the first table to grow under real load (≈1M calls/month ≈ 1 GB/year) | prune or upgrade | `db-size` |
@@ -62,10 +62,52 @@ Already-live features (Credentials/XLS-70, PermissionedDomains, MPTokensV1) are 
 | Xaman (XUMM) API key/secret | present, no expiry | rotate only if revoked | `createPayload` alerts loudly on rejection; health probe |
 | Coinbase CDP key (x402 USDC on Base) | present; **usage limits / billing of the CDP facilitator not verified** | check the CDP portal | health deep probe (reachability only, not key validity) |
 | t54 x402 facilitator (XRPL x402) | external service | none | health deep probe |
-| `ERROR_WEBHOOK_URL` (Discord/Slack) | set | recreate if the webhook is deleted | **the weekly heartbeat message stops** (see §6) |
-| Vercel plan | **(inferred)** Hobby: 2 crons/day, 60 s functions | — | not detectable from inside; see §7 |
+| `ERROR_WEBHOOK_URL` (Discord/Slack) | set | recreate if the webhook is deleted | **the weekly heartbeat message stops** (see §7) |
+| Vercel plan | **(inferred)** Hobby: 2 crons/day, 60 s functions | — | not detectable from inside; see §8 |
 
-## 5. What breaks first, in order (if nobody touches anything)
+## 5. Credential issuance & cleanup — hand-run by design, never automatic
+
+`scripts/issue-queued-credentials.cjs` (issues what has been requested) and `scripts/cleanup-unaccepted-credentials.mjs`
+(deletes what was never accepted) both need `CREDENTIAL_ISSUER_SEED` to sign, and that seed is **deliberately never
+set in Vercel** — nothing that signs a credential transaction runs unattended, on any schedule. Both must be run by
+hand, from your own machine, on `.env`'s production values. This is a permanent design choice, not a gap to close.
+
+**If `issue-queued-credentials.cjs` is never run:** queued requests just sit in the `CredentialRequest` table
+(`status: "queued"`) forever. Nothing on the ledger, no reserve consumed, no error — the requester's own
+`GET /api/credentials/*-request?subject=…` keeps answering "queued for issuance by a person; nothing for you to sign
+yet", so nobody is misled into thinking it failed. But nobody gets their credential either, and one queue fills
+itself without anyone asking: **every `mptissue` purchase auto-queues an `mpt-declared` request** (§ Track 1c in
+`docs/CREDENTIAL-SPEC.md`), so that backlog grows with sales volume even if you never look at it. The
+`screen-nomatch` credential is also time-sensitive in a way the others aren't — its whole value is a *recent* check,
+and a request that sits queued for weeks before being issued (re-screened fresh at that moment, per
+`scripts/issue-screen-credential.mjs`) delivers a credential dated far later than whatever the requester actually
+expected when they asked.
+
+**If `cleanup-unaccepted-credentials.mjs` is never run:** nothing bad happens fast, but nothing recovers either —
+there is no protocol-level expiry cleanup on the XRP Ledger (confirmed against xrpl.org, not assumed), so an
+unaccepted, expired credential sits on the **issuer's** reserve (0.2 XRP each) indefinitely. This is a live, near-term
+constraint, not a hypothetical: as of 2026-09-27 the issuer wallet had roughly **0.1 XRP of spendable headroom past
+its reserve** — room for about one more pending credential across all four families combined. A handful of requested-
+but-never-accepted credentials piling up without cleanup is enough to leave the issuer unable to issue anything new
+at all until either the wallet is funded or the cleanup script is run. (Accepted-but-expired credentials are not
+touched by this script and are not this problem — that reserve already belongs to the subject.)
+
+**How often to run each:**
+- `issue-queued-credentials.cjs` — list-only (no `--issue`) costs nothing and is safe to run anytime; do it at least
+  **weekly**, and issue promptly whenever anything is queued rather than letting a backlog form — especially for
+  `screen-nomatch`, where staleness undermines the point, and for `mpt-declared`, whose queue you don't control the
+  arrival rate of.
+- `cleanup-unaccepted-credentials.mjs` — nothing qualifies until 7 days past expiry, so **monthly** is enough at
+  today's volume. Also run it (list-only first) whenever you're about to issue something and the issuer's spendable
+  XRP looks thin — it's the fastest way to find reserve to release.
+
+**Honest gap:** the watchdog does not currently check the size of the `CredentialRequest` queue, how long anything in
+it has sat unresolved, or the issuer wallet's live reserve headroom for the three newer families — only the one
+score credential's own expiry is watched (§4). Someone letting both scripts lapse for months would get no alert.
+Adding `queued-credential-backlog` and `credential-issuer-reserve` checks to `src/lib/watchdog.ts` would close this;
+not done as part of this note.
+
+## 6. What breaks first, in order (if nobody touches anything)
 
 Dated items first; undated risks after.
 
@@ -78,7 +120,7 @@ Dated items first; undated risks after.
 7. **~12 months (Sep 2027)** — any registration you did not extend repeats annually. Neon/Vercel free-tier terms are the main external unknown.
 8. **~24 months (Sep 2028)** — **Node 24 reaches end-of-life 2028-04-30**; Vercel retires EOL runtimes some time after that. Existing deployments keep running until the platform retires the runtime, but the first forced upgrade (or a security advisory in `next` / `prisma` that nothing auto-updates) lands in this window. Domains and any 1-year XNS renewals come due again in May–Aug 2028.
 
-## 6. Loud failure — how you find out
+## 7. Loud failure — how you find out
 
 `notifyError` posts to `ERROR_WEBHOOK_URL`. The watchdog adds, on the daily crons:
 - **cron heartbeats** — each cron writes a heartbeat at the *end* of a successful run and checks the other's (red if > 36 h stale). A run that times out at 60 s writes none, so it shows up.
@@ -94,7 +136,7 @@ Crons: if a run throws, it returns 500 and `notifyError` fires immediately; if i
 daily *and* the other cron reports the stale heartbeat after 36 h; if `CRON_SECRET` is unset both 401 (health probe: red).
 Every job in a run is wrapped so one failure cannot stop the rest (`.catch → notifyError`).
 
-## 7. What still needs a human — and the honest gaps
+## 8. What still needs a human — and the honest gaps
 
 Once, before leaving:
 1. `POST /api/health` (admin token) — confirm a test alert really lands in the channel.
@@ -108,7 +150,7 @@ Once, before leaving:
 
 Known silent-by-design: last-used timestamps, the score-cache upsert and counter flushes swallow errors (harmless). Grants are paused (`GRANT_APPLICATIONS_OPEN=false`), so the two approved-but-unpaid grants wait for a human.
 
-## 8. If something looks wrong after a long absence — check in this order
+## 9. If something looks wrong after a long absence — check in this order
 
 1. Was the weekly heartbeat received recently? (No → webhook, both crons or the platform.)
 2. `GET https://www.xrplhub.io/api/health?deep=1` — reds first.
@@ -118,3 +160,6 @@ Known silent-by-design: last-used timestamps, the score-cache upsert and counter
 6. The watchdog's open findings (they repeat in the channel).
 7. `node scripts/check-service-parity.mjs`, `npm audit`, and whether Vercel announced a Node runtime retirement.
 8. Rotate anything revoked (Bithomp, XUMM, CDP), then redeploy with the Vercel build cache **off**.
+9. `node scripts/issue-queued-credentials.cjs` (list-only) — anything queued for a while? Then
+   `node scripts/cleanup-unaccepted-credentials.mjs` (list-only) — anything eligible? Neither has watchdog coverage
+   (§5), so this is the only way to notice a backlog after time away.
