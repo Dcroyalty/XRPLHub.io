@@ -17,6 +17,7 @@ const {
   Client, Wallet, convertStringToHex, convertHexToString,
   unixTimeToRippleTime, rippleTimeToUnixTime,
 } = require('xrpl');
+const { deleteExpiredCredentialIfAny } = require('./credentialOps.cjs');
 
 // ── HARD MAINNET LOCK ────────────────────────────────────────────────────────
 const MAINNET_NETWORK_ID = 0;
@@ -219,6 +220,11 @@ function printPlan(plan) {
     if (tier2 !== plan.tier) {
       throw new Error(`REFUSING: tier changed (plan ${plan.tier}, now ${tier2}). Not issuing.`);
     }
+
+    // A CredentialCreate for a (issuer, subject, type) that already exists fails with tecDUPLICATE regardless of
+    // expiry -- if this subject already holds an EXPIRED credential of this same tier, delete it first (also
+    // reclaims whichever side's 0.2 XRP reserve it was tying up). See scripts/credentialOps.cjs.
+    await deleteExpiredCredentialIfAny(client, wallet, EXPECTED_ISSUER, subject, plan.credentialTypeHex, unixTimeToRippleTime);
 
     const prepared = await client.autofill(plan.txjson);
     console.log('prepared:', JSON.stringify(prepared));

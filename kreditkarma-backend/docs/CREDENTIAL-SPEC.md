@@ -243,10 +243,17 @@ in the same `CredentialRequest` table (`kind: "mpt-declared"`) until a person is
 (`scripts/issue-mpt-credential.cjs`, run via `scripts/issue-queued-credentials.cjs`), and it is not usable for gating
 until the subject signs `CredentialAccept`.
 
-**Expiration:** 90 days, same validity window as the score credential, for integrator consistency. Note the
-underlying fact can go stale before expiry if DynamicMPT (XLS-94) is active and the issuer rewrites the metadata —
-this credential does not currently detect that; a future improvement is having the daily MPT-registry pass compare
-each declaration against what was recorded at issuance and flag (or `CredentialDelete`) a stale one.
+**Expiration: 1 year** (longer than the score/domain families' 90 days, and screening's 30) — the fact attested ("a
+declaration was recorded at issuance") is inherently point-in-time and doesn't go stale the way a score or a
+sanctions check does, so there is no correctness reason to check in more often. It can still be OUTDATED — by a later
+MPT from the same issuer with a different declaration, or by DynamicMPT (XLS-94) letting the issuer rewrite an
+existing one's metadata — but expiry length doesn't fix either of those; a future improvement is having the daily
+MPT-registry pass compare each declaration against what was recorded at issuance and flag (or `CredentialDelete`) one
+that has drifted.
+
+**Every issued credential expires — no exceptions.** This matters for reserve hygiene as much as for correctness: an
+unaccepted credential ties up 0.2 XRP on the issuer forever unless something expires it and then deletes it (see
+"Reissuance and reserve recycling" below). A credential with no `Expiration` would never qualify for that cleanup.
 
 **URI:** `https://www.xrplhub.io/verify/mpt-issuer/<subjectAddress>` — shows the on-ledger credential status and
 every MPT this account has issued, with its declaration, live.
@@ -315,8 +322,8 @@ now; either direction failing means nothing is queued, and the response says exa
 `reason` string `domainVerify.ts` produces everywhere else). No purchase gate: this is a low-friction ecosystem trust
 signal, not a paid product.
 
-**Expiration: 90 days**, matching the score/MPT-declared families. A domain-hijack or DNS-reassignment window of up
-to 90 days is a real, if small, exposure — flagged, not solved.
+**Expiration: 90 days**, matching the score credential. A domain-hijack or DNS-reassignment window of up to 90 days
+is a real, if small, exposure — flagged, not solved.
 
 **Issuance re-checks fresh, every time**, both directions — `scripts/issue-domain-credential.mjs` reads the account's
 current `Domain` field and re-runs `verifyDomainTwoWay()` immediately before signing (the same function the live site
@@ -325,3 +332,45 @@ uses, not a second implementation), refusing if either side no longer holds.
 **URI:** `https://www.xrplhub.io/verify/domain/<subjectAddress>` — shows the on-ledger credential status AND runs the
 live check again on every page load, so a reader can see whether the link that was true at issuance is still true
 today.
+
+---
+
+## 12. Reissuance and reserve recycling (all four families, added 2026-09-28)
+
+Two facts, checked against the live XRP Ledger docs, not assumed:
+
+- **`CredentialCreate` fails with `tecDUPLICATE`** if a `Credential` object already exists for the same
+  (Issuer, Subject, CredentialType) — **regardless of whether it has expired.** Reissuing to a subject who already
+  held one is therefore never a plain `CredentialCreate`; the old object must be deleted first, or it fails outright.
+- **There is no protocol-level auto-cleanup of expired credentials.** They sit on the ledger — and on whichever
+  side's reserve they were on — until someone submits `CredentialDelete`. The issuer can always delete its own
+  (expired or not); once expired, anyone can.
+
+**Reissuance fix.** Every `issue-*-credential` script (score, mpt-declared, screen-nomatch, domain-verified) now
+checks for an existing credential before signing (`scripts/credentialOps.cjs`, `deleteExpiredCredentialIfAny`):
+- exists and **not** expired → refuse (the request-level "already_held" checks should have caught this already —
+  reaching this point means something upstream disagrees with the ledger, worth investigating, not papering over);
+- exists and **expired** → delete it first (releasing whichever side's 0.2 XRP reserve it was tying up: the issuer's,
+  if it was never accepted; the subject's, if it was), then issue the new one.
+
+**Every credential family has a real expiry — this is load-bearing, not incidental.** A credential with no
+`Expiration` would never qualify for the cleanup below, and would tie up 0.2 XRP on the issuer forever if the subject
+never accepts it. Current validity windows: score 90 days, domain-verified 90 days, mpt-declared 1 year,
+screen-nomatch 30 days — every one of them finite.
+
+**Cleanup policy for abandoned (never-accepted) credentials:** delete an unaccepted credential once it has been
+expired for **more than 7 days**, uniform across all four families. Reasoning:
+- the reserve for an *unaccepted* credential sits on the **issuer** — this is the issuer's own cleanup, not a favor
+  to anyone else, and it is why the policy only ever touches unaccepted credentials: an accepted one's reserve has
+  already moved to the subject, who is free to keep or delete it as they choose;
+- never before expiry — the subject might still accept right up to the last moment, which is the whole point of the
+  validity window;
+- 7 days, uniform, rather than a per-family number, so the policy stays one sentence: long enough to absorb a
+  delayed operator run or clock slop, short enough that reserve doesn't sit locked for weeks over a credential nobody
+  was ever going to accept.
+
+Implemented as `scripts/cleanup-unaccepted-credentials.mjs` — walks the issuer's own `account_objects` (authoritative;
+independent of our `CredentialRequest` tracking), lists what qualifies by default, `--delete` to act,
+`--grace-days N` to override. This **cannot** be a cron job: `CREDENTIAL_ISSUER_SEED` is deliberately never on
+Vercel, so nothing that signs runs unattended. Run it by hand, periodically, alongside
+`scripts/issue-queued-credentials.cjs` — it is idempotent and safe to run as often as you like.

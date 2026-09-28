@@ -20,9 +20,14 @@
 import 'dotenv/config';
 import './ts-hooks.mjs'; // registers the @/ alias + extensionless-import resolver for the import below
 import { Client, Wallet, convertStringToHex, convertHexToString, unixTimeToRippleTime, rippleTimeToUnixTime } from 'xrpl';
+import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
 
 const REPO_ROOT = new URL('../', import.meta.url);
 const { verifyDomainTwoWay } = await import(new URL('src/lib/domainVerify.ts', REPO_ROOT).href);
+// An absolute path (not a "./" specifier) so ts-hooks.mjs's relative-import resolver — meant only for the TS import
+// above — never touches this plain CJS require.
+const { deleteExpiredCredentialIfAny } = createRequire(new URL('package.json', REPO_ROOT))(fileURLToPath(new URL('scripts/credentialOps.cjs', REPO_ROOT)));
 
 const MAINNET_NETWORK_ID = 0;
 const MAINNET_ENDPOINTS = ['wss://xrplcluster.com', 'wss://s1.ripple.com', 'wss://s2.ripple.com'];
@@ -161,6 +166,11 @@ function printPlan(plan, domain, check) {
     const wallet = Wallet.fromSeed(seed);
     if (wallet.classicAddress !== EXPECTED_ISSUER) throw new Error(`REFUSING: seed derives ${wallet.classicAddress}, expected ${EXPECTED_ISSUER}`);
     if (!acct.activated) throw new Error('Issuer wallet is not funded/activated yet.');
+
+    // A CredentialCreate for a (issuer, subject, type) that already exists fails with tecDUPLICATE regardless of
+    // expiry -- if this subject already holds an EXPIRED domain-verified credential from an earlier request, delete
+    // it first (also reclaims whichever side's 0.2 XRP reserve it was tying up). See scripts/credentialOps.cjs.
+    await deleteExpiredCredentialIfAny(client, wallet, EXPECTED_ISSUER, subject, plan.credentialTypeHex, unixTimeToRippleTime);
 
     const prepared = await client.autofill(plan.txjson);
     console.log('prepared:', JSON.stringify(prepared));

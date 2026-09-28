@@ -19,7 +19,12 @@ import { EXPECTED_ISSUER, buildCredentialCreate } from "./credentials";
 export const MPT_CRED_NAMESPACE = "io.xrplhub.mpt.v1";
 export const MPT_DECLARED_TYPE = "io.xrplhub.mpt.v1.declared";
 export const MPT_DECLARED_TYPE_HEX = convertStringToHex(MPT_DECLARED_TYPE).toUpperCase();
-export const MPT_CRED_VALIDITY_DAYS = 90;
+// 1 year — longer than the score/domain families (90d) and much longer than screening (30d), because what this
+// attests ("a declaration was recorded at issuance") is inherently a point-in-time fact: it doesn't go stale the way
+// a score or a sanctions check does. It can still be OUTDATED by a later MPT from the same issuer with a different
+// declaration, or by DynamicMPT (XLS-94) letting the issuer rewrite an existing one's metadata — but expiry doesn't
+// fix that either way, so there's no correctness reason to check in more often than once a year.
+export const MPT_CRED_VALIDITY_DAYS = 365;
 const PUBLIC_ORIGIN = "https://www.xrplhub.io";
 
 /** The live verification page for an issuer's declared MPTs. This URL IS the evidence. */

@@ -18,6 +18,7 @@ const {
   Client, Wallet, convertStringToHex, convertHexToString,
   unixTimeToRippleTime, rippleTimeToUnixTime,
 } = require('xrpl');
+const { deleteExpiredCredentialIfAny } = require('./credentialOps.cjs');
 
 const MAINNET_NETWORK_ID = 0;
 const MAINNET_ENDPOINTS = ['wss://xrplcluster.com', 'wss://s1.ripple.com', 'wss://s2.ripple.com'];
@@ -155,6 +156,12 @@ function printPlan(plan) {
     // No re-check needed before issuing (unlike the score credential): the fact attested — "a declaration was
     // recorded at issuance time" — does not change after the fact. It was already true the moment mptissue
     // delivered; re-scoring or re-reading anything here would not make it more or less true.
+
+    // A CredentialCreate for a (issuer, subject, type) that already exists fails with tecDUPLICATE regardless of
+    // expiry -- if this issuer already holds an EXPIRED mpt-declared credential (from an earlier mptissue purchase),
+    // delete it first (also reclaims whichever side's 0.2 XRP reserve it was tying up). See scripts/credentialOps.cjs.
+    await deleteExpiredCredentialIfAny(client, wallet, EXPECTED_ISSUER, subject, plan.credentialTypeHex, unixTimeToRippleTime);
+
     const prepared = await client.autofill(plan.txjson);
     console.log('prepared:', JSON.stringify(prepared));
     const signed = wallet.sign(prepared);
