@@ -6,7 +6,8 @@
 //   • cron heartbeats — each daily cron records a heartbeat; the OTHER cron alerts if it goes stale
 //     (both dying at once is what HEALTHCHECK_PING_URL — an external dead-man's switch — is for)
 //   • things that expire: domains (RDAP), TLS certificate, XNS names, on-ledger credentials
-//   • things that run out: database size (Neon free tier), the anchor wallet's spendable XRP
+//   • things that run out: database size (Neon free tier), the anchor wallet's spendable XRP, the credential
+//     issuer's spendable XRP, and its queued-request backlog (by family — mpt-declared auto-queues from purchases)
 //   • things that stop: OFAC SDN refresh, unanchored attestations, the monitoring backlog
 //   • things that get revoked: the Bithomp key, the XRP price sources
 //   • the amendment reader itself, and a one-time "XLS-66 is now ACTIVE" announcement
@@ -146,6 +147,43 @@ async function checkCredentialExpiry(): Promise<Finding> {
   if (days <= 14) return { key: "credential-expiry", level: "red", message: `an XRPLScore credential expires in ${days.toFixed(0)} days (${when}); re-issuing is manual (scripts/issue-credential.cjs)` };
   if (days <= 45) return { key: "credential-expiry", level: "warn", message: `an XRPLScore credential expires in ${days.toFixed(0)} days (${when}); re-issuing is manual` };
   return { key: "credential-expiry", level: "ok", message: `next credential expiry ${when}` };
+}
+
+/** Spendable XRP on the credential issuer wallet — same formula as checkAnchorWallet. Read-only; needs no key. */
+async function checkCredentialIssuerReserve(): Promise<Finding> {
+  const r = await xrplRpc("account_info", { account: EXPECTED_ISSUER, ledger_index: "validated" });
+  if (!r.ok) return { key: "credential-issuer-reserve", level: "ok", message: "could not read the credential issuer wallet (ledger unreachable) — skipped" };
+  const d = (r.body as { result?: { account_data?: { Balance?: string; OwnerCount?: number } } }).result?.account_data;
+  if (!d) return { key: "credential-issuer-reserve", level: "red", message: `credential issuer ${EXPECTED_ISSUER} not found on the ledger` };
+  const spendable = Number(d.Balance) / 1e6 - (1 + 0.2 * (d.OwnerCount ?? 0));
+  const roomFor = Math.max(0, Math.floor(spendable / 0.2)); // 0.2 XRP reserve per pending credential
+  if (spendable < 1.0) return { key: "credential-issuer-reserve", level: "red", message: `credential issuer has ${spendable.toFixed(3)} XRP spendable — room for only ${roomFor} more pending credential(s) (need 1.0 XRP for 5); fund ${EXPECTED_ISSUER} or run scripts/cleanup-unaccepted-credentials.mjs` };
+  if (spendable < 2.0) return { key: "credential-issuer-reserve", level: "warn", message: `credential issuer has ${spendable.toFixed(3)} XRP spendable — room for ${roomFor} more pending credentials` };
+  return { key: "credential-issuer-reserve", level: "ok", message: `${spendable.toFixed(3)} XRP spendable — room for ${roomFor} pending credentials` };
+}
+
+/** Queued-request backlog (CredentialRequest, status "queued"), broken out by family (kind). Read-only; needs no key. */
+async function checkCredentialQueueBacklog(prisma: PrismaClient): Promise<Finding> {
+  const rows = await prisma.credentialRequest.findMany({ where: { status: "queued" }, select: { kind: true, requestedAt: true } });
+  if (!rows.length) return { key: "credential-queue-backlog", level: "ok", message: "no queued credential requests" };
+  const byKind = new Map<string, { count: number; oldestMs: number }>();
+  const now = Date.now();
+  for (const row of rows) {
+    const e = byKind.get(row.kind) ?? { count: 0, oldestMs: row.requestedAt.getTime() };
+    e.count++;
+    e.oldestMs = Math.min(e.oldestMs, row.requestedAt.getTime());
+    byKind.set(row.kind, e);
+  }
+  const breakdown = [...byKind.entries()]
+    .sort((a, b) => b[1].count - a[1].count)
+    .map(([kind, e]) => `${kind} ${e.count} (oldest ${((now - e.oldestMs) / DAY).toFixed(1)}d)`)
+    .join(", ");
+  const total = rows.length;
+  const oldestDays = Math.max(...[...byKind.values()].map((e) => (now - e.oldestMs) / DAY));
+  const message = `${total} queued: ${breakdown} — issue with scripts/issue-queued-credentials.cjs`;
+  if (oldestDays > 14 || total > 25) return { key: "credential-queue-backlog", level: "red", message };
+  if (oldestDays > 7 || total > 15) return { key: "credential-queue-backlog", level: "warn", message };
+  return { key: "credential-queue-backlog", level: "ok", message };
 }
 
 async function checkDomains(): Promise<Finding> {
@@ -348,6 +386,8 @@ export async function runWatchdog(prisma: PrismaClient, opts: WatchdogOptions = 
   if (opts.full) {
     add("anchor-wallet", checkAnchorWallet);
     add("credential-expiry", checkCredentialExpiry);
+    add("credential-issuer-reserve", checkCredentialIssuerReserve);
+    add("credential-queue-backlog", () => checkCredentialQueueBacklog(prisma));
     add("domain-expiry", checkDomains, 9000);
     add("xns-expiry", checkXns, 9000);
     add("tls-cert", checkTls);
