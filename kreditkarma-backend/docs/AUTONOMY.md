@@ -136,11 +136,13 @@ receipt and at `/legal/screening#retention`) commits to, concretely:
   making it public is a privacy violation a VASP customer cannot accept. The anchored Merkle root is meant to be
   public (that's the point of anchoring); the leaf/receipt data behind it is not. **Incident, 2026-09-28:** the
   backup was first built pointing at the public `Dcroyalty/XRPLHub.io` repo and ran for 8 days before being caught,
-  landing 28 receipts (one real customer's, the rest the owner's own test/verification traffic) in public commit
-  history. Fixed same day: migrated to the private repo above, purged from the public repo's git history via
+  landing 28 receipts in public commit history. All 28 were internal — the owner's own test/verification traffic,
+  including the `xrs_live_K1SAsz8...` key (labeled "screening-demo" in `ApiKey`, minted 2026-09-07 for exactly this
+  purpose) and the platform's own monitoring of its own wallets. No third-party customer's receipts were exposed.
+  Fixed same day regardless: migrated to the private repo above, purged from the public repo's git history via
   `git filter-branch` + force-push, `DEFAULT_REPO` in `screenBackup.ts` corrected. Caveat: a force-push rewrites
-  the repo, but GitHub's/any CDN's blob cache is not guaranteed to drop old content instantly — treat the exposure
-  window as real for the purposes of the affected customer, not just theoretical.
+  the repo, but GitHub's/any CDN's blob cache is not guaranteed to drop old content instantly — the exposure window
+  is real even though nothing exposed was a live customer's.
 - **This requires `GITHUB_TOKEN`** — a **fine-grained** PAT scoped ONLY to `Dcroyalty/xrplhub-screening-backups`,
   Contents: Read and write, and nothing else. Never a classic repo-scope PAT (those reach every repo the account
   owns, including the public one — how the incident above happened). **Set in Vercel production.** It is
