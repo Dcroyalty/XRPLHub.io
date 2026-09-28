@@ -9,9 +9,12 @@
  *   node scripts/backup-screening-receipts.mjs              # process up to 5 days (same cap as the cron), report
  *   node scripts/backup-screening-receipts.mjs --all         # keep going until every day up to yesterday is backed up
  *
- * Reads DATABASE_URL from .env (production!) and GITHUB_TOKEN (a PAT with `repo` scope on the backup repo — the
- * SAME token used to `git push` this repo works). Writes to backups/screening-receipts/<date>.jsonl in
- * GITHUB_BACKUP_REPO (default Dcroyalty/XRPLHub.io) via the GitHub Contents API — no XRPL key, no signing, ever.
+ * Reads DATABASE_URL from .env (production!) and GITHUB_TOKEN. GITHUB_TOKEN must be a FINE-GRAINED PAT scoped to
+ * ONLY the private backup repo (Dcroyalty/xrplhub-screening-backups), Contents: Read and write, and nothing else —
+ * never a classic repo-scope PAT (those can push to every repo you own, including the public app repo). Writes to
+ * backups/screening-receipts/<date>.jsonl in GITHUB_BACKUP_REPO (default Dcroyalty/xrplhub-screening-backups, a
+ * PRIVATE repo — a screening receipt contains subjectAddress and a customer's API key prefix, so this must never
+ * point at a public repo) via the GitHub Contents API — no XRPL key, no signing, ever.
  */
 import 'dotenv/config';
 import './ts-hooks.mjs';
@@ -27,7 +30,7 @@ const all = process.argv.includes('--all');
 
 (async () => {
   if (!process.env.GITHUB_TOKEN) {
-    console.error('GITHUB_TOKEN is not set. Set it to a GitHub PAT with `repo` scope (contents read/write) on ' + (process.env.GITHUB_BACKUP_REPO || 'Dcroyalty/XRPLHub.io') + '.');
+    console.error('GITHUB_TOKEN is not set. Set it to a FINE-GRAINED GitHub PAT scoped ONLY to ' + (process.env.GITHUB_BACKUP_REPO || 'Dcroyalty/xrplhub-screening-backups') + ' (Contents: Read and write) — never a classic repo-scope PAT.');
     process.exitCode = 1;
     return;
   }

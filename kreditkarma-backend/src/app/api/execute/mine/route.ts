@@ -17,12 +17,20 @@
 //
 // Bounded and best-effort: capped at 200 items per type, one ledger page (no follow-the-marker loop) — this is a
 // convenience picker, not a census. A caller who has more than that can still type an ID by hand.
+//
+// Gated behind an API key (the free tier works — resolveApiKey + guard(), the same pair every metered endpoint
+// uses) so a live XRPL RPC call can't be triggered for free, unbounded, by anyone with no account at all. A
+// storefront visitor filling in a form has no key most of the time; the client-side picker (PickerField in
+// src/app/page.tsx) already falls back to plain manual entry on ANY non-"items" response, so an unauthenticated
+// call degrades to exactly the experience that existed before this endpoint did — never an error the buyer sees.
 
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/xrplscore-db";
 import { isValidXrplAddress } from "@/lib/address";
 import { xrplRpc } from "@/lib/xrplNodes";
 import { dropsToXrp } from "xrpl";
+import { extractKey, resolveApiKey } from "@/lib/keys";
+import { guard } from "@/lib/guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -99,6 +107,15 @@ async function listHolders(account: string): Promise<PickItem[]> {
 }
 
 export async function GET(req: Request) {
+  const r = await resolveApiKey(extractKey(req));
+  if (!r.ok) {
+    return NextResponse.json({ error: "unauthorized", message: "Missing or invalid API key. A free key works — see /pricing. (The storefront picker falls back to manual entry without one.)" }, { status: 401 });
+  }
+  const g = await guard(r.key.id, r.key.plan);
+  if (!g.ok) {
+    return NextResponse.json({ error: "rate_limited", message: g.reason }, { status: g.status, headers: g.retryAfterSeconds ? { "Retry-After": String(g.retryAfterSeconds) } : undefined });
+  }
+
   const u = new URL(req.url).searchParams;
   const account = (u.get("account") ?? "").trim();
   const type = (u.get("type") ?? "") as PickType;

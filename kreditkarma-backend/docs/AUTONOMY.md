@@ -125,15 +125,29 @@ receipt and at `/legal/screening#retention`) commits to, concretely:
 - **Neon Postgres** — the live, queryable copy. Fast, but only 6-hour point-in-time history on the current plan, and
   subject to whatever happens to the Neon account or plan over 10 years.
 - **An independent, off-Neon copy** (`src/lib/screenBackup.ts`) — once a day, the 06:00 UTC cron writes every receipt
-  screened the previous UTC day to `backups/screening-receipts/<date>.jsonl` in this GitHub repo, via the GitHub
-  Contents API. Each line is a self-contained, independently-verifiable receipt (canonical leaf, leaf hash, statement,
-  and — once anchored — the inclusion proof and anchor tx hash), not just a database dump; someone with only that
-  file and no access to XRPLHub could still verify every receipt in it against the XRP Ledger. Deterministic and
-  idempotent: re-running a day produces byte-identical content, so it's safe to re-run as often as you like.
-- **This requires `GITHUB_TOKEN`** (a PAT with `repo`/contents scope on this repo) **set in Vercel production.** It is
+  screened the previous UTC day to `backups/screening-receipts/<date>.jsonl` in a **separate, PRIVATE** GitHub repo,
+  `Dcroyalty/xrplhub-screening-backups` (NOT the public app repo), via the GitHub Contents API. Each line is a
+  self-contained, independently-verifiable receipt (canonical leaf, leaf hash, statement, and — once anchored — the
+  inclusion proof and anchor tx hash), not just a database dump; someone with that file could verify every receipt in
+  it against the XRP Ledger. Deterministic and idempotent: re-running a day produces byte-identical content, so it's
+  safe to re-run as often as you like.
+- **Retention is not publication.** A receipt contains `subjectAddress` and `requestedBy` (a customer's own API key
+  prefix) — that's every counterparty a customer screened, and when. Keeping it for 10 years is the promise;
+  making it public is a privacy violation a VASP customer cannot accept. The anchored Merkle root is meant to be
+  public (that's the point of anchoring); the leaf/receipt data behind it is not. **Incident, 2026-09-28:** the
+  backup was first built pointing at the public `Dcroyalty/XRPLHub.io` repo and ran for 8 days before being caught,
+  landing 28 receipts (one real customer's, the rest the owner's own test/verification traffic) in public commit
+  history. Fixed same day: migrated to the private repo above, purged from the public repo's git history via
+  `git filter-branch` + force-push, `DEFAULT_REPO` in `screenBackup.ts` corrected. Caveat: a force-push rewrites
+  the repo, but GitHub's/any CDN's blob cache is not guaranteed to drop old content instantly — treat the exposure
+  window as real for the purposes of the affected customer, not just theoretical.
+- **This requires `GITHUB_TOKEN`** — a **fine-grained** PAT scoped ONLY to `Dcroyalty/xrplhub-screening-backups`,
+  Contents: Read and write, and nothing else. Never a classic repo-scope PAT (those reach every repo the account
+  owns, including the public one — how the incident above happened). **Set in Vercel production.** It is
   **not set as of 2026-09-28** — until it is, the daily backup step runs, finds no token, and skips (loudly: watchdog
   `screening-backup` goes to `warn`/`red`, never silent). `node scripts/backup-screening-receipts.mjs --all` runs the
-  same logic by hand from a machine that already has a working GitHub token (e.g. the one `git push` already uses).
+  same logic by hand once that token is set locally. It is deliberately a DIFFERENT token from whatever pushes to the
+  public app repo — they must never be the same credential again.
 
 **What is NOT yet true, and is the owner's decision:**
 - A GitHub repo is a real second copy, but it is still one provider. A third, geographically/organizationally
@@ -185,8 +199,12 @@ Once, before leaving:
 6. Decide on email: `RESEND_API_KEY` is **not set**, so `/api/send-email` silently skips purchase/grant confirmations. Note the route is unauthenticated — if you ever set the key it becomes an open mail relay from `noreply@xrplhub.io`; add auth before enabling it.
 7. Consider the Vercel plan: Hobby's terms are for non-commercial use and the site takes payments **(inferred plan)**; nothing inside can detect a suspension.
 8. Consider a longer Neon history/backups: the free tier keeps only 6 hours.
-9. **Set `GITHUB_TOKEN`** (a PAT with `repo` scope on this repo) in Vercel production — the 10-year screening-receipt
-   retention promise's off-Neon backup (§6) does not run without it. Not set as of 2026-09-28.
+9. **Create a fine-grained GitHub PAT scoped ONLY to `Dcroyalty/xrplhub-screening-backups`** (Contents: Read and
+   write; no other repo, no other permission) and set it as `GITHUB_TOKEN` in Vercel production — the 10-year
+   screening-receipt retention promise's off-Neon backup (§6) does not run without it. Not set as of 2026-09-28.
+   Steps: github.com/settings/personal-access-tokens/new → Resource owner: Dcroyalty → Repository access: Only
+   select repositories → `xrplhub-screening-backups` → Permissions → Repository → Contents: Read and write → leave
+   every other permission at No access → Generate. Do NOT use a classic PAT here (§6 explains why).
 
 Known silent-by-design: last-used timestamps, the score-cache upsert and counter flushes swallow errors (harmless). Grants are paused (`GRANT_APPLICATIONS_OPEN=false`), so the two approved-but-unpaid grants wait for a human.
 

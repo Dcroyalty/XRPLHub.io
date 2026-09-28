@@ -4,14 +4,21 @@
 //
 // Neon's own history is 6 hours on the current plan; the retention PROMISE is 10 years. A database problem, an
 // account issue, or a plan change must not be able to take every screening receipt with it. So once a day, every
-// receipt screened the PREVIOUS UTC day is written to a durable, independent store — the same GitHub repo the code
-// lives in, as a plain JSONL file per day, committed via the GitHub Contents API. One receipt is one line; the file
-// for a day is deterministic (sorted by queryId) so re-running a day is a content-identical no-op, not a new commit.
+// receipt screened the PREVIOUS UTC day is written to a durable, independent store — a PRIVATE GitHub repo
+// (Dcroyalty/xrplhub-screening-backups, separate from the public app repo), as a plain JSONL file per day, committed
+// via the GitHub Contents API. One receipt is one line; the file for a day is deterministic (sorted by queryId) so
+// re-running a day is a content-identical no-op, not a new commit.
+//
+// This repo MUST stay private. A receipt contains subjectAddress and requestedBy (a customer's own API key
+// prefix) — retaining that data for 10 years is the promise; publishing it is a privacy violation, not retention.
+// The anchored Merkle root is meant to be public (that's the point of anchoring); the leaf/receipt data behind it is
+// not, and never goes in the public app repo again.
 //
 // This does not replace Neon (verify/export still read from Postgres) — it is the second, independent copy the
-// retention promise needs. It also does not need the credential issuer's key or any signing key: a GitHub PAT with
-// `repo` (contents) scope is enough, kept in `GITHUB_TOKEN`. Absent that token, the job SKIPS with a clear, loud
-// reason (never silently) — see docs/AUTONOMY.md's new section on this.
+// retention promise needs. It also does not need the credential issuer's key or any signing key: a GitHub PAT
+// scoped ONLY to the backup repo, contents read/write, is enough, kept in `GITHUB_TOKEN` (fine-grained token —
+// never a classic repo-scope PAT that can reach other repos). Absent that token, the job SKIPS with a clear, loud
+// reason (never silently) — see docs/AUTONOMY.md's section on this.
 
 import type { PrismaClient } from "@prisma/client";
 import { rebuildReceipt, loadAnchorContexts, proofFor, type ReceiptRowLike } from "./screenRebuild";
@@ -19,7 +26,8 @@ import { verifyInclusion } from "./merkle";
 import { notifyError } from "./notify";
 
 const GITHUB_API = "https://api.github.com";
-const DEFAULT_REPO = "Dcroyalty/XRPLHub.io";
+// PRIVATE repo, separate from the public app repo — never point this at Dcroyalty/XRPLHub.io again (see header comment).
+const DEFAULT_REPO = "Dcroyalty/xrplhub-screening-backups";
 const BACKUP_PATH_PREFIX = "backups/screening-receipts";
 const CHECKPOINT_ID = "screening-backup:last-completed-date";
 const DAY_MS = 86_400_000;
