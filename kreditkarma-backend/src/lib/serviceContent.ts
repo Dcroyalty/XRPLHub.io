@@ -117,10 +117,10 @@ export const RAW_PRODUCTS = [
     features:['Identity + domain + DID','One guided flow','You sign in Xaman','Explorer-recognized','TX hash receipts'] },
   // ESCROW
   { id:'escrow', cat:'Escrow', emoji:'🏛️', name:'Escrow Setup', featured:false, tag:'POPULAR', comingSoon:false, color:'#f97316',
-    amendment:'EscrowCreate', tagline:'Time-lock XRP with a release condition',
-    desc:'You set the amount and release time. We build EscrowCreate. You sign it — funds release on your terms.',
-    aiDetail:'We build EscrowCreate with your FinishAfter time and optional condition. You later finish or cancel it.',
-    features:['EscrowCreate built to spec','Time or crypto-condition','You sign it in your wallet','On-chain audit trail','TX hash receipt'] },
+    amendment:'EscrowCreate', tagline:'Time-lock XRP until a release date',
+    desc:'You set the amount and release time. We build EscrowCreate. You sign it — funds release once that time passes.',
+    aiDetail:'We build EscrowCreate with your FinishAfter time — time-based release only, no crypto-condition support. You later finish or cancel it.',
+    features:['EscrowCreate built to spec','Time-locked release (FinishAfter)','You sign it in your wallet','On-chain audit trail','TX hash receipt'] },
 
   // TOKENS (v2 + management) — mirrors xrpl.org/docs/tutorials/tokens, done for you
   { id:'mptissue', cat:'Token Issuer', emoji:'🎫', name:'Multi-Purpose Token (MPT) Issuance', featured:false, tag:'NEW', comingSoon:false, color:'#38bdf8',

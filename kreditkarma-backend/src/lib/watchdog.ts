@@ -8,6 +8,7 @@
 //   • things that expire: domains (RDAP), TLS certificate, XNS names, on-ledger credentials
 //   • things that run out: database size (Neon free tier), the anchor wallet's spendable XRP, the credential
 //     issuer's spendable XRP, and its queued-request backlog (by family — mpt-declared auto-queues from purchases)
+//   • things that go silently unbacked: the off-Neon screening-receipt backup (GITHUB_TOKEN unset, or just stale)
 //   • things that stop: OFAC SDN refresh, unanchored attestations, the monitoring backlog
 //   • things that get revoked: the Bithomp key, the XRP price sources
 //   • the amendment reader itself, and a one-time "XLS-66 is now ACTIVE" announcement
@@ -272,6 +273,24 @@ async function checkDbSize(prisma: PrismaClient): Promise<Finding> {
   return { key: "db-size", level: "ok", message: `${mb.toFixed(1)} MB of ${limitMb} MB` };
 }
 
+/** Is the off-Neon screening-receipt backup (src/lib/screenBackup.ts) actually keeping up? The 10-year retention
+ * promise depends on it existing, not just on the code existing. */
+async function checkScreeningBackup(prisma: PrismaClient): Promise<Finding> {
+  if (!process.env.GITHUB_TOKEN) {
+    const any = await prisma.screeningReceipt.count();
+    if (any === 0) return { key: "screening-backup", level: "ok", message: "no screening receipts yet — nothing to back up" };
+    return { key: "screening-backup", level: "warn", message: "GITHUB_TOKEN is not set — the 10-year screening-receipt retention promise has NO off-Neon backup running (see docs/AUTONOMY.md)" };
+  }
+  const cp = await prisma.indexerCheckpoint.findUnique({ where: { id: "screening-backup:last-completed-date" } });
+  const oldest = await prisma.screeningReceipt.findFirst({ orderBy: { screenedAt: "asc" }, select: { screenedAt: true } });
+  if (!oldest) return { key: "screening-backup", level: "ok", message: "no screening receipts yet — nothing to back up" };
+  const lastDone = cp?.marker ? new Date(`${cp.marker}T00:00:00.000Z`) : null;
+  const behindDays = Math.floor((Date.now() - (lastDone?.getTime() ?? new Date(oldest.screenedAt.toISOString().slice(0, 10)).getTime() - DAY)) / DAY);
+  if (behindDays > 5) return { key: "screening-backup", level: "red", message: `screening-receipt backup is ${behindDays} day(s) behind (last completed: ${cp?.marker ?? "never"}) — check GITHUB_TOKEN validity and the target repo` };
+  if (behindDays > 2) return { key: "screening-backup", level: "warn", message: `screening-receipt backup is ${behindDays} day(s) behind (last completed: ${cp?.marker ?? "never"})` };
+  return { key: "screening-backup", level: "ok", message: `up to date through ${cp?.marker ?? "n/a"}` };
+}
+
 async function checkBithomp(): Promise<Finding> {
   const key = process.env.BITHOMP_API_KEY;
   if (!key) return { key: "bithomp-key", level: "ok", message: "BITHOMP_API_KEY not set (optional)" };
@@ -388,6 +407,7 @@ export async function runWatchdog(prisma: PrismaClient, opts: WatchdogOptions = 
     add("credential-expiry", checkCredentialExpiry);
     add("credential-issuer-reserve", checkCredentialIssuerReserve);
     add("credential-queue-backlog", () => checkCredentialQueueBacklog(prisma));
+    add("screening-backup", () => checkScreeningBackup(prisma));
     add("domain-expiry", checkDomains, 9000);
     add("xns-expiry", checkXns, 9000);
     add("tls-cert", checkTls);

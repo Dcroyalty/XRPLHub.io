@@ -55,15 +55,15 @@ Already-live features (Credentials/XLS-70, PermissionedDomains, MPTokensV1) are 
 | Neon database (project `kreditkarma`) | 10.8 MB of the 512 MB free-tier branch limit; **6-hour point-in-time history only**; maintenance window Sundays 05:00–06:00 UTC | upgrade plan if it fills | watchdog `db-size` (warn 70%, red 90%) |
 | `UsageRecord` table | one row per metered API call, never pruned — the first table to grow under real load (≈1M calls/month ≈ 1 GB/year) | prune or upgrade | `db-size` |
 | Sanctions feeds (OFAC SDN, EU FSF, UK Sanctions List) | each list re-confirmed daily; a new snapshot only when its content changes (EU/UK change rarely). A refused (gated) snapshot alerts and the previous one stays in force. Screening FAILS CLOSED (503) if any list has no snapshot. | none; the EU download uses a public token URL and the UK file location has moved once (OFSI closed 2026-01-28) — a publisher format change shows up as a refused snapshot + alert | watchdog `ofac-sdn` (covers all three; freshness = last confirmed; warn 4d, red 8d) |
-| Screening retention promise (`retain-10y-no-prune/v1`) | receipts, leaves, anchors and every list snapshot's canonical archive are never pruned by any process (only the derived per-address lookup rows of a snapshot >6 h superseded are dropped; the archive stays). Growth ≈ 75 KB/day compressed for OFAC vintages + receipts. | **Owner decision:** a 10-year promise is not backed by a 512 MB free-tier database with 6-hour history. Move to a paid plan and/or archive `GET /api/attest/export` off-platform before relying on it. | watchdog `db-size` |
+| Screening retention promise (`retain-10y-no-prune/v1`), **approved 2026-09-28** | receipts, leaves, anchors and every list snapshot's canonical archive are never pruned by any process (only the derived per-address lookup rows of a snapshot >6 h superseded are dropped; the archive stays). Growth ≈ 75 KB/day compressed for OFAC vintages + receipts. Now backed by a daily off-Neon copy (see §6) — but Neon itself is still 6-hour history, so the *live, queryable* copy has no long-term guarantee of its own. | **Owner decision still open:** the off-Neon backup makes the receipts survivable, not queryable at scale for 10 years. Consider a paid Neon plan for real point-in-time recovery. | watchdog `db-size`, `screening-backup` |
 | Public XRPL nodes (8 hard-coded hosts) | all healthy today; several are hobbyist hosts | edit `XRPL_NODES` in `src/lib/xrplNodes.ts` | watchdog `xrpl-nodes` (warn ≤ 5 healthy, red ≤ 2) |
 | Bithomp API key (free tier 10 req/min, 2K/day) | accepted | replace if revoked | watchdog `bithomp-key` (red on 401/403) — without it the MPT registry silently stops refreshing holder counts |
 | XRP/USD price sources (CoinGecko + Coinbase, keyless) | both up | none | watchdog `xrp-price` (warn if BOTH fail: XRP checkout is refused) |
 | Xaman (XUMM) API key/secret | present, no expiry | rotate only if revoked | `createPayload` alerts loudly on rejection; health probe |
 | Coinbase CDP key (x402 USDC on Base) | present; **usage limits / billing of the CDP facilitator not verified** | check the CDP portal | health deep probe (reachability only, not key validity) |
 | t54 x402 facilitator (XRPL x402) | external service | none | health deep probe |
-| `ERROR_WEBHOOK_URL` (Discord/Slack) | set | recreate if the webhook is deleted | **the weekly heartbeat message stops** (see §7) |
-| Vercel plan | **(inferred)** Hobby: 2 crons/day, 60 s functions | — | not detectable from inside; see §8 |
+| `ERROR_WEBHOOK_URL` (Discord/Slack) | set | recreate if the webhook is deleted | **the weekly heartbeat message stops** (see §8) |
+| Vercel plan | **(inferred)** Hobby: 2 crons/day, 60 s functions | — | not detectable from inside; see §9 |
 
 ## 5. Credential issuance & cleanup — hand-run by design, never automatic
 
@@ -107,7 +107,45 @@ score credential's own expiry is watched (§4). Someone letting both scripts lap
 Adding `queued-credential-backlog` and `credential-issuer-reserve` checks to `src/lib/watchdog.ts` would close this;
 not done as part of this note.
 
-## 6. What breaks first, in order (if nobody touches anything)
+## 6. The 10-year screening-receipt retention obligation — what it actually requires
+
+Approved by the owner 2026-09-28. What "at least 10 years, never pruned" (`retain-10y-no-prune/v1`, stated in every
+receipt and at `/legal/screening#retention`) commits to, concretely:
+
+1. **Every screening receipt, its canonical leaf, and the data to rebuild its Merkle inclusion proof** stay retrievable
+   for 10 years from the date it was screened.
+2. **The on-ledger anchor record** (root, tx hash, ledger index) for the batch each receipt landed in.
+3. **The canonical archive of every sanctions-list snapshot** a receipt refers to (so a decade from now, the exact
+   file a receipt was compared against can still be re-obtained and re-hashed — not just cited by name).
+4. **No process may prune, edit or delete any of the above.** `src/lib/sanctionLists.ts`'s `compactSuperseded()` only
+   ever drops a superseded snapshot's *derived per-address lookup rows* (a search index) once it has been superseded
+   for 6+ hours — the archive itself, and every receipt, is untouched by any code path in this repo.
+
+**What backs the promise today:**
+- **Neon Postgres** — the live, queryable copy. Fast, but only 6-hour point-in-time history on the current plan, and
+  subject to whatever happens to the Neon account or plan over 10 years.
+- **An independent, off-Neon copy** (`src/lib/screenBackup.ts`) — once a day, the 06:00 UTC cron writes every receipt
+  screened the previous UTC day to `backups/screening-receipts/<date>.jsonl` in this GitHub repo, via the GitHub
+  Contents API. Each line is a self-contained, independently-verifiable receipt (canonical leaf, leaf hash, statement,
+  and — once anchored — the inclusion proof and anchor tx hash), not just a database dump; someone with only that
+  file and no access to XRPLHub could still verify every receipt in it against the XRP Ledger. Deterministic and
+  idempotent: re-running a day produces byte-identical content, so it's safe to re-run as often as you like.
+- **This requires `GITHUB_TOKEN`** (a PAT with `repo`/contents scope on this repo) **set in Vercel production.** It is
+  **not set as of 2026-09-28** — until it is, the daily backup step runs, finds no token, and skips (loudly: watchdog
+  `screening-backup` goes to `warn`/`red`, never silent). `node scripts/backup-screening-receipts.mjs --all` runs the
+  same logic by hand from a machine that already has a working GitHub token (e.g. the one `git push` already uses).
+
+**What is NOT yet true, and is the owner's decision:**
+- A GitHub repo is a real second copy, but it is still one provider. A third, geographically/organizationally
+  independent copy (e.g. a periodic export to cloud storage you control) would be stronger for a 10-year horizon —
+  not built.
+- The off-Neon copy is a flat file archive, not queryable — recovering "every receipt for address X" from it means
+  scanning JSONL files, not running a query. Fine for disaster recovery, not a replacement for Neon's own durability.
+- Neon's 6-hour point-in-time history has not been upgraded. A Neon-side data-loss event more than 6 hours old would
+  still mean rebuilding the live database from the GitHub backup by hand — the backup exists, but nothing automates
+  restoring FROM it.
+
+## 7. What breaks first, in order (if nobody touches anything)
 
 Dated items first; undated risks after.
 
@@ -120,7 +158,7 @@ Dated items first; undated risks after.
 7. **~12 months (Sep 2027)** — any registration you did not extend repeats annually. Neon/Vercel free-tier terms are the main external unknown.
 8. **~24 months (Sep 2028)** — **Node 24 reaches end-of-life 2028-04-30**; Vercel retires EOL runtimes some time after that. Existing deployments keep running until the platform retires the runtime, but the first forced upgrade (or a security advisory in `next` / `prisma` that nothing auto-updates) lands in this window. Domains and any 1-year XNS renewals come due again in May–Aug 2028.
 
-## 7. Loud failure — how you find out
+## 8. Loud failure — how you find out
 
 `notifyError` posts to `ERROR_WEBHOOK_URL`. The watchdog adds, on the daily crons:
 - **cron heartbeats** — each cron writes a heartbeat at the *end* of a successful run and checks the other's (red if > 36 h stale). A run that times out at 60 s writes none, so it shows up.
@@ -136,7 +174,7 @@ Crons: if a run throws, it returns 500 and `notifyError` fires immediately; if i
 daily *and* the other cron reports the stale heartbeat after 36 h; if `CRON_SECRET` is unset both 401 (health probe: red).
 Every job in a run is wrapped so one failure cannot stop the rest (`.catch → notifyError`).
 
-## 8. What still needs a human — and the honest gaps
+## 9. What still needs a human — and the honest gaps
 
 Once, before leaving:
 1. `POST /api/health` (admin token) — confirm a test alert really lands in the channel.
@@ -147,10 +185,12 @@ Once, before leaving:
 6. Decide on email: `RESEND_API_KEY` is **not set**, so `/api/send-email` silently skips purchase/grant confirmations. Note the route is unauthenticated — if you ever set the key it becomes an open mail relay from `noreply@xrplhub.io`; add auth before enabling it.
 7. Consider the Vercel plan: Hobby's terms are for non-commercial use and the site takes payments **(inferred plan)**; nothing inside can detect a suspension.
 8. Consider a longer Neon history/backups: the free tier keeps only 6 hours.
+9. **Set `GITHUB_TOKEN`** (a PAT with `repo` scope on this repo) in Vercel production — the 10-year screening-receipt
+   retention promise's off-Neon backup (§6) does not run without it. Not set as of 2026-09-28.
 
 Known silent-by-design: last-used timestamps, the score-cache upsert and counter flushes swallow errors (harmless). Grants are paused (`GRANT_APPLICATIONS_OPEN=false`), so the two approved-but-unpaid grants wait for a human.
 
-## 9. If something looks wrong after a long absence — check in this order
+## 10. If something looks wrong after a long absence — check in this order
 
 1. Was the weekly heartbeat received recently? (No → webhook, both crons or the platform.)
 2. `GET https://www.xrplhub.io/api/health?deep=1` — reds first.

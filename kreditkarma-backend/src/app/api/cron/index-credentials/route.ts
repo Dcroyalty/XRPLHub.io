@@ -24,6 +24,7 @@ import { maybeAnchorLendingReceipts } from "@/lib/lendingAnchor";
 import { maybeAnchorUnderwriteReceipts } from "@/lib/underwriteAnchor";
 import { runLendingSweep } from "@/lib/lendingSweep";
 import { forceFlushXrplCounters } from "@/lib/xrplCounters";
+import { runScreeningBackup } from "@/lib/screenBackup";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -90,6 +91,13 @@ export async function GET(req: Request) {
       return { attempted: false, submitted: false, reason: "anchor threw", leafCount: 0 };
     });
 
+    // Off-Neon durability for the 10-year screening-receipt retention promise (see docs/AUTONOMY.md). Skips cleanly
+    // (never throws) if GITHUB_TOKEN is unset — a real gap, but a visible one, never a silent one.
+    const screeningBackup = await runScreeningBackup(prisma, { deadlineMs: t0 + 47_000 }).catch((e) => {
+      void notifyError("cron/index-credentials screening-backup", e);
+      return { ran: false, reason: "backup threw", daysProcessed: [], daysFailed: [], receiptsBackedUp: 0 };
+    });
+
     // Monitoring observations: anchored last, and only if there is time left — resumable (they stay unanchored).
     const monitorAnchor =
       Date.now() < t0 + 44_000
@@ -109,7 +117,7 @@ export async function GET(req: Request) {
       return null;
     });
     await pingHealthcheck();
-    return NextResponse.json({ ...progress, sdn, monitor, lendingSweep, screeningAnchor, lendingAnchor, underwriteAnchor, monitorAnchor, watchdog: watchdog ? { alerted: watchdog.alerted, recovered: watchdog.recovered } : null });
+    return NextResponse.json({ ...progress, sdn, monitor, lendingSweep, screeningAnchor, lendingAnchor, underwriteAnchor, screeningBackup, monitorAnchor, watchdog: watchdog ? { alerted: watchdog.alerted, recovered: watchdog.recovered } : null });
   } catch (err) {
     await notifyError("cron/index-credentials", err);
     console.error("[cron/index-credentials]", err);
