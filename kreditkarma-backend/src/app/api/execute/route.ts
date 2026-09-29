@@ -23,6 +23,8 @@ import { claimBuild, deliveredHashes, parseStatus, verifyPayment, type GateCode,
 import { prismaPurchaseStore } from '@/lib/paymentStore';
 import { cautionCopyFor } from '@/lib/serviceCaution';
 import { priceUsd } from '@/lib/pricing';
+import { ADMIN_ONLY_SERVICE_IDS } from '@/lib/servicePrices';
+import { isAdmin, adminUnauthorized } from '@/lib/adminAuth';
 
 const XUMM_API = 'https://xumm.app/api/v1/platform/payload';
 
@@ -47,6 +49,10 @@ export async function POST(req: NextRequest) {
     }
     if (priceUsd(String(productId)) == null || String(productId) === 'credential') {
       return NextResponse.json({ error: `Unknown product "${productId}".` }, { status: 404 });
+    }
+    // Admin-only products (health checks, never sold) — genuinely gated, not just unlisted.
+    if (ADMIN_ONLY_SERVICE_IDS.has(String(productId)) && !isAdmin(req)) {
+      return adminUnauthorized();
     }
 
     // ── 1. the payment: verified on the ledger against OUR price table ──

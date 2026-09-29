@@ -60,9 +60,22 @@ const buildable = catalogAll.filter((id) => !blocked.includes(id));
 const prices = read("src/lib/servicePrices.ts");
 const priceKeys = [...prices.matchAll(/^  ([a-z0-9]+): \d+/gm)].map((m) => m[1]).filter((k) => k !== "credential");
 
-const builderKeys = new Set();
+// Admin-only products (e.g. the paid-path health check): never customer-facing, so excluded from every
+// comparison below -- but their invisibility and their builder are explicitly ASSERTED, not just assumed.
+const adminOnlyBlock = prices.slice(prices.indexOf("ADMIN_ONLY_SERVICE_IDS"));
+const adminOnlyIds = new Set([...adminOnlyBlock.slice(0, adminOnlyBlock.indexOf("]")).matchAll(/"([a-z0-9]+)"/g)].map((m) => m[1]));
+const priceKeysPublic = priceKeys.filter((k) => !adminOnlyIds.has(k));
+
+const builderKeysAll = new Set();
 for (const f of ["src/app/api/execute/txBuilder.ts", "src/app/api/execute/serviceBuilders.ts"]) {
-  for (const m of read(f).matchAll(/^  ([a-z0-9]+): (?:\(|async|builders\.)/gm)) builderKeys.add(m[1]);
+  for (const m of read(f).matchAll(/^  ([a-z0-9]+): (?:\(|async|builders\.)/gm)) builderKeysAll.add(m[1]);
+}
+const builderKeys = new Set([...builderKeysAll].filter((k) => !adminOnlyIds.has(k)));
+for (const id of adminOnlyIds) {
+  if (!builderKeysAll.has(id)) fail(`admin-only product "${id}" has no builder in txBuilder.ts/serviceBuilders.ts`);
+  if (!priceKeys.includes(id)) fail(`admin-only product "${id}" has no entry in servicePrices.ts's ADMIN_ONLY_PRICE_USD`);
+  if (pageIds.includes(id)) fail(`admin-only product "${id}" is on the storefront homepage -- it must never be customer-visible`);
+  if (catalogAll.includes(id)) fail(`admin-only product "${id}" is in serviceCatalog.ts -- it must never be customer-visible`);
 }
 
 const names = read("src/app/api/create-payment/route.ts");
@@ -70,7 +83,7 @@ const nameKeys = [...names.slice(names.indexOf("const NAMES"), names.indexOf("co
 
 const N = buildable.length;
 same("page vs catalog", set(pageIds), set(buildable), "the homepage", "the catalog (buildable)");
-same("price table vs catalog", set(priceKeys), set(buildable), "servicePrices.ts", "the catalog (buildable)");
+same("price table vs catalog", set(priceKeysPublic), set(buildable), "servicePrices.ts", "the catalog (buildable)");
 same("builders vs catalog", builderKeys, set(catalogAll), "the builders", "the catalog");
 same("payment names vs catalog", set(nameKeys), set(buildable), "create-payment NAMES", "the catalog (buildable)");
 same("TOP_ORDER vs page", set([...topOrder, ...featuredIds]), set(pageIds), "TOP_ORDER + featured", "the homepage");

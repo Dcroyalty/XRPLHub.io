@@ -124,9 +124,14 @@ export function dualX402(opts: DualOpts): (req: NextRequest) => Promise<Response
       });
     }
 
-    // Base rail (unchanged). Add the XRPL challenge header only to its own 402 challenge.
+    // Base rail. Add the XRPL challenge header on a fresh 402 (existing) AND whenever this rail itself is
+    // down (5xx) -- even after a real X-PAYMENT attempt, since that means "this rail is broken", not "your
+    // payment was rejected". A definitive 4xx after a real attempt gets no alternative noise (see below).
     const res = await opts.base(req);
-    if (res.status !== 402 || req.headers.get("X-PAYMENT")) return res;
+    const attempted = !!req.headers.get("X-PAYMENT");
+    const infraDown = res.status >= 500;
+    if (res.status !== 402 && !infraDown) return res;
+    if (attempted && res.status === 402 && !infraDown) return res;
 
     const challenge = paymentRequiredChallenge(requirements(statelessInvoiceId(plan)), new URL(req.url).pathname, opts.description.slice(0, 480));
     const headers = new Headers(res.headers);

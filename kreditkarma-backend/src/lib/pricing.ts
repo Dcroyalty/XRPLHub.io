@@ -12,7 +12,7 @@
 // display change lands; scripts in the repo assert the two agree.
 
 import { xrpUsd } from "./xrpPrice";
-import { SERVICE_PRICE_USD } from "./servicePrices";
+import { SERVICE_PRICE_USD, ADMIN_ONLY_PRICE_USD } from "./servicePrices";
 
 export { SERVICE_PRICE_USD };
 
@@ -27,7 +27,9 @@ export type PayCurrency = "XRP" | "RLUSD";
 export const OPEN_AMOUNT_PRODUCTS: ReadonlySet<string> = new Set(["donate"]);
 
 export function priceUsd(productId: string): number | null {
-  return Object.prototype.hasOwnProperty.call(SERVICE_PRICE_USD, productId) ? SERVICE_PRICE_USD[productId] : null;
+  if (Object.prototype.hasOwnProperty.call(SERVICE_PRICE_USD, productId)) return SERVICE_PRICE_USD[productId];
+  if (Object.prototype.hasOwnProperty.call(ADMIN_ONLY_PRICE_USD, productId)) return ADMIN_ONLY_PRICE_USD[productId];
+  return null;
 }
 
 // ── XRP conversion ───────────────────────────────────────────────────────────

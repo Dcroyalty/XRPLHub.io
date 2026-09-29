@@ -644,7 +644,9 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
   // multi-wallet (Xaman default; Crossmark / GemWallet if detected)
   const [walletOpts, setWalletOpts] = useState<ProviderOption[]>([]);
   const [walletSel, setWalletSel]   = useState('xaman');
-  const [payHash, setPayHash]       = useState('');       // injected-wallet fee-payment tx
+  const [payHash, setPayHash]       = useState('');       // injected-wallet fee-payment tx (also set by manual hash entry, below)
+  const [manualHashInput, setManualHashInput] = useState('');
+  const [manualHashErr, setManualHashErr]     = useState('');
   const [exHash, setExHash]         = useState('');       // injected-wallet service tx
   // execution (service fulfillment) state
   const [exForm, setExForm]     = useState<Record<string,string>>({});
@@ -653,6 +655,9 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
   const [exPlan, setExPlan] = useState<{ step:number; total:number; label:string; list:{ id:string; label:string }[] }|null>(null);
   const [exNextStep, setExNextStep] = useState<number|null>(null);
   const [exUuid, setExUuid]     = useState('');
+  const [exTxjson, setExTxjson] = useState<Record<string,unknown>|null>(null); // for the manual-sign fallback when Xaman is down
+  const [manualExHashInput, setManualExHashInput] = useState('');
+  const [manualExHashErr, setManualExHashErr]     = useState('');
   const [exQr, setExQr]         = useState('');
   const [exLink, setExLink]     = useState('');
   const [exTx, setExTx]         = useState('');
@@ -816,8 +821,8 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
     cancelRef.current = true; if (pollRef.current) clearTimeout(pollRef.current); if (exPollRef.current) clearTimeout(exPollRef.current);
     onClose();
     setTimeout(() => { setStep('info'); setEmail(''); setPayStatus('idle'); setUuid(''); setQrUrl(''); setDeepLnk(''); setCountdown(900); setVerifiedTx(''); setPayError(''); cancelRef.current = false;
-      setExForm({}); setExStatus('form'); setExUuid(''); setExQr(''); setExLink(''); setExTx(''); setExError(''); setExLabel(''); setCautionOk(false); setExManifest(null); setExPlan(null); setExNextStep(null);
-      setPayHash(''); setExHash(''); setWalletSel('xaman'); }, 300);
+      setExForm({}); setExStatus('form'); setExUuid(''); setExQr(''); setExLink(''); setExTx(''); setExTxjson(null); setExError(''); setExLabel(''); setCautionOk(false); setExManifest(null); setExPlan(null); setExNextStep(null);
+      setPayHash(''); setExHash(''); setWalletSel('xaman'); setManualHashInput(''); setManualHashErr(''); setManualExHashInput(''); setManualExHashErr(''); }, 300);
   };
 
   const handleBuyNow = async () => {
@@ -825,9 +830,25 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
     try {
       const res  = await fetch(`${API_URL}/api/create-payment`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ productId:product.id, currency, amount:price, email }) });
       const data = await res.json();
-      if (!res.ok || !data.uuid) throw new Error(data.error || 'Failed to create payment');
-      setUuid(data.uuid); setQrUrl(data.qr_png); setDeepLnk(data.deep_link); setCountdown(data.expires_in || 900); if (data.amount) setQuoted({ amount:String(data.amount), currency:String(data.currency||currency) }); setPayStatus('waiting');
+      // The server always returns a payable treasury/txjson even if Xaman itself is down or unconfigured
+      // (see api/create-payment's fallback) -- only a missing treasury means payment truly could not start.
+      // A missing uuid is NOT fatal: it just means the Xaman QR/deeplink can't show, so the manual-payment
+      // panel below (address + amount + paste-your-hash) is the only path — and it must still work.
+      if (!res.ok || !data.treasury) throw new Error(data.error || 'Failed to create payment');
+      setUuid(data.uuid || ''); setQrUrl(data.qr_png); setDeepLnk(data.deep_link); setCountdown(data.expires_in || 900); if (data.amount) setQuoted({ amount:String(data.amount), currency:String(data.currency||currency) }); setPayStatus('waiting');
     } catch (e: unknown) { setPayError(e instanceof Error ? e.message : 'Payment failed'); setPayStatus('idle'); }
+  };
+
+  const submitManualHash = () => {
+    const h = manualHashInput.trim().toUpperCase();
+    if (!/^[0-9A-F]{64}$/.test(h)) { setManualHashErr('That doesn’t look like a transaction hash (64 hex characters).'); return; }
+    setManualHashErr(''); setPayHash(h);
+  };
+
+  const submitManualExHash = () => {
+    const h = manualExHashInput.trim().toUpperCase();
+    if (!/^[0-9A-F]{64}$/.test(h)) { setManualExHashErr('That doesn’t look like a transaction hash (64 hex characters).'); return; }
+    setManualExHashErr(''); setExHash(h);
   };
 
   // Build + sign the actual service transaction (autonomous execution engine)
@@ -865,7 +886,7 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
         return;
       }
 
-      setExUuid(data.uuid); setExQr(data.qr_png); setExLink(data.deep_link); setExStatus('signing');
+      setExUuid(data.uuid || ''); setExQr(data.qr_png); setExLink(data.deep_link); setExTxjson((data.txjson as Record<string,unknown>) ?? null); setExStatus('signing');
     } catch (e:unknown) { setExError(e instanceof Error ? e.message : 'Execution failed'); setExStatus('form'); }
   };
 
@@ -983,9 +1004,28 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
                 <XamanPayPrompt theme="light" mode="sign" qrPng={exQr} deepLink={exLink} uuid={exUuid} />
               </div>
             ) : (
-              <p style={{ textAlign:'center',color:'rgba(255,255,255,.55)',fontSize:13,margin:'16px 0' }}>Approve the transaction in your wallet…</p>
+              <>
+                <p style={{ textAlign:'center',color:'rgba(255,255,255,.55)',fontSize:13,margin:'16px 0 14px' }}>
+                  Xaman isn&rsquo;t available right now — you&rsquo;ve already paid, so this is only about signing. Paste the JSON below into any XRPL-signing tool (another wallet, xrpl.js, etc.), sign it from <strong style={{ color:'#fff' }}>{connectedWallet.slice(0,10)}…{connectedWallet.slice(-6)}</strong>, then tell us the resulting hash.
+                </p>
+                {exTxjson && (
+                  <div style={{ marginBottom:14 }}>
+                    <label style={LBL}>Transaction to sign</label>
+                    <pre style={{ ...INP, whiteSpace:'pre-wrap', wordBreak:'break-all', fontFamily:"ui-monospace,monospace", fontSize:11, maxHeight:180, overflow:'auto', cursor:'pointer' }}
+                      onClick={()=>navigator.clipboard?.writeText(JSON.stringify(exTxjson,null,2)).catch(()=>{})}
+                      title="Tap to copy">{JSON.stringify(exTxjson,null,2)}</pre>
+                  </div>
+                )}
+                <label style={LBL}>Already signed and submitted it? Paste the transaction hash</label>
+                <div style={{ display:'flex', gap:8 }}>
+                  <input value={manualExHashInput} onChange={e=>{ setManualExHashInput(e.target.value); setManualExHashErr(''); }} placeholder="64-character transaction hash" disabled={!!exHash} style={{ ...INP, flex:1, fontFamily:"ui-monospace,monospace", fontSize:12 }} />
+                  <button type="button" onClick={submitManualExHash} disabled={!!exHash || !manualExHashInput.trim()} style={{ ...Btn('color', product.color, { padding:'0 16px', opacity: (!!exHash || !manualExHashInput.trim()) ? .5 : 1 }) }}>{exHash ? 'Checking…' : 'Check'}</button>
+                </div>
+                {manualExHashErr && <p style={{ color:'#fca5a5', fontSize:12, marginTop:8 }}>{manualExHashErr}</p>}
+                {exHash && <p style={{ fontSize:12, color:'rgba(255,255,255,.45)', marginTop:8 }}>Watching the ledger for this transaction — this updates itself.</p>}
+              </>
             )}
-            <p style={{ textAlign:'center',fontSize:11,color:'rgba(255,255,255,.28)' }}>We confirm your service transaction on XRPL mainnet before marking it delivered.</p>
+            <p style={{ textAlign:'center',fontSize:11,color:'rgba(255,255,255,.28)',marginTop:12 }}>We confirm your service transaction on XRPL mainnet before marking it delivered.</p>
           </>
         )}
 
@@ -1081,19 +1121,46 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
             </div>
           ) : (
             <p style={{ textAlign:'center',color:'rgba(255,255,255,.55)',fontSize:13,margin:'18px 0' }}>
-              Approve the payment in your wallet — this confirms on the ledger automatically.
+              Xaman isn&rsquo;t available right now — pay from any wallet or exchange below, then tell us the transaction hash.
             </p>
           )}
-          <div style={{ background:'rgba(255,255,255,.04)',border:'1px solid rgba(255,255,255,.07)',borderRadius:14,padding:'14px 18px',marginBottom:12 }}>
-            {[['1',uuid?'Scan QR or tap "Open in Xaman"':'Approve in your wallet'],['2',`Review the pre-filled ${quoted ? quoted.amount : (currency==='XRP' ? (xrpNow!=null ? '≈'+fmtXrp(xrpNow) : '—') : price)} ${currency} payment`],['3','Confirm — we verify it on-chain']].map(([n,t]) => (
-              <div key={n} style={{ display:'flex',alignItems:'flex-start',gap:12,marginBottom:n==='3'?0:10 }}>
-                <span style={{ width:22,height:22,borderRadius:'50%',background:`${product.color}20`,border:`1px solid ${product.color}40`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:800,color:product.color,flexShrink:0 }}>{n}</span>
-                <span style={{ fontSize:13,color:'rgba(255,255,255,.6)',lineHeight:1.5,paddingTop:2 }}>{t}</span>
+          {uuid && (
+            <div style={{ background:'rgba(255,255,255,.04)',border:'1px solid rgba(255,255,255,.07)',borderRadius:14,padding:'14px 18px',marginBottom:12 }}>
+              {[['1','Scan QR or tap "Open in Xaman"'],['2',`Review the pre-filled ${quoted ? quoted.amount : (currency==='XRP' ? (xrpNow!=null ? '≈'+fmtXrp(xrpNow) : '—') : price)} ${currency} payment`],['3','Confirm — we verify it on-chain']].map(([n,t]) => (
+                <div key={n} style={{ display:'flex',alignItems:'flex-start',gap:12,marginBottom:n==='3'?0:10 }}>
+                  <span style={{ width:22,height:22,borderRadius:'50%',background:`${product.color}20`,border:`1px solid ${product.color}40`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:800,color:product.color,flexShrink:0 }}>{n}</span>
+                  <span style={{ fontSize:13,color:'rgba(255,255,255,.6)',lineHeight:1.5,paddingTop:2 }}>{t}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* ---- manual fallback: works with NO Xaman and NO injected wallet — the only hard requirement
+               is the exact amount, and (for delivery) telling us which transaction was yours. ---- */}
+          <details open={!uuid} style={{ marginBottom:12, borderTop: uuid ? '1px solid rgba(255,255,255,.08)' : 'none', paddingTop: uuid ? 12 : 0 }}>
+            {uuid && <summary style={{ cursor:'pointer', color:'rgba(255,255,255,.5)', fontSize:13, fontWeight:600 }}>Pay manually instead (exchange withdrawal / other wallet)</summary>}
+            <div style={{ marginTop: uuid ? 12 : 0 }}>
+              <div style={{ marginBottom:12 }}>
+                <label style={LBL}>Send to</label>
+                <button type="button" onClick={()=>navigator.clipboard?.writeText(TREASURY).catch(()=>{})} style={{ ...INP, textAlign:'left', fontFamily:"ui-monospace,monospace", fontSize:13, cursor:'pointer', wordBreak:'break-all' }} title="Tap to copy">{TREASURY}</button>
               </div>
-            ))}
-          </div>
+              <div style={{ marginBottom:12 }}>
+                <label style={LBL}>Amount (exact)</label>
+                <div style={{ ...INP, fontWeight:700 }}>{quoted ? quoted.amount : price} {quoted ? quoted.currency : currency}</div>
+              </div>
+              <p style={{ fontSize:11, color:'rgba(255,255,255,.35)', lineHeight:1.6, marginBottom:14 }}>No destination tag or memo is required — this product is tied to your payment by its transaction hash, which you provide below once it confirms.</p>
+              <label style={LBL}>Already sent it? Paste the transaction hash</label>
+              <div style={{ display:'flex', gap:8 }}>
+                <input value={manualHashInput} onChange={e=>{ setManualHashInput(e.target.value); setManualHashErr(''); }} placeholder="64-character transaction hash" disabled={!!payHash} style={{ ...INP, flex:1, fontFamily:"ui-monospace,monospace", fontSize:12 }} />
+                <button type="button" onClick={submitManualHash} disabled={!!payHash || !manualHashInput.trim()} style={{ ...Btn('color', product.color, { padding:'0 16px', opacity: (!!payHash || !manualHashInput.trim()) ? .5 : 1 }) }}>{payHash ? 'Checking…' : 'Check'}</button>
+              </div>
+              {manualHashErr && <p style={{ color:'#fca5a5', fontSize:12, marginTop:8 }}>{manualHashErr}</p>}
+              {payHash && <p style={{ fontSize:12, color:'rgba(255,255,255,.45)', marginTop:8 }}>Watching the ledger for this transaction — this updates itself.</p>}
+            </div>
+          </details>
+
           <p style={{ textAlign:'center',fontSize:11,color:'rgba(255,255,255,.28)',marginBottom:10 }}>We confirm your transaction on XRPL mainnet before activating — nothing unlocks without a real payment.</p>
-          <button onClick={()=>{ cancelRef.current=true; if(pollRef.current) clearTimeout(pollRef.current); setPayStatus('idle'); setPayError(''); }} style={{ ...Btn('ghost',undefined,{width:'100%',fontSize:13}) }}>← Cancel</button>
+          <button onClick={()=>{ cancelRef.current=true; if(pollRef.current) clearTimeout(pollRef.current); setPayStatus('idle'); setPayError(''); setPayHash(''); setManualHashInput(''); setManualHashErr(''); }} style={{ ...Btn('ghost',undefined,{width:'100%',fontSize:13}) }}>← Cancel</button>
         </>
       )}
 

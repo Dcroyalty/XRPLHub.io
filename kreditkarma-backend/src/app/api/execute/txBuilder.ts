@@ -171,6 +171,11 @@ const builders: Record<string, Builder> = {
     return SAFE({ TransactionType: 'TicketCreate', Account: account, TicketCount: count }, 'Create Tickets');
   },
 
+  // ── ADMIN-ONLY (see servicePrices.ts's ADMIN_ONLY_SERVICE_IDS; never on the storefront) ──
+  // Deliberately the cheapest, most reversible-in-effect op available: one spare ticket, no
+  // account-config change, nothing to undo.
+  adminhealthcheck: (account) => SAFE({ TransactionType: 'TicketCreate', Account: account, TicketCount: 1 }, 'Admin health-check (TicketCreate x1)'),
+
   // ── NFT ───────────────────────────────────────────────────────────
   nftmint: (account, p) => {
     const uri = str(p.uri);

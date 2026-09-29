@@ -372,8 +372,19 @@ export async function serveX402Paid(opts: ServeX402Opts): Promise<NextResponse> 
   const verified = await verifyPayment(payload, requirements, resource);
   if (!looksSuccessful(verified)) {
     reportFacilitatorFault("verify", verified, { resource, invoiceId });
+    // status 0 / 5xx = the t54 facilitator itself is down, not a rejected payment -- say so, and point at
+    // the other rail. A resource routed through dualX402() also accepts USDC on Base (X-PAYMENT header);
+    // this message doesn't know for certain the caller has that option, so it's worded as a maybe.
+    const infraDown = verified.status === 0 || verified.status >= 500;
     return finish(
-      { error: "payment_verification_failed", message: X402_ERROR_CODES.payment_verification_failed, facilitator: verified.body ?? verified.error ?? null, facilitatorStatus: verified.status, settled: false },
+      {
+        error: "payment_verification_failed",
+        message: X402_ERROR_CODES.payment_verification_failed,
+        facilitator: verified.body ?? verified.error ?? null,
+        facilitatorStatus: verified.status,
+        settled: false,
+        ...(infraDown ? { note: "The XRPL/t54 facilitator appears to be down (not a rejected payment). If this resource also accepts USDC on Base, retry with an X-PAYMENT header instead." } : {}),
+      },
       402, false, null
     );
   }

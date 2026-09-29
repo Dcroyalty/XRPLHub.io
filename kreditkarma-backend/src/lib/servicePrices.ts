@@ -43,3 +43,23 @@ export const SERVICE_PRICE_USD: Readonly<Record<string, number>> = Object.freeze
   // Not a builder service: the paid XRPLScore credential (/api/credential).
   credential: 1,
 });
+
+/**
+ * Admin-only products: never on the storefront, never in the public catalog (serviceCatalog.ts),
+ * never counted in SERVICE_COUNT/BUILDABLE_SERVICE_IDS, never in create-payment's NAMES map.
+ * check-service-parity.mjs asserts these ids are ABSENT from every customer-facing surface and
+ * PRESENT with a real builder — so this can't silently become a 35th product, and can't silently
+ * stop working either. Gated separately in /api/execute via isAdmin() (adminAuth.ts).
+ *
+ * Currently just `adminhealthcheck`: proves the real paid path (payment verification against this
+ * price, single-use claim, build delivery) with a genuine on-chain payment, without touching any
+ * real customer's price or count. See docs/AUTONOMY.md.
+ */
+export const ADMIN_ONLY_SERVICE_IDS: ReadonlySet<string> = new Set(["adminhealthcheck"]);
+
+/** Kept OUT of SERVICE_PRICE_USD on purpose (see ADMIN_ONLY_SERVICE_IDS); priceUsd() below reads both. */
+export const ADMIN_ONLY_PRICE_USD: Readonly<Record<string, number>> = Object.freeze({
+  // ~$0.50 so a 1 XRP payment comfortably clears it at any realistic XRP/USD rate -- exercises the
+  // SAME live-rate/tolerance logic (pricing.ts) real customers hit, not a shortcut around it.
+  adminhealthcheck: 0.5,
+});
