@@ -25,6 +25,7 @@ import { maybeAnchorUnderwriteReceipts } from "@/lib/underwriteAnchor";
 import { runLendingSweep } from "@/lib/lendingSweep";
 import { forceFlushXrplCounters } from "@/lib/xrplCounters";
 import { runScreeningBackup } from "@/lib/screenBackup";
+import { sweepPurchaseIntents } from "@/lib/purchaseIntent";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -107,6 +108,14 @@ export async function GET(req: Request) {
           })
         : { attempted: false, submitted: false, reason: "skipped: cron time budget", leafCount: 0 };
 
+    // Storefront auto-detection: catches a manually-sent payment even if the customer closed the tab and
+    // never came back. Client-side polling (the primary, fast path) already covers a returning tab; this
+    // is the guarantee for the case where nothing ever comes back to ask.
+    const purchaseIntents = await sweepPurchaseIntents(prisma, { deadlineMs: t0 + 50_000 }).catch((e) => {
+      void notifyError("cron/index-credentials purchase-intents", e);
+      return { checked: 0, matched: 0 };
+    });
+
     forceFlushXrplCounters(prisma); // catch-all for any counters this pass accrued
 
     // Dead-man's switch pair: this cron records a heartbeat and checks the OTHER cron's; the external
@@ -117,7 +126,7 @@ export async function GET(req: Request) {
       return null;
     });
     await pingHealthcheck();
-    return NextResponse.json({ ...progress, sdn, monitor, lendingSweep, screeningAnchor, lendingAnchor, underwriteAnchor, screeningBackup, monitorAnchor, watchdog: watchdog ? { alerted: watchdog.alerted, recovered: watchdog.recovered, open: watchdog.findings.filter((f) => f.level !== "ok").map((f) => ({ key: f.key, level: f.level, message: f.message })) } : null });
+    return NextResponse.json({ ...progress, sdn, monitor, lendingSweep, screeningAnchor, lendingAnchor, underwriteAnchor, screeningBackup, purchaseIntents, monitorAnchor, watchdog: watchdog ? { alerted: watchdog.alerted, recovered: watchdog.recovered, open: watchdog.findings.filter((f) => f.level !== "ok").map((f) => ({ key: f.key, level: f.level, message: f.message })) } : null });
   } catch (err) {
     await notifyError("cron/index-credentials", err);
     console.error("[cron/index-credentials]", err);

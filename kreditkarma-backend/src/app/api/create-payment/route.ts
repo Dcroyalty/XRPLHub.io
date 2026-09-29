@@ -12,6 +12,8 @@ import { rateLimit, rateLimited } from '@/lib/rateLimit'
 import {
   OPEN_AMOUNT_PRODUCTS, PricingError, RLUSD_HEX, RLUSD_ISSUER, TREASURY, quote, type PayCurrency,
 } from '@/lib/pricing'
+import { prisma } from '@/lib/xrplscore-db'
+import { allocateDestinationTag } from '@/lib/purchaseIntent'
 
 const NAMES: Record<string, string> = {
   multisig:'Multi-Sig Fortress', regkey:'Regular Key Rotator', depositauth:'Deposit Auth Guard',
@@ -69,11 +71,26 @@ export async function POST(req: NextRequest) {
       xrpUsdRate = q.xrpUsd
     }
 
+    // A destination tag lets a manual payment (exchange withdrawal, any wallet, no Xaman, no injected
+    // wallet, no hash ever pasted anywhere) still be found: /api/check-payment can poll by intentId and
+    // a bounded ledger walk (src/lib/purchaseIntent.ts) discovers the tx, then hands it to the SAME
+    // verifyPayment/registerPayment the paste-a-hash path already uses -- nothing about the gate itself
+    // changes. Allocated even for Xaman/injected payers too so every path is consistent.
+    // BEST-EFFORT: never let this block a real payment from being created. If it fails for any reason
+    // (including the PurchaseIntent table not existing yet on a given deploy), the flow degrades to
+    // exactly today's behavior -- Xaman/injected/paste-a-hash still work, only the extra auto-detection
+    // is missing for that one request.
+    const intent = await allocateDestinationTag(prisma, product).catch((e) => {
+      console.error('[create-payment] destination-tag allocation failed (non-fatal):', e);
+      return null;
+    })
+
     // Canonical fee Payment to the treasury. Same object for Xaman and for an injected
     // wallet that submits it itself. The memo records which product it is for (audit trail).
     const txjson: Record<string, unknown> = {
       TransactionType: 'Payment',
       Destination: TREASURY,
+      ...(intent ? { DestinationTag: intent.destinationTag } : {}),
       Amount: payCurrency === 'XRP'
         ? String(Math.round(Number(payAmount) * 1_000_000))
         : { currency: RLUSD_HEX, issuer: RLUSD_ISSUER, value: payAmount },
@@ -111,6 +128,10 @@ export async function POST(req: NextRequest) {
       txjson,
       treasury:   TREASURY,
       productLabel: NAMES[product] || product,
+      // Auto-detection: poll GET /api/check-payment?intentId=... to find a manually-sent payment
+      // without ever having a hash pasted in. Safe to ignore for the Xaman/injected paths.
+      intentId:      intent?.id ?? null,
+      destinationTag: intent?.destinationTag ?? null,
       // What the SERVER will accept — clients must charge exactly this:
       amount:     payAmount,
       currency:   payCurrency,

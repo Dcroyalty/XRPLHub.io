@@ -684,6 +684,8 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
   const xrpUnavailable = currency==='XRP' && xrpNow == null;
   // what the server actually asked for (it adds a small buffer for rate drift) — shown once we have it
   const [quoted, setQuoted] = useState<{ amount:string; currency:string }|null>(null);
+  const [intentId, setIntentId] = useState('');          // auto-detection: search-by-tag, no hash needed
+  const [destTag, setDestTag] = useState<number|null>(null);
   const price = TEST_MODE ? (currency==='RLUSD' ? TEST_PRICE_RLUSD : TEST_PRICE_XRP) : displayPrice;
 
   // Payment polling — verified only when on-chain TX confirms
@@ -765,6 +767,28 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
     return () => { stop = true; };
   }, [payStatus, payHash]); // eslint-disable-line
 
+  // auto-detection: poll by destination tag, no hash needed at all -- catches a manual payment (exchange
+  // withdrawal, any wallet) even if the customer never pastes anything. Runs alongside the uuid/hash
+  // polls above; whichever finds it first wins. A slower interval (7s) since this is a heavier ledger
+  // walk server-side, not a cheap lookup.
+  useEffect(() => {
+    if (payStatus !== 'waiting' || !intentId) return;
+    let stop = false;
+    const poll = async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/check-payment?intentId=${encodeURIComponent(intentId)}&email=${encodeURIComponent(email)}`);
+        const data = await res.json();
+        if (stop) return;
+        if (data.status === 'verified') { setVerifiedTx(data.txHash || ''); setPayStatus('done'); setStep('success'); }
+        else if (data.status === 'rejected') { setPayStatus('idle'); setPayError(data.reason || 'A payment was found but did not match — ' + (data.reason || 'contact support@xrplhub.io with your transaction hash.')); }
+        else if (data.status === 'expired') { /* let the countdown's own expiry handle the UI -- this just stops polling */ }
+        else { setTimeout(poll, 7000); }
+      } catch { if (!stop) setTimeout(poll, 9000); }
+    };
+    poll();
+    return () => { stop = true; };
+  }, [payStatus, intentId]); // eslint-disable-line
+
   // injected service-execution: poll execute/verify?hash=
   useEffect(() => {
     if (exStatus !== 'signing' || !exHash || !product) return;
@@ -835,7 +859,7 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
       // A missing uuid is NOT fatal: it just means the Xaman QR/deeplink can't show, so the manual-payment
       // panel below (address + amount + paste-your-hash) is the only path — and it must still work.
       if (!res.ok || !data.treasury) throw new Error(data.error || 'Failed to create payment');
-      setUuid(data.uuid || ''); setQrUrl(data.qr_png); setDeepLnk(data.deep_link); setCountdown(data.expires_in || 900); if (data.amount) setQuoted({ amount:String(data.amount), currency:String(data.currency||currency) }); setPayStatus('waiting');
+      setUuid(data.uuid || ''); setQrUrl(data.qr_png); setDeepLnk(data.deep_link); setCountdown(data.expires_in || 900); if (data.amount) setQuoted({ amount:String(data.amount), currency:String(data.currency||currency) }); setIntentId(data.intentId || ''); setDestTag(typeof data.destinationTag==='number' ? data.destinationTag : null); setPayStatus('waiting');
     } catch (e: unknown) { setPayError(e instanceof Error ? e.message : 'Payment failed'); setPayStatus('idle'); }
   };
 
@@ -1149,7 +1173,13 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
                 <label style={LBL}>Amount (exact)</label>
                 <div style={{ ...INP, fontWeight:700 }}>{quoted ? quoted.amount : price} {quoted ? quoted.currency : currency}</div>
               </div>
-              <p style={{ fontSize:11, color:'rgba(255,255,255,.35)', lineHeight:1.6, marginBottom:14 }}>No destination tag or memo is required — this product is tied to your payment by its transaction hash, which you provide below once it confirms.</p>
+              {destTag != null && (
+                <div style={{ marginBottom:12 }}>
+                  <label style={LBL}>Destination tag (include if your wallet asks for one)</label>
+                  <button type="button" onClick={()=>navigator.clipboard?.writeText(String(destTag)).catch(()=>{})} style={{ ...INP, textAlign:'left', fontFamily:"ui-monospace,monospace", fontSize:13, cursor:'pointer', fontWeight:700 }} title="Tap to copy">{destTag}</button>
+                </div>
+              )}
+              <p style={{ fontSize:11, color:'rgba(255,255,255,.35)', lineHeight:1.6, marginBottom:14 }}>A destination tag isn&rsquo;t required — we&rsquo;re already watching for this payment automatically and will detect it on our own, even if you close this page and never come back. Adding it if your wallet supports one just helps us find it faster. Pasting the hash below is the fastest of all, but entirely optional.</p>
               <label style={LBL}>Already sent it? Paste the transaction hash</label>
               <div style={{ display:'flex', gap:8 }}>
                 <input value={manualHashInput} onChange={e=>{ setManualHashInput(e.target.value); setManualHashErr(''); }} placeholder="64-character transaction hash" disabled={!!payHash} style={{ ...INP, flex:1, fontFamily:"ui-monospace,monospace", fontSize:12 }} />

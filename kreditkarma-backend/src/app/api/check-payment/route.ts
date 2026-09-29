@@ -14,6 +14,8 @@ import { verifyPayment, registerPayment } from '@/lib/paymentGate'
 import { prismaPurchaseStore } from '@/lib/paymentStore'
 import { db } from '@/lib/db'
 import { rateLimit, rateLimited } from '@/lib/rateLimit'
+import { prisma } from '@/lib/xrplscore-db'
+import { checkPurchaseIntent } from '@/lib/purchaseIntent'
 
 /** create-payment stamps every Xaman payload with identifier xrplhub_<productId>_<timestamp>. */
 const PRODUCT_FROM_IDENTIFIER = /^xrplhub_([a-z0-9]+)_\d+$/
@@ -26,8 +28,21 @@ export async function GET(req: NextRequest) {
     const p          = req.nextUrl.searchParams
     const uuid       = p.get('uuid')
     const hashParam  = p.get('hash')            // injected-wallet path: client submitted the tx itself
+    const intentId   = p.get('intentId')        // auto-detection: no hash pasted anywhere, search by destination tag
     let productId    = (p.get('productId') || '').trim()
     const email      = p.get('email') || ''
+
+    // ---- auto-detection: search by destination tag, never a hash the client has to know ----
+    if (intentId) {
+      const r = await checkPurchaseIntent(prisma, intentId)
+      if (r.status === 'verified') {
+        if (email && r.txHash) await db.purchase.updateMany({ where: { txHash: r.txHash, email: null }, data: { email } }).catch(() => {})
+        return NextResponse.json({ status: 'verified', txHash: r.txHash, sender: r.payer, currency: r.currency, amount: r.amount, message: `${r.amount} ${r.currency} confirmed on XRPL mainnet` })
+      }
+      if (r.status === 'rejected') return NextResponse.json({ status: 'rejected', reason: r.reason })
+      if (r.status === 'expired') return NextResponse.json({ status: 'expired' })
+      return NextResponse.json({ status: 'pending' })
+    }
 
     if (!uuid && !hashParam)
       return NextResponse.json({ status: 'error', reason: 'Missing payment ID' }, { status: 400 })

@@ -148,6 +148,25 @@ model Purchase {
   @@index([wallet])
 }
 
+// Storefront auto-detection (additive; paymentGate.ts and Purchase's own semantics are untouched --
+// this only exists to DISCOVER a txHash for a manual payment that never got pasted anywhere, then hands
+// it to the SAME verifyPayment/registerPayment path the paste-a-hash flow already uses). One row per
+// checkout attempt; a DestinationTag on the payment is what a bounded ledger walk searches for (see
+// src/lib/purchaseIntent.ts). Never itself a record of a verified payment -- Purchase is.
+model PurchaseIntent {
+  id             String    @id @default(cuid())
+  productId      String
+  destinationTag Int       @unique
+  createdAt      DateTime  @default(now())
+  expiresAt      DateTime
+  matchedTxHash  String?
+  matchedAt      DateTime?
+  note           String? // set when a discovered tx didn't pass verifyPayment (wrong amount, etc.)
+
+  @@index([destinationTag])
+  @@index([matchedAt])
+}
+
 model Donation {
   id          String   @id @default(cuid())
   fromAddress String
