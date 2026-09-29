@@ -267,3 +267,37 @@ to `>=4.0.0 <5.0.0`. The `Batch` transaction type needs `xrpl.js` `5.1.0+`. Pick
 other without forking a dependency. Neither is in this codebase yet (checked — no `Batch` transaction-type
 code anywhere). Decide which one XRPLHub wants first; don't start building against either assuming the
 other stays available.
+
+## 12. Admin-only paid-path health check (2026-09-29)
+
+`adminhealthcheck` (`servicePrices.ts`'s `ADMIN_ONLY_SERVICE_IDS`) is a permanent, real, on-chain proof
+that the paid path works end to end — payment verification, single-use claim, delivery — using the
+credential issuer's own spendable XRP. It is genuinely gated (`isAdmin()`, not just unlisted) and
+`check-service-parity.mjs` asserts it never appears on the homepage or in the public catalog, so it can
+never silently become a 35th service. Run it any time: `node scripts/test-paid-path.mjs` (local only —
+reads `CREDENTIAL_ISSUER_SEED` and `ADMIN_API_TOKEN` from your local `.env`, neither ever leaves this
+machine except the admin token, which goes to xrplhub.io as designed). Costs the issuer ~1 XRP + fees
+per run; keep it above the 2 XRP floor the same way §4's reserve check already watches.
+
+## 13. Neon connection pooling — not yet set up, the likely first thing to break under real traffic
+
+Checked 2026-09-29 (pre-launch, ahead of the owner's first YouTube tutorials). `DATABASE_URL` connects
+**directly** to Neon Postgres — no `-pooler` endpoint, no `pgbouncer=true`, no explicit
+`connection_limit`. Neon's project is on `free_v3`, autoscaling 0.25–2 CU, and **`suspend_timeout_seconds:
+0`** — the compute suspends the instant it goes idle, so a request after any quiet period pays a cold
+database wake-up on top of Vercel's own lambda cold start (observed live: 9s on a cold hit, 0.4s warm).
+
+Every Vercel serverless invocation that goes cold creates its own `PrismaClient`, and each one opens its
+own direct Postgres connection(s) — `xrplscore-db.ts`'s `globalThis` caching only reuses a client *within*
+one warm instance, not across the many instances a real traffic spike spins up concurrently. This is the
+textbook serverless-Postgres failure mode: a bursty spike (not sustained volume — a video linking here is
+exactly this shape) can multiply concurrent connections faster than a request rate limit would suggest,
+and Neon's free tier has a real connection ceiling. Hitting it doesn't degrade gracefully — it produces
+outright database errors across every route that touches Postgres, which is effectively everything.
+
+**Not fixed yet, needs a deliberate deploy (not done same-night as this note):** switch `DATABASE_URL` to
+Neon's pooled connection string (`-pooler` host, or `pgbouncer=true`) — get it from the Neon console
+(console.neon.tech → this project → Connection Details → toggle "Pooled connection"), set it in Vercel
+production, redeploy. This is the standard fix for exactly this architecture and should be low-risk, but
+changing the primary database connection string is not something to do unverified right before a traffic
+spike is expected — schedule it with a quiet window to confirm nothing broke.

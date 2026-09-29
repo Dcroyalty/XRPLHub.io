@@ -1023,6 +1023,7 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
                 </div>
                 {manualExHashErr && <p style={{ color:'#fca5a5', fontSize:12, marginTop:8 }}>{manualExHashErr}</p>}
                 {exHash && <p style={{ fontSize:12, color:'rgba(255,255,255,.45)', marginTop:8 }}>Watching the ledger for this transaction — this updates itself.</p>}
+                <p style={{ fontSize:11, color:'rgba(255,255,255,.28)', marginTop:10 }}>Already signed and closed this page? Email <a href="mailto:support@xrplhub.io" style={{ color:'rgba(255,255,255,.4)' }}>support@xrplhub.io</a> with your transaction hash.</p>
               </>
             )}
             <p style={{ textAlign:'center',fontSize:11,color:'rgba(255,255,255,.28)',marginTop:12 }}>We confirm your service transaction on XRPL mainnet before marking it delivered.</p>
@@ -1156,6 +1157,7 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
               </div>
               {manualHashErr && <p style={{ color:'#fca5a5', fontSize:12, marginTop:8 }}>{manualHashErr}</p>}
               {payHash && <p style={{ fontSize:12, color:'rgba(255,255,255,.45)', marginTop:8 }}>Watching the ledger for this transaction — this updates itself.</p>}
+              <p style={{ fontSize:11, color:'rgba(255,255,255,.28)', marginTop:10 }}>Already paid and closed this page? Email <a href="mailto:support@xrplhub.io" style={{ color:'rgba(255,255,255,.4)' }}>support@xrplhub.io</a> with your transaction hash.</p>
             </div>
           </details>
 

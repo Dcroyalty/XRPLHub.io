@@ -1,6 +1,10 @@
 import type { Metadata } from 'next';
 import './globals.css';
 import { SERVICE_COUNT } from '@/app/api/execute/serviceCatalog';
+// Vercel Web Analytics: page views + referrers (e.g. youtube.com), no cookies, no personal data,
+// no consent banner needed -- it's aggregate/anonymous by design. View it at vercel.com -> the
+// kreditkarma-obi2 project -> Analytics tab. Already an installed dependency; just never mounted.
+import { Analytics } from '@vercel/analytics/next';
 
 export const metadata: Metadata = {
   // www.xrplhub.io is the one canonical host (xrp-ledger.toml + the treasury Domain point at it);
@@ -17,6 +21,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en">
       <body>
         {children}
+        <Analytics />
       </body>
     </html>
   );
