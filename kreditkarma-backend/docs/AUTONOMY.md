@@ -12,11 +12,11 @@ section linked. Sorted soonest first.
 |---|---|---|---|
 | 2026-10-22 | TLS certs renew | — | None — automatic. |
 | 2026-12-03 | XRPLHub's own mainnet credential expires (§7#2) — **not a Bitstamp credential; there is no Bitstamp integration in this codebase**, this is the one on-ledger credential XRPLHub itself issued on mainnet | `/verify` shows "expired" for it — cosmetic only | None required; re-issue is manual and optional. |
-| **unset — fill in** | The fine-grained `GITHUB_TOKEN` (screening-backup repo PAT, §6) expires whenever you set it to expire when you created it today (2026-09-28) | Off-Neon screening-receipt backup stops (loudly — watchdog `screening-backup` goes warn→red, never silent) | **Put the real expiry date here once you know it** — I did not create this token and can't read its expiry from the outside. |
 | 2027-05-04 | kreditkarma.us redirect-only domain renews (§7#4) | Old-brand links stop redirecting | None — auto-renew, unless the card on file has lapsed. |
 | 2027-05-11 / 05-21 / 05-25 | The three XRPNS names expire (§7#5) — **do NOT auto-renew** | `xrplhub.xrp` (the pay-to name shown on the homepage) stops resolving. Funds and the treasury address are unaffected — this is cosmetic/discovery only, not a funds risk | **Extend now** at app.xrpns.com/renewal — this is the first thing on this whole list that actually needs a human before it happens on its own. |
 | 2027-05-23 | xrplhub.io renews (§7#6) | Domain lapses | None if the card on file is valid — watchdog turns red 14 days before if it's expired. |
 | 2027-08-26 | xrplhub.com renews (§7#6) | Same as above | Same as above. |
+| 2027-09-28 | The fine-grained `GITHUB_TOKEN` (screening-backup repo PAT, §6), scoped to `Dcroyalty/xrplhub-screening-backups`, created 2026-09-28 | Off-Neon screening-receipt backup stops (loudly — watchdog `screening-backup` goes warn→red, never silent) | Rotate it before this date: create a new fine-grained PAT (same scope, see §6/§9 steps), set it as `GITHUB_TOKEN` in Vercel, redeploy. |
 | ~Sep 2027 | Any registration not otherwise extended repeats annually (§7#7) | — | Check Neon/Vercel free-tier terms haven't changed. |
 | 2028-04-30 | Node 24 reaches end-of-life (§7#8) | Vercel eventually retires the runtime; security advisories in `next`/`prisma` stop being safe to ignore | Plan a Node upgrade before Vercel forces one. |
 | May–Aug 2028 | Domains / any 1-year XNS renewals come due again (§7#8) | Same as their 2027 entries | Same as their 2027 entries. |
@@ -163,11 +163,12 @@ receipt and at `/legal/screening#retention`) commits to, concretely:
   is real even though nothing exposed was a live customer's.
 - **This requires `GITHUB_TOKEN`** — a **fine-grained** PAT scoped ONLY to `Dcroyalty/xrplhub-screening-backups`,
   Contents: Read and write, and nothing else. Never a classic repo-scope PAT (those reach every repo the account
-  owns, including the public one — how the incident above happened). **Set in Vercel production.** It is
-  **not set as of 2026-09-28** — until it is, the daily backup step runs, finds no token, and skips (loudly: watchdog
-  `screening-backup` goes to `warn`/`red`, never silent). `node scripts/backup-screening-receipts.mjs --all` runs the
-  same logic by hand once that token is set locally. It is deliberately a DIFFERENT token from whatever pushes to the
-  public app repo — they must never be the same credential again.
+  owns, including the public one — how the incident above happened). **Set in Vercel production as of 2026-09-28,
+  expires 2027-09-28** (see §0's dates table — rotate it before then, or the backup silently stops until replaced,
+  loudly flagged by watchdog `screening-backup` going `warn`/`red`, never silent). `node
+  scripts/backup-screening-receipts.mjs --all` runs the same logic by hand from a machine that has that token set
+  locally. It is deliberately a DIFFERENT token from whatever pushes to the public app repo — they must never be the
+  same credential again.
 
 **What is NOT yet true, and is the owner's decision:**
 - A GitHub repo is a real second copy, but it is still one provider. A third, geographically/organizationally
@@ -212,19 +213,19 @@ Every job in a run is wrapped so one failure cannot stop the rest (`.catch → n
 
 Once, before leaving:
 1. `POST /api/health` (admin token) — confirm a test alert really lands in the channel.
-2. Set `HEALTHCHECK_PING_URL` (above).
+2. ~~Set `HEALTHCHECK_PING_URL`~~ **Done 2026-09-29** — set in Vercel production, confirmed firing on every cron completion.
 3. **Extend the three XRPNS names** for several years.
 4. Confirm the Porkbun card expiry is after the last domain renewal you care about.
-5. Delete unused secrets from Vercel production: `ANTHROPIC_API_KEY`, `XAI_API_KEY` (no code path uses an LLM), `ADMIN_PASSWORD`, `ADMIN_SECRET`, `TREASURY_WALLET`, and the three `TREASURY_SIGNER_*_SEED` + `TREASURY_QUORUM` — the only code that reads the signer seeds is `scripts/` and the unused signing functions in `src/lib/treasury.ts`, and the on-ledger treasury has no signer list; a Vercel compromise would expose them.
+5. ~~Delete unused secrets from Vercel production~~ **Done 2026-09-29** — `ANTHROPIC_API_KEY`, `XAI_API_KEY`, `ADMIN_PASSWORD`, `ADMIN_SECRET`, `TREASURY_WALLET`, the three `TREASURY_SIGNER_*_SEED`, and `TREASURY_QUORUM` removed from Vercel production; confirmed absent from the env list and confirmed nothing broke (`/api/health?deep=1` clean, admin auth — which runs on the separate `ADMIN_API_TOKEN` — still works).
 6. Decide on email: `RESEND_API_KEY` is **not set**, so `/api/send-email` silently skips purchase/grant confirmations. Note the route is unauthenticated — if you ever set the key it becomes an open mail relay from `noreply@xrplhub.io`; add auth before enabling it.
 7. Consider the Vercel plan: Hobby's terms are for non-commercial use and the site takes payments **(inferred plan)**; nothing inside can detect a suspension.
 8. Consider a longer Neon history/backups: the free tier keeps only 6 hours.
-9. **Create a fine-grained GitHub PAT scoped ONLY to `Dcroyalty/xrplhub-screening-backups`** (Contents: Read and
-   write; no other repo, no other permission) and set it as `GITHUB_TOKEN` in Vercel production — the 10-year
-   screening-receipt retention promise's off-Neon backup (§6) does not run without it. Not set as of 2026-09-28.
-   Steps: github.com/settings/personal-access-tokens/new → Resource owner: Dcroyalty → Repository access: Only
-   select repositories → `xrplhub-screening-backups` → Permissions → Repository → Contents: Read and write → leave
-   every other permission at No access → Generate. Do NOT use a classic PAT here (§6 explains why).
+9. ~~Create a fine-grained GitHub PAT scoped ONLY to `Dcroyalty/xrplhub-screening-backups`~~ **Done 2026-09-28** —
+   set as `GITHUB_TOKEN` in Vercel production, expires 2027-09-28 (§0). Confirmed running: the daily backup step
+   now reports `ran: true` instead of skipping. Steps below kept for the 2027-09-28 rotation: github.com/settings/
+   personal-access-tokens/new → Resource owner: Dcroyalty → Repository access: Only select repositories →
+   `xrplhub-screening-backups` → Permissions → Repository → Contents: Read and write → leave every other permission
+   at No access → Generate. Do NOT use a classic PAT here (§6 explains why).
 
 Known silent-by-design: last-used timestamps, the score-cache upsert and counter flushes swallow errors (harmless). Grants are paused (`GRANT_APPLICATIONS_OPEN=false`), so the two approved-but-unpaid grants wait for a human.
 
