@@ -3,6 +3,24 @@
 Written 2026-09-20 (audit of commit `a10d4ba` plus the monitoring/watchdog work). Facts below were read from the
 live ledger, the registries, Vercel, Neon and the code on that date; anything inferred is marked **(inferred)**.
 
+## 0. Every date a human must act on — quick reference
+
+One table, everything with a real date anywhere in this file. Full context for each row is in the numbered
+section linked. Sorted soonest first.
+
+| Date | Item | If missed | Action needed |
+|---|---|---|---|
+| 2026-10-22 | TLS certs renew | — | None — automatic. |
+| 2026-12-03 | XRPLHub's own mainnet credential expires (§7#2) — **not a Bitstamp credential; there is no Bitstamp integration in this codebase**, this is the one on-ledger credential XRPLHub itself issued on mainnet | `/verify` shows "expired" for it — cosmetic only | None required; re-issue is manual and optional. |
+| **unset — fill in** | The fine-grained `GITHUB_TOKEN` (screening-backup repo PAT, §6) expires whenever you set it to expire when you created it today (2026-09-28) | Off-Neon screening-receipt backup stops (loudly — watchdog `screening-backup` goes warn→red, never silent) | **Put the real expiry date here once you know it** — I did not create this token and can't read its expiry from the outside. |
+| 2027-05-04 | kreditkarma.us redirect-only domain renews (§7#4) | Old-brand links stop redirecting | None — auto-renew, unless the card on file has lapsed. |
+| 2027-05-11 / 05-21 / 05-25 | The three XRPNS names expire (§7#5) — **do NOT auto-renew** | `xrplhub.xrp` (the pay-to name shown on the homepage) stops resolving. Funds and the treasury address are unaffected — this is cosmetic/discovery only, not a funds risk | **Extend now** at app.xrpns.com/renewal — this is the first thing on this whole list that actually needs a human before it happens on its own. |
+| 2027-05-23 | xrplhub.io renews (§7#6) | Domain lapses | None if the card on file is valid — watchdog turns red 14 days before if it's expired. |
+| 2027-08-26 | xrplhub.com renews (§7#6) | Same as above | Same as above. |
+| ~Sep 2027 | Any registration not otherwise extended repeats annually (§7#7) | — | Check Neon/Vercel free-tier terms haven't changed. |
+| 2028-04-30 | Node 24 reaches end-of-life (§7#8) | Vercel eventually retires the runtime; security advisories in `next`/`prisma` stop being safe to ignore | Plan a Node upgrade before Vercel forces one. |
+| May–Aug 2028 | Domains / any 1-year XNS renewals come due again (§7#8) | Same as their 2027 entries | Same as their 2027 entries. |
+
 ## 1. Posture
 
 The site is a Next.js app on Vercel (Node 24.x) with a Neon Postgres database. Everything customer-facing is

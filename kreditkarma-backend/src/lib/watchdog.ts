@@ -296,7 +296,10 @@ async function checkBithomp(): Promise<Finding> {
   if (!key) return { key: "bithomp-key", level: "ok", message: "BITHOMP_API_KEY not set (optional)" };
   try {
     const r = await fetch("https://bithomp.com/api/v2/mptokens?limit=1", { headers: { "x-bithomp-token": key }, signal: AbortSignal.timeout(6000) });
-    if (r.status === 401 || r.status === 403) return { key: "bithomp-key", level: "red", message: `Bithomp rejected the API key (HTTP ${r.status}) — the MPT registry silently stops refreshing holder counts until it is replaced` };
+    if (r.status === 401 || r.status === 403) {
+      const body = await r.text().catch(() => "");
+      return { key: "bithomp-key", level: "red", message: `Bithomp rejected the API key (HTTP ${r.status}: ${body.slice(0, 200)}) — the MPT registry silently stops refreshing holder counts until it is replaced` };
+    }
     return { key: "bithomp-key", level: "ok", message: `Bithomp key accepted (HTTP ${r.status})` };
   } catch {
     return { key: "bithomp-key", level: "ok", message: "Bithomp unreachable — skipped" };
