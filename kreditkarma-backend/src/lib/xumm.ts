@@ -18,6 +18,23 @@ export function xummConfigured(): boolean {
   return Boolean(process.env.XUMM_API_KEY && process.env.XUMM_API_SECRET);
 }
 
+/** Xaman's documented custom_meta.identifier max (docs.xaman.dev's post-payload reference). Exceeding
+ *  it doesn't get truncated or warned by their API -- it's an outright HTTP 413, no payload created at
+ *  all. Found live 2026-09-29: `xrplhub_exec_${productId}_${Date.now()}` silently overflowed this for
+ *  any productId longer than 13 chars (depositpreauth, credentialissue -- real, paid services). */
+const IDENTIFIER_MAX = 40;
+
+/**
+ * A custom_meta.identifier that is NEVER allowed to exceed IDENTIFIER_MAX, however long a future
+ * productId/tag gets. Only the middle (variable) part is ever shortened -- prefix and the trailing
+ * timestamp (which is what makes each identifier unique to Xaman) are always kept intact.
+ */
+export function safeIdentifier(prefix: string, variable: string, suffix: string): string {
+  const fixed = prefix.length + suffix.length;
+  const budget = Math.max(0, IDENTIFIER_MAX - fixed);
+  return `${prefix}${variable.slice(0, budget)}${suffix}`;
+}
+
 function authHeaders(): Record<string, string> {
   const key = process.env.XUMM_API_KEY;
   const secret = process.env.XUMM_API_SECRET;

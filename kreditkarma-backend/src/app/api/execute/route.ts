@@ -24,6 +24,7 @@ import { prismaPurchaseStore } from '@/lib/paymentStore';
 import { cautionCopyFor } from '@/lib/serviceCaution';
 import { priceUsd } from '@/lib/pricing';
 import { ADMIN_ONLY_SERVICE_IDS } from '@/lib/servicePrices';
+import { safeIdentifier } from '@/lib/xumm';
 import { isAdmin, adminUnauthorized } from '@/lib/adminAuth';
 
 const XUMM_API = 'https://xumm.app/api/v1/platform/payload';
@@ -160,7 +161,7 @@ export async function POST(req: NextRequest) {
         txjson: stepObj.txjson,
         options: { submit: true, expire: 15 },
         custom_meta: {
-          identifier: `xrplhub_exec_${productId}_${Date.now()}`,
+          identifier: safeIdentifier('xrplhub_exec_', String(productId), `_${Date.now()}`),
           blob: JSON.stringify({ productId, account, payTxHash: txHash, step, totalSteps: plan.length }),
           instruction: `XRPLHub — ${stepObj.label}${plan.length > 1 ? ` (step ${step} of ${plan.length})` : ''}\nSign to execute your service on XRPL mainnet.`,
         },

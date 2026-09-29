@@ -8,7 +8,7 @@
 
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/xrplscore-db";
-import { createPayload, xummConfigured, XummRateLimitError } from "@/lib/xumm";
+import { createPayload, safeIdentifier, xummConfigured, XummRateLimitError } from "@/lib/xumm";
 import { RLUSD_ISSUER, RLUSD_CURRENCY_HEX, TREASURY_ADDRESS } from "@/lib/rlusd";
 
 export const runtime = "nodejs";
@@ -59,7 +59,11 @@ export async function POST(req: Request) {
   try {
     const p = await createPayload({
       txjson,
-      identifier: `xrplhub_ckout_${invoice.id}`,
+      // invoice.id (a cuid) must NEVER be truncated here -- checkout/status/route.ts exact-matches this
+      // identifier back against invoice.id, computed the SAME way, to bind a signed Xaman payload to
+      // its invoice. safeIdentifier is only a no-op today (14 + 25 = 39, fits with 1 char to spare) --
+      // it's here so both sides stay in lockstep if the prefix or cuid length ever changes.
+      identifier: safeIdentifier('xrplhub_ckout_', invoice.id, ''),
       blob: { invoiceId: invoice.id, plan: invoice.plan },
       instruction: `XRPLHub — ${invoice.plan} plan\n${amount} ${invoice.currency} → API key`,
       expireMinutes: 15,

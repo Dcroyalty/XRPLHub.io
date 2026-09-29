@@ -14,7 +14,7 @@ import { prisma } from "@/lib/xrplscore-db";
 import { findPayment, type PaymentMatch } from "@/lib/rlusd";
 import { generateApiKey } from "@/lib/keys";
 import { PLAN_KEY_TTL_DAYS } from "@/lib/plans";
-import { getPayloadStatus, xummConfigured } from "@/lib/xumm";
+import { getPayloadStatus, safeIdentifier, xummConfigured } from "@/lib/xumm";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -61,7 +61,7 @@ export async function GET(req: Request) {
   if (!hintHash && uuid && xummConfigured()) {
     try {
       const s = await getPayloadStatus(uuid);
-      if (s.state === "signed" && s.txid && s.identifier === `xrplhub_ckout_${invoice.id}` && HASH_RE.test(s.txid)) hintHash = s.txid;
+      if (s.state === "signed" && s.txid && s.identifier === safeIdentifier('xrplhub_ckout_', invoice.id, '') && HASH_RE.test(s.txid)) hintHash = s.txid;
     } catch {
       /* Xaman being slow never blocks the ledger check */
     }

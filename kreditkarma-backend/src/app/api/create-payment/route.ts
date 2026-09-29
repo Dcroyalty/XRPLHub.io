@@ -7,7 +7,7 @@
 // Donations are the one open-amount product: the amount is the donor's choice, validated here.
 
 import { NextRequest, NextResponse } from 'next/server'
-import { createPayload, xummConfigured, XummRateLimitError } from '@/lib/xumm'
+import { createPayload, safeIdentifier, xummConfigured, XummRateLimitError } from '@/lib/xumm'
 import { rateLimit, rateLimited } from '@/lib/rateLimit'
 import {
   OPEN_AMOUNT_PRODUCTS, PricingError, RLUSD_HEX, RLUSD_ISSUER, TREASURY, quote, type PayCurrency,
@@ -86,7 +86,7 @@ export async function POST(req: NextRequest) {
       try {
         const p = await createPayload({
           txjson,
-          identifier: `xrplhub_${product}_${Date.now()}`,
+          identifier: safeIdentifier('xrplhub_', product, `_${Date.now()}`),
           blob: { productId: product, amount: payAmount, currency: payCurrency, email: email || '' },
           instruction: `XRPLHub — ${NAMES[product] || product}\nAmount: ${payAmount} ${payCurrency}\nDestination: Treasury`,
           expireMinutes: 15,
