@@ -4,8 +4,16 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  // DATABASE_URL: Neon's POOLED connection (the "-pooler" host) -- what Prisma Client uses at runtime,
+  // every request, on every serverless invocation. DIRECT_URL: the unpooled connection -- used ONLY by
+  // the Prisma CLI (migrate/db push/introspect), never by the running app. Neon's pooler is PgBouncer in
+  // transaction mode, which the schema engine does not support, hence the split. See docs/AUTONOMY.md
+  // sec 13 and Neon's own Prisma guide (neon.com/docs/guides/prisma) -- current Neon guidance does NOT
+  // add pgbouncer=true to the pooled URL; that flag is only for PgBouncer < 1.21, and Neon's managed
+  // pooler is newer than that.
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 model LedgerScore {
