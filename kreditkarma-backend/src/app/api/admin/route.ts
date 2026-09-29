@@ -52,6 +52,13 @@ export async function GET(req: Request) {
       recentScores,
       donations,
       donationSum,
+      recentPurchases,
+      purchaseStats,
+      recentCredentials,
+      credentialStats,
+      queuedCredentials,
+      watchdogAlerting,
+      watchdogEpoch,
     ] = await Promise.all([
       getTreasuryBalance(),
       getXRPPrice(),
@@ -82,6 +89,32 @@ export async function GET(req: Request) {
       prisma.donation.aggregate({
         _sum: { amount: true },
       }).catch(() => ({ _sum: { amount: 0 } })),
+      // Recent storefront (34-service) payments received
+      prisma.purchase.findMany({
+        orderBy: { verifiedAt: 'desc' },
+        take: 25,
+        select: { id: true, productId: true, currency: true, amount: true, wallet: true, txHash: true, status: true, verifiedAt: true, deliveredAt: true },
+      }).catch(() => []),
+      prisma.purchase.groupBy({ by: ['status'], _count: { status: true } }).catch(() => []),
+      // Recent real, on-ledger credential activity
+      prisma.indexedCredential.findMany({
+        orderBy: { lastSeenAt: 'desc' },
+        take: 25,
+        select: { objectIndex: true, issuer: true, subject: true, credentialType: true, accepted: true, expirationRipple: true, lastSeenAt: true },
+      }).catch(() => []),
+      prisma.credentialRequest.groupBy({ by: ['status'], _count: { status: true } }).catch(() => []),
+      prisma.credentialRequest.findMany({
+        where: { status: 'queued' },
+        orderBy: { requestedAt: 'asc' },
+        take: 25,
+        select: { id: true, kind: true, subject: true, tier: true, subjectRef: true, requestedAt: true },
+      }).catch(() => []),
+      // Watchdog: everything currently in an alerting state (see watchdog.ts's applyFinding)
+      prisma.indexerCheckpoint.findMany({
+        where: { id: { startsWith: 'watchdog:alert:' }, status: 'alerting' },
+        select: { id: true, lastCompletedPassAt: true },
+      }).catch(() => []),
+      prisma.indexerCheckpoint.findUnique({ where: { id: 'watchdog:epoch' } }).catch(() => null),
     ]);
 
     // Build status breakdown
@@ -95,6 +128,11 @@ export async function GET(req: Request) {
     const totalGrants     = (grants as unknown[]).length;
     const treasuryUSD     = treasuryXRP * xrpPrice;
     const totalDonatedXRP = donationSum?._sum?.amount || 0;
+
+    const purchaseStatusCounts: Record<string, number> = {};
+    for (const p of purchaseStats as { status: string; _count: { status: number } }[]) purchaseStatusCounts[p.status] = p._count.status;
+    const credentialRequestStatusCounts: Record<string, number> = {};
+    for (const c of credentialStats as { status: string; _count: { status: number } }[]) credentialRequestStatusCounts[c.status] = c._count.status;
 
     return NextResponse.json({
       // Treasury
@@ -121,6 +159,25 @@ export async function GET(req: Request) {
         count: (donations as unknown[]).length,
         totalXRP: Math.round(totalDonatedXRP * 100) / 100,
         recent: donations,
+      },
+      // Payments received (the 34-service storefront)
+      payments: {
+        byStatus: purchaseStatusCounts,
+        recent: recentPurchases,
+      },
+      // Credential activity: real on-ledger state + the automatic-issuance queue
+      credentials: {
+        byRequestStatus: credentialRequestStatusCounts,
+        queued: queuedCredentials,
+        recentOnLedger: recentCredentials,
+      },
+      // Watchdog: whatever the last real pass (the daily crons) found alerting
+      watchdog: {
+        lastPassAt: watchdogEpoch?.lastCompletedPassAt ?? null,
+        open: (watchdogAlerting as { id: string; lastCompletedPassAt: Date | null }[]).map((w) => ({
+          key: w.id.replace('watchdog:alert:', ''),
+          alertingSince: w.lastCompletedPassAt,
+        })),
       },
       // Meta
       updatedAt: new Date().toISOString(),

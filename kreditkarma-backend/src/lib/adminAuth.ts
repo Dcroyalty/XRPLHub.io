@@ -1,15 +1,17 @@
 // src/lib/adminAuth.ts
-// Shared admin authentication. ONE env var — ADMIN_API_TOKEN — gates every
-// internal/admin endpoint (dashboard data, key issuance, grant approve/review,
-// purchase writes). No hardcoded passwords, no client-trusted secrets.
+// Shared admin authentication. Two ways in, both gating the same endpoints:
+//   1. ADMIN_API_TOKEN, in either header (unchanged -- scripts and crons use this):
+//        Authorization: Bearer <token>
+//        x-admin-token: <token>
+//   2. A short-lived signed session cookie (adminSession.ts), issued after a Xaman
+//      SignIn proves control of a wallet in ADMIN_WALLETS -- see /admin and
+//      /api/admin/auth/*. Additive: nothing about (1) changed.
 //
-// Accepts the token in either header:
-//   Authorization: Bearer <token>
-//   x-admin-token: <token>
-//
-// Fails CLOSED: if ADMIN_API_TOKEN is unset, no request is ever admin.
+// Fails CLOSED: if ADMIN_API_TOKEN is unset, neither path can ever be admin (the
+// session token is HMAC-signed with ADMIN_API_TOKEN, so an unset token blocks both).
 
 import { timingSafeEqual } from "crypto";
+import { extractSessionCookie, verifyAdminSession } from "./adminSession";
 
 function safeEqual(a: string, b: string): boolean {
   const ba = Buffer.from(a);
@@ -25,13 +27,20 @@ export function extractAdminToken(req: Request): string {
   return req.headers.get("x-admin-token")?.trim() ?? "";
 }
 
-/** True only if the request carries the correct ADMIN_API_TOKEN. */
+/** True if the request carries the correct ADMIN_API_TOKEN, OR a valid admin session cookie. */
 export function isAdmin(req: Request): boolean {
   const token = process.env.ADMIN_API_TOKEN;
   if (!token) return false; // fail closed
 
   const provided = extractAdminToken(req);
-  return provided.length > 0 && safeEqual(provided, token);
+  if (provided.length > 0 && safeEqual(provided, token)) return true;
+
+  return verifyAdminSession(extractSessionCookie(req)) !== null;
+}
+
+/** The wallet a request's admin session belongs to, or null (no session, or token-auth'd instead). */
+export function adminSessionWallet(req: Request): string | null {
+  return verifyAdminSession(extractSessionCookie(req));
 }
 
 /** Standard 401 body for admin-gated routes. */
