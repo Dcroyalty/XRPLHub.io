@@ -242,3 +242,28 @@ Known silent-by-design: last-used timestamps, the score-cache upsert and counter
 9. `node scripts/issue-queued-credentials.cjs` (list-only) — anything queued for a while? Then
    `node scripts/cleanup-unaccepted-credentials.mjs` (list-only) — anything eligible? Neither has watchdog coverage
    (§5), so this is the only way to notice a backlog after time away.
+
+## 11. Known upgrade landmines — read before touching dependencies
+
+**`xrpl.js`: never upgrade past the 4.x line without running the seed-algorithm check first.** Pinned at
+`4.6.0` (`package.json` says `^4.0.0`). 5.0.0 changed how `Wallet.fromSeed`/`fromSecret` pick a signing
+algorithm when `opts.algorithm` is omitted: 4.x defaulted to ed25519 **unconditionally**, even for a classic
+secp256k1-family seed; 5.0.0+ correctly infers it from the seed's own prefix (`sEd…` → ed25519, anything
+else → secp256k1). Every `Wallet.fromSeed(seed)` call in this codebase (`anchorMemo.ts`, `credentials.ts`,
+`mptAnchor.ts`, `treasury.ts`, and every signing `scripts/*`) omits the algorithm option. If any of those
+seeds is not `sEd…`, upgrading silently derives a **different keypair** than the one that's been signing —
+wrong-address/wrong-signature, not a crash, and nothing would flag it until a transaction fails or funds
+go somewhere unexpected. Before ever upgrading, run this — it prints only the algorithm family, never the
+seed itself:
+```
+node -e "const {decodeSeed}=require('ripple-keypairs');for(const k of ['ANCHOR_WALLET_SEED','CREDENTIAL_ISSUER_SEED','TREASURY_SIGNER_1_SEED','TREASURY_SIGNER_2_SEED','TREASURY_SIGNER_3_SEED']){const v=process.env[k];if(!v){console.log(k,'not set');continue;}try{console.log(k,decodeSeed(v).type);}catch(e){console.log(k,'decode failed:',e.message);}}"
+```
+Every line must print `ed25519` for the upgrade to be a no-op. Anything else (or a decode failure) means
+stop and resolve it first.
+
+**MPP and Batch can't both ship on the current dependency graph.** `xrpl-mpp-sdk` (Ripple's beta SDK for
+Stripe/Tempo's Machine Payments Protocol, added in XRPL AI Starter Kit 1.1) pins its `xrpl` peer dependency
+to `>=4.0.0 <5.0.0`. The `Batch` transaction type needs `xrpl.js` `5.1.0+`. Picking up one forecloses the
+other without forking a dependency. Neither is in this codebase yet (checked — no `Batch` transaction-type
+code anywhere). Decide which one XRPLHub wants first; don't start building against either assuming the
+other stays available.

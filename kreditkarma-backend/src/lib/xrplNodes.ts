@@ -113,6 +113,11 @@ export async function xrplRpc(
   params: object,
   timeoutMs = 9_000
 ): Promise<XrplRpcResult> {
+  const sweep = await ensureSweepFresh().catch(() => null); // the sweep itself must never break a read
+  if (sweep && !sweep.trusted) {
+    bumpXrpl("rpc:no-majority");
+    return { ok: false };
+  }
   for (const url of candidateOrder()) {
     const r = await callOne(url, method, params, timeoutMs);
     if (r.status === "ok") {
@@ -139,4 +144,160 @@ export function nodePoolStatus(): Array<{ host: string; coolingForMs: number }> 
     host: host(u),
     coolingForMs: Math.max(0, (coolUntil.get(u) ?? 0) - now),
   }));
+}
+
+export function isCooling(url: string): boolean {
+  return (coolUntil.get(url) ?? 0) > Date.now();
+}
+
+// ─── STALENESS / AMENDMENT-BLOCK DEFENSE ───────────────────────────────────
+// The cooling above only sees HTTP-level failure (429, 5xx, timeout). It cannot see a node that answers
+// 200 OK with stale data -- which is exactly what an amendment-blocked rippled server does: it keeps
+// serving reads, it just stops advancing its own ledger. A periodic server_info sweep (lazily, from
+// xrplRpc() itself, and forced from the watchdog) is the only way to catch that, so this cools two more
+// things: any node reporting amendment_blocked:true, and any node whose validated ledger has fallen
+// meaningfully behind the rest of the ring.
+//
+// SAFETY FLOOR (MIN_HEALTHY_NODES): this sweep never cools a node if doing so would leave fewer than 3
+// nodes out of cooldown. Availability wins over precision when many nodes are bad at once -- if that many
+// are actually blocked/lagging together, that's a genuinely dangerous state, but going fully dark is worse
+// than serving from a marginal node; the watchdog (below) is what has to alert a human, not this function
+// taking the site down.
+//
+// NO MAJORITY: if the responding nodes' ledger indices don't cluster into one dominant (strict-majority)
+// group, there is no basis to say which side is right. xrplRpc() then refuses to serve at all -- returns
+// {ok:false}, the exact same shape every caller already treats as "could not read" -- rather than guessing.
+
+const SWEEP_INTERVAL_MS = 5 * 60_000;         // lazy refresh cadence while the ring is trusted
+const DISTRUST_RETRY_MS = 15_000;             // retry cadence while in the no-majority state -- recheck fast
+const STALE_LEDGER_THRESHOLD = 10;            // ledgers behind the trusted cluster before a node is "lagging"
+const CLUSTER_BAND = 3;                       // ledgers apart still counts as "the same" (normal gossip jitter)
+export const MIN_HEALTHY_NODES = 3;           // sweep-driven cooling never drops the pool below this
+const AMENDMENT_BLOCK_COOL_MS = 10 * 60_000;  // blocked nodes don't self-heal quickly; check back in 10 min
+const STALE_COOL_MS = 2 * 60_000;             // a lagging node might just be a slow gossip round; recheck sooner
+const SERVER_INFO_TIMEOUT_MS = 6_000;
+
+interface NodeProbe {
+  url: string;
+  ok: boolean;
+  ledgerIndex?: number;
+  amendmentBlocked?: boolean;
+}
+
+async function probeServerInfo(url: string): Promise<NodeProbe> {
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ method: "server_info", params: [{}] }),
+      signal: AbortSignal.timeout(SERVER_INFO_TIMEOUT_MS),
+    });
+    if (!res.ok) return { url, ok: false };
+    const j = (await res.json()) as { result?: { info?: { amendment_blocked?: boolean; validated_ledger?: { seq?: number } } } };
+    const info = j.result?.info;
+    const seq = info?.validated_ledger?.seq;
+    if (!info || typeof seq !== "number") return { url, ok: false };
+    return { url, ok: true, ledgerIndex: seq, amendmentBlocked: !!info.amendment_blocked };
+  } catch {
+    return { url, ok: false };
+  }
+}
+
+export interface StalenessSweepResult {
+  ranAt: number;
+  /** false = no ledger-index majority this round; xrplRpc() refuses reads until a later sweep clears it. */
+  trusted: boolean;
+  majorityLedgerIndex: number | null;
+  clusterSize: number;
+  responded: number;
+  amendmentBlocked: string[]; // hosts
+  lagging: Array<{ host: string; ledgerIndex: number; behindBy: number }>;
+  cooled: string[]; // hosts actually cooled this sweep
+  /** true = some flagged nodes were deliberately left uncooled to respect MIN_HEALTHY_NODES -- needs a human. */
+  floorHit: boolean;
+}
+
+/** Largest group of values within CLUSTER_BAND of each other; ties keep the first (sorted ascending). */
+function largestCluster(values: Array<{ url: string; ledgerIndex: number }>): { members: typeof values; index: number } | null {
+  if (!values.length) return null;
+  const sorted = [...values].sort((a, b) => a.ledgerIndex - b.ledgerIndex);
+  let best: typeof values = [];
+  for (const anchor of sorted) {
+    const group = sorted.filter((v) => Math.abs(v.ledgerIndex - anchor.ledgerIndex) <= CLUSTER_BAND);
+    if (group.length > best.length) best = group;
+  }
+  const mid = best[Math.floor(best.length / 2)];
+  return { members: best, index: mid.ledgerIndex };
+}
+
+let lastSweep: StalenessSweepResult | null = null;
+let sweepInFlight: Promise<StalenessSweepResult> | null = null;
+
+/**
+ * Probe every node's server_info, cool anything amendment-blocked or meaningfully behind the trusted
+ * cluster (subject to MIN_HEALTHY_NODES), and decide whether this round's ledger state can be trusted at
+ * all. Exported standalone -- not just reachable via xrplRpc's lazy trigger -- so the watchdog can force a
+ * fresh read, and so a test can pass a synthetic node list without touching the real ring.
+ */
+export async function sweepNodeHealth(nodes: string[] = XRPL_NODES): Promise<StalenessSweepResult> {
+  const probes = await Promise.all(nodes.map((u) => probeServerInfo(u)));
+  const ok = probes.filter((p): p is NodeProbe & { ledgerIndex: number } => p.ok && typeof p.ledgerIndex === "number");
+  const amendmentBlockedUrls = probes.filter((p) => p.ok && p.amendmentBlocked).map((p) => p.url);
+
+  const cluster = largestCluster(ok.map((p) => ({ url: p.url, ledgerIndex: p.ledgerIndex })));
+  // Trust requires a STRICT MAJORITY of the responding nodes agreeing -- a plurality isn't enough to tell
+  // which side of a split ring is actually right.
+  const trusted = !!cluster && cluster.members.length > ok.length / 2;
+
+  const lagging: Array<{ url: string; ledgerIndex: number; behindBy: number }> = [];
+  if (trusted && cluster) {
+    for (const p of ok) {
+      const behindBy = cluster.index - p.ledgerIndex;
+      if (behindBy > STALE_LEDGER_THRESHOLD) lagging.push({ url: p.url, ledgerIndex: p.ledgerIndex, behindBy });
+    }
+  }
+
+  // Cool worst-first (amendment-blocked before mere lag, laggards worst-behind first) while respecting the floor.
+  const priority = [...amendmentBlockedUrls, ...[...lagging].sort((a, b) => b.behindBy - a.behindBy).map((l) => l.url)];
+  const now = Date.now();
+  let remainingHealthy = nodes.filter((u) => (coolUntil.get(u) ?? 0) <= now).length;
+  const cooled: string[] = [];
+  let floorHit = false;
+  for (const url of priority) {
+    if (cooled.includes(url)) continue;
+    const wasHealthy = (coolUntil.get(url) ?? 0) <= now;
+    if (wasHealthy && remainingHealthy - 1 < MIN_HEALTHY_NODES) { floorHit = true; continue; }
+    cool(url, amendmentBlockedUrls.includes(url) ? AMENDMENT_BLOCK_COOL_MS : STALE_COOL_MS);
+    cooled.push(url);
+    if (wasHealthy) remainingHealthy--;
+  }
+
+  const result: StalenessSweepResult = {
+    ranAt: now,
+    trusted,
+    majorityLedgerIndex: cluster?.index ?? null,
+    clusterSize: cluster?.members.length ?? 0,
+    responded: ok.length,
+    amendmentBlocked: amendmentBlockedUrls.map(host),
+    lagging: lagging.map((l) => ({ host: host(l.url), ledgerIndex: l.ledgerIndex, behindBy: l.behindBy })),
+    cooled: cooled.map(host),
+    floorHit,
+  };
+  lastSweep = result;
+  return result;
+}
+
+function sweepDue(): boolean {
+  if (!lastSweep) return true;
+  const age = Date.now() - lastSweep.ranAt;
+  return age > (lastSweep.trusted ? SWEEP_INTERVAL_MS : DISTRUST_RETRY_MS);
+}
+
+/** Lazily refreshes the staleness sweep if it's due, coalescing concurrent callers onto one in-flight probe. */
+async function ensureSweepFresh(): Promise<StalenessSweepResult | null> {
+  if (!sweepDue()) return lastSweep;
+  if (!sweepInFlight) {
+    sweepInFlight = sweepNodeHealth().finally(() => { sweepInFlight = null; });
+  }
+  return sweepInFlight;
 }

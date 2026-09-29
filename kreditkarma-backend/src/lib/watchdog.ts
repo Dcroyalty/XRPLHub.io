@@ -11,6 +11,8 @@
 //   • things that go silently unbacked: the off-Neon screening-receipt backup (GITHUB_TOKEN unset, or just stale)
 //   • things that stop: OFAC SDN refresh, unanchored attestations, the monitoring backlog
 //   • things that get revoked: the Bithomp key, the XRP price sources
+//   • things that go stale without erroring: a rotation node that's amendment-blocked or has fallen behind
+//     the rest of the ring — it still answers 200 OK, just with old data (see xrplNodes.ts's sweep)
 //   • the amendment reader itself, and a one-time "XLS-66 is now ACTIVE" announcement
 //
 // A check that cannot run (RDAP down, a node blip) reports `ok` with a note — a flaky probe must never page
@@ -20,7 +22,7 @@ import tls from "tls";
 import { LIST_NAMES, currentSnapshot, lastChecked } from "./sanctionLists";
 import type { PrismaClient } from "@prisma/client";
 import { notifyError, notifyInfo } from "./notify";
-import { xrplRpc, XRPL_NODES } from "./xrplNodes";
+import { xrplRpc, XRPL_NODES, sweepNodeHealth, MIN_HEALTHY_NODES } from "./xrplNodes";
 import { getAmendmentStatuses } from "./amendments";
 import { xrpUsd } from "./xrpPrice";
 import { ANCHOR_ACCOUNT } from "./mptAnchor";
@@ -306,6 +308,27 @@ async function checkBithomp(): Promise<Finding> {
   }
 }
 
+/** Forces a fresh server_info sweep (not the lazy 5-min cache xrplRpc uses) so this always reports the
+ *  ring's CURRENT state, not whatever the last read happened to trigger. See xrplNodes.ts for the defense
+ *  itself -- this just surfaces its verdict as a Finding. */
+async function checkNodeStaleness(): Promise<Finding> {
+  const r = await sweepNodeHealth().catch(() => null);
+  if (!r) return { key: "node-staleness", level: "ok", message: "sweep failed to run — skipped" };
+  if (r.amendmentBlocked.length) {
+    return { key: "node-staleness", level: "red", message: `amendment-blocked: ${r.amendmentBlocked.join(", ")} — cooled, serving from the rest of the ring` };
+  }
+  if (!r.trusted) {
+    return { key: "node-staleness", level: "red", message: `no ledger-index majority across ${r.responded} responding node(s) — xrplRpc() is refusing reads until this clears` };
+  }
+  if (r.floorHit) {
+    return { key: "node-staleness", level: "red", message: `too many nodes degraded to cool safely (the ${MIN_HEALTHY_NODES}-healthy-node floor was protected) — some flagged nodes were left in rotation` };
+  }
+  if (r.lagging.length) {
+    return { key: "node-staleness", level: "warn", message: `lagging behind the ring: ${r.lagging.map((l) => `${l.host} (-${l.behindBy})`).join(", ")}` };
+  }
+  return { key: "node-staleness", level: "ok", message: `${r.responded}/${XRPL_NODES.length} nodes healthy, ledger ${r.majorityLedgerIndex}` };
+}
+
 /** The score/monitoring/amendment reads rotate across 8 public XRPL nodes. Some are hobbyist hosts that will
  *  disappear over two years; the rotation hides that until they are ALL gone, so count the healthy ones. */
 async function checkNodes(): Promise<Finding> {
@@ -416,6 +439,7 @@ export async function runWatchdog(prisma: PrismaClient, opts: WatchdogOptions = 
     add("tls-cert", checkTls);
     add("xrpl-nodes", checkNodes, 8000);
     add("bithomp-key", checkBithomp);
+    add("node-staleness", checkNodeStaleness, 15000); // 8 parallel server_info calls, 6s timeout each
     add("xrp-price", checkXrpPrice);
   }
 
