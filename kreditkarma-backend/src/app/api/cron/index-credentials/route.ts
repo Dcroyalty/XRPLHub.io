@@ -117,7 +117,7 @@ export async function GET(req: Request) {
       return null;
     });
     await pingHealthcheck();
-    return NextResponse.json({ ...progress, sdn, monitor, lendingSweep, screeningAnchor, lendingAnchor, underwriteAnchor, screeningBackup, monitorAnchor, watchdog: watchdog ? { alerted: watchdog.alerted, recovered: watchdog.recovered } : null });
+    return NextResponse.json({ ...progress, sdn, monitor, lendingSweep, screeningAnchor, lendingAnchor, underwriteAnchor, screeningBackup, monitorAnchor, watchdog: watchdog ? { alerted: watchdog.alerted, recovered: watchdog.recovered, open: watchdog.findings.filter((f) => f.level !== "ok").map((f) => ({ key: f.key, level: f.level, message: f.message })) } : null });
   } catch (err) {
     await notifyError("cron/index-credentials", err);
     console.error("[cron/index-credentials]", err);
