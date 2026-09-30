@@ -90,6 +90,24 @@ specifically because `CREDENTIAL_ISSUER_SEED` was never on Vercel. The owner mad
 change that — moving the seed onto Vercel so the cron can sign directly — with real guardrails attached
 (below), not as a casual flip. Read this whole section before touching any of it.
 
+**Verified live in production, 2026-09-29:** `CREDENTIAL_ISSUER_SEED` is set, `npx prisma db push` has
+run, and `GET /api/cron/index-credentials` (admin token) returned `autoIssuance.ran: true` /
+`credentialCleanup.ran: true` with no dormant-seed reason string — this is genuinely running, not just
+capable of running. The queue was empty at verification time (`processed: []`), so the first real
+automatic issuance/cleanup hasn't happened yet; check the next cron's response for actual activity.
+
+**Known watchdog false-positive from before this system existed, reconcile or dismiss by hand:** the very
+first `credential-anomaly` run (also 2026-09-29) scanned the issuer's full history back to genesis and
+flagged exactly one `CredentialCreate` — tx `3C5D2EE4C905B82F...`, subject `rvYAfWj5gh67oV6fW32ZzP3Aw4Eubs59B`,
+type `io.xrplhub.score.v1.min750`, dated 2026-09-04 (the mainnet XLS-70 launch day, commit `c265bdb`).
+It has no row in `CredentialRequest`, `IndexedCredential`, or the older `ScoreCredential` table in any
+form — almost certainly a manual launch-day smoke test issued directly via CLI, before this bookkeeping
+existed, not misuse. The watchdog is correct to flag it (it has no way to know that); it will stay red on
+every run until a human either backfills a `CredentialRequest` row with `issuedTxHash` set to that hash
+(status `issued`) to teach the watchdog about it, or confirms it's fine and leaves it. Not fixed by this
+commit — deliberately left for the owner to decide rather than editing production bookkeeping on an
+inference.
+
 **What runs automatically now, both in `cron/index-credentials` (06:00 UTC), both a genuine no-op if
 `CREDENTIAL_ISSUER_SEED` is unset — same dormant-until-set posture the screening backup (§6) already
 established:**
@@ -315,10 +333,11 @@ ever pasted) is now caught two ways: a client-side poll by destination tag while
 and a cron sweep (`sweepPurchaseIntents`, in `cron/index-credentials`) for the case where the customer
 closes the tab and never comes back at all. `paymentGate.ts` itself was never touched -- this only
 discovers a candidate tx hash and hands it to the exact same `verifyPayment`/`registerPayment` the
-paste-a-hash path already used. **Needs `npx prisma db push` run once** to create the `PurchaseIntent`
-table (blocked from me by the permission system as a production DB change) -- the code is deploy-safe
-either way (every path degrades to pre-existing behavior if the table doesn't exist yet), but the feature
-itself is a no-op until that push runs.
+paste-a-hash path already used.
+
+**Verified live in production, 2026-09-29:** `npx prisma db push` has run and `POST /api/create-payment`
+now returns a real, non-null `intentId`/`destinationTag` (previously both came back `null`). Active, not
+just deploy-safe.
 
 ## 16. Admin auth: Xaman sign-in (2026-09-29)
 

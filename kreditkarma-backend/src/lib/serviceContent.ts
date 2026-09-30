@@ -118,7 +118,7 @@ export const RAW_PRODUCTS = [
   // ESCROW
   { id:'escrow', cat:'Escrow', emoji:'🏛️', name:'Escrow Setup', featured:false, tag:'POPULAR', comingSoon:false, color:'#f97316',
     amendment:'EscrowCreate', tagline:'Time-lock XRP until a release date',
-    desc:'You set the amount and release time. We build EscrowCreate. You sign it — funds release once that time passes.',
+    desc:'You set the amount and release time. We build EscrowCreate. You sign it — funds release once that time passes. XRP only: RLUSD escrow isn’t available yet — its issuer hasn’t enabled trust-line locking.',
     aiDetail:'We build EscrowCreate with your FinishAfter time — time-based release only, no crypto-condition support. You later finish or cancel it.',
     features:['EscrowCreate built to spec','Time-locked release (FinishAfter)','You sign it in your wallet','On-chain audit trail','TX hash receipt'] },
 
