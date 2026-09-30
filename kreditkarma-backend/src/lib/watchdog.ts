@@ -427,7 +427,10 @@ async function applyFinding(prisma: PrismaClient, f: Finding, n: NonNullable<Wat
 
 export async function runWatchdog(prisma: PrismaClient, opts: WatchdogOptions = {}): Promise<WatchdogResult> {
   const n = opts.notify ?? { error: notifyError, info: notifyInfo };
-  await prisma.indexerCheckpoint.upsert({ where: { id: 'watchdog:epoch' }, create: { id: 'watchdog:epoch', status: 'idle', lastCompletedPassAt: new Date() }, update: {} }).catch(() => {});
+  // BUG (fixed 2026-09-29): `update: {}` was a no-op, so this only ever set lastCompletedPassAt once,
+  // on the row's first creation -- every cron run since then upserted nothing, and the admin dashboard's
+  // "last pass" timestamp froze at that first date forever, even though this runs twice daily.
+  await prisma.indexerCheckpoint.upsert({ where: { id: 'watchdog:epoch' }, create: { id: 'watchdog:epoch', status: 'idle', lastCompletedPassAt: new Date() }, update: { lastCompletedPassAt: new Date() } }).catch(() => {});
   const jobs: Array<Promise<Finding | Finding[]>> = [];
   const add = (key: string, fn: () => Promise<Finding>, ms = 7000) =>
     jobs.push(
