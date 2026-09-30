@@ -26,8 +26,8 @@ section linked. Sorted soonest first.
 The site is a Next.js app on Vercel (Node 24.x) with a Neon Postgres database. Everything customer-facing is
 request-driven. Two Vercel crons do the periodic work. **Nothing needs a deploy to keep working.** What can
 silently stop is anything that depends on an outside party's clock or wallet: a domain, an XNS name, an API key,
-a public node, a funded wallet. The watchdog (`src/lib/watchdog.ts`) turns those into messages on the error
-webhook; this file says what it watches and what you must still do by hand.
+a public node, a funded wallet. The watchdog (`src/lib/watchdog.ts`) turns those into healthchecks.io `/fail`
+pings that email you (§8); this file says what it watches and what you must still do by hand.
 
 ## 2. What runs on its own
 
@@ -80,7 +80,8 @@ Already-live features (Credentials/XLS-70, PermissionedDomains, MPTokensV1) are 
 | Xaman (XUMM) API key/secret | present, no expiry | rotate only if revoked | `createPayload` alerts loudly on rejection; health probe |
 | Coinbase CDP key (x402 USDC on Base) | present; **usage limits / billing of the CDP facilitator not verified** | check the CDP portal | health deep probe (reachability only, not key validity) |
 | t54 x402 facilitator (XRPL x402) | external service | none | health deep probe |
-| `ERROR_WEBHOOK_URL` (Discord/Slack) | set | recreate if the webhook is deleted | **the weekly heartbeat message stops** (see §8) |
+| `ERROR_WEBHOOK_URL` (Discord/Slack) | set, but read by no one | none — alerts go to healthchecks.io (§8) | nothing |
+| `HEALTHCHECK_PING_URL` (healthchecks.io) | set | recreate the check if deleted | **no alert email of any kind** (§8) |
 | Vercel plan | **(inferred)** Hobby: 2 crons/day, 60 s functions | — | not detectable from inside; see §9 |
 
 ## 5. Credential issuance & cleanup — automatic since 2026-09-29
@@ -219,24 +220,30 @@ Dated items first; undated risks after.
 
 ## 8. Loud failure — how you find out
 
-`notifyError` posts to `ERROR_WEBHOOK_URL`. The watchdog adds, on the daily crons:
+**healthchecks.io is the only alert channel (changed 2026-09-30).** The operator has no Discord/Slack, so
+`ERROR_WEBHOOK_URL` — although still set in Vercel — reaches no one; `notifyError`/`notifyInfo` are now effectively
+log lines. What emails you:
+- **Any open RED → `HEALTHCHECK_PING_URL/fail`** at the end of each cron (`pingHealthcheckForRun` in
+  `src/lib/watchdog.ts`); healthchecks.io emails immediately, and the email carries the ping body: a plain-text list
+  of every open RED (and the warnings). "Open RED" = any watchdog finding currently red — including ones only the
+  *other* cron checks (the level is kept in the alert row's `marker`, so the 06:00 cron can't mask a RED the 07:00
+  cron found) — plus index-mpts's money-path health reds, plus the watchdog itself throwing.
+- **A cron crashing** (returns 500) → `/fail` from its catch block.
+- **Missed pings** → healthchecks.io emails after the grace period: both crons stopped, Vercel, or the database is down.
+- Otherwise each cron sends a success ping. **Warnings never email** — they ride along in the ping body (visible on
+  the check's page in healthchecks.io) and in the cron JSON/logs.
 - **cron heartbeats** — each cron writes a heartbeat at the *end* of a successful run and checks the other's (red if > 36 h stale). A run that times out at 60 s writes none, so it shows up.
-- red/warn findings, de-duplicated (red re-alerts every 3 days, warn every 7), one message on recovery.
-- a **weekly "Alive. All checks green" message** — its *absence* is the signal that both crons, the database, or the webhook itself died.
-- `notifyInfo` for non-errors (recoveries, "XLS-66 is now ACTIVE").
 
-Nothing inside the app can report the death of the whole platform. **Optional but recommended:** create a free
-healthchecks.io check (period 1 day, grace 2 days) and set `HEALTHCHECK_PING_URL` in Vercel — each cron pings it on
-completion, and that service emails you if both stop.
+Recommended check settings: period 1 day, grace 3 hours (both crons ping it, at 06:00 and 07:00).
 
-Crons: if a run throws, it returns 500 and `notifyError` fires immediately; if it keeps failing you get that alert
-daily *and* the other cron reports the stale heartbeat after 36 h; if `CRON_SECRET` is unset both 401 (health probe: red).
-Every job in a run is wrapped so one failure cannot stop the rest (`.catch → notifyError`).
+Per-event failures that are NOT watchdog findings (a single x402 settlement failing, one monitor webhook failing)
+go to `notifyError` only — logs, not email. Their lasting effects are what the watchdog checks (stale lists,
+unanchored attestations, backlog), so those turn red and email.
 
 ## 9. What still needs a human — and the honest gaps
 
 Once, before leaving:
-1. `POST /api/health` (admin token) — confirm a test alert really lands in the channel.
+1. ~~`POST /api/health` (admin token) — confirm a test alert really lands in the channel.~~ Superseded 2026-09-30: the webhook is not read; alerts are healthchecks.io `/fail` pings (§8).
 2. ~~Set `HEALTHCHECK_PING_URL`~~ **Done 2026-09-29** — set in Vercel production, confirmed firing on every cron completion.
 3. **Extend the three XRPNS names** for several years.
 4. Confirm the Porkbun card expiry is after the last domain renewal you care about.
@@ -255,12 +262,12 @@ Known silent-by-design: last-used timestamps, the score-cache upsert and counter
 
 ## 10. If something looks wrong after a long absence — check in this order
 
-1. Was the weekly heartbeat received recently? (No → webhook, both crons or the platform.)
+1. healthchecks.io → the check: last ping time and body (it lists every open RED and warning).
 2. `GET https://www.xrplhub.io/api/health?deep=1` — reds first.
 3. Vercel → project → Deployments (latest READY?) and Logs for `/api/cron/*`; Cron Jobs tab (both scheduled?).
 4. Neon console → project `kreditkarma`: suspended? size? quota?
 5. Registrar (Porkbun) → domains; app.xrpns.com → names; `dig`/RDAP for expiry.
-6. The watchdog's open findings (they repeat in the channel).
+6. The watchdog's open findings (the cron JSON's `watchdog.open`, and the healthchecks.io ping body).
 7. `node scripts/check-service-parity.mjs`, `npm audit`, and whether Vercel announced a Node runtime retirement.
 8. Rotate anything revoked (Bithomp, XUMM, CDP), then redeploy with the Vercel build cache **off**.
 9. `node scripts/issue-queued-credentials.cjs` (list-only) — anything queued for a while? Then

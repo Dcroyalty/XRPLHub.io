@@ -84,15 +84,20 @@ export async function notifyInfo(route: string, message: string, context?: Recor
 }
 
 /**
- * Optional dead-man's switch. If HEALTHCHECK_PING_URL is set (e.g. a free healthchecks.io check), each cron
- * pings it when a run completes. If BOTH crons — or Vercel itself, the database, or the alert webhook —
- * die, the pings stop and that external service emails you. Nothing inside this app can report its own death.
+ * healthchecks.io — the operator's ONLY alert channel (ERROR_WEBHOOK_URL is not read by anyone). Each cron
+ * pings HEALTHCHECK_PING_URL when it completes: "/fail" when there is any open RED (healthchecks.io emails
+ * at once), a plain success ping otherwise. If both crons — or Vercel, or the database — die, the pings stop
+ * and healthchecks.io emails after the grace period. `body` (plain text) is shown in that email.
  */
-export async function pingHealthcheck(suffix = ""): Promise<void> {
+export async function pingHealthcheck(suffix: "" | "/fail" = "", body?: string): Promise<void> {
   const url = process.env.HEALTHCHECK_PING_URL;
   if (!url || !/^https:\/\//.test(url)) return;
   try {
-    await fetch(url.replace(/\/$/, "") + suffix, { method: "GET", signal: AbortSignal.timeout(5000) }).catch(() => {});
+    await fetch(url.replace(/\/$/, "") + suffix, {
+      method: body ? "POST" : "GET",
+      body: body?.slice(0, 10_000),
+      signal: AbortSignal.timeout(5000),
+    }).catch(() => {});
   } catch {
     /* never break the caller */
   }

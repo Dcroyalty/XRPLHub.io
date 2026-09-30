@@ -17,7 +17,7 @@ import { isAdmin } from "@/lib/adminAuth";
 import { notifyError, pingHealthcheck } from "@/lib/notify";
 import { runMonitorPass } from "@/lib/monitorEngine";
 import { maybeAnchorMonitorObservations } from "@/lib/monitorAnchor";
-import { recordHeartbeat, runWatchdog } from "@/lib/watchdog";
+import { recordHeartbeat, runWatchdog, pingHealthcheckForRun } from "@/lib/watchdog";
 import { refreshAllLists } from "@/lib/sanctionLists";
 import { maybeAnchorScreeningReceipts } from "@/lib/screenAnchor";
 import { maybeAnchorLendingReceipts } from "@/lib/lendingAnchor";
@@ -138,17 +138,19 @@ export async function GET(req: Request) {
 
     forceFlushXrplCounters(prisma); // catch-all for any counters this pass accrued
 
-    // Dead-man's switch pair: this cron records a heartbeat and checks the OTHER cron's; the external
-    // HEALTHCHECK_PING_URL (optional) covers both dying at once.
+    // Dead-man's switch pair: this cron records a heartbeat and checks the OTHER cron's. healthchecks.io is
+    // the alert channel: /fail on any open RED (from either cron's checks), else success; missed pings
+    // cover both crons dying at once.
     await recordHeartbeat(prisma, "cron-credentials");
     const watchdog = await runWatchdog(prisma, { otherCrons: ["cron-mpts"], full: false }).catch(async (e) => {
       await notifyError("cron/index-credentials watchdog", e);
       return null;
     });
-    await pingHealthcheck();
+    await pingHealthcheckForRun(prisma, "cron/index-credentials", watchdog);
     return NextResponse.json({ ...progress, autoIssuance, credentialCleanup, sdn, monitor, lendingSweep, screeningAnchor, lendingAnchor, underwriteAnchor, screeningBackup, purchaseIntents, monitorAnchor, watchdog: watchdog ? { alerted: watchdog.alerted, recovered: watchdog.recovered, open: watchdog.findings.filter((f) => f.level !== "ok").map((f) => ({ key: f.key, level: f.level, message: f.message })) } : null });
   } catch (err) {
     await notifyError("cron/index-credentials", err);
+    await pingHealthcheck("/fail", `XRPLHub cron/index-credentials CRASHED: ${err instanceof Error ? err.message : String(err)}`);
     console.error("[cron/index-credentials]", err);
     return NextResponse.json(
       { error: "indexer_failed", message: err instanceof Error ? err.message : "unknown" },

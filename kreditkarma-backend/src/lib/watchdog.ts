@@ -1,7 +1,10 @@
 // src/lib/watchdog.ts
 // The unattended-operation watchdog. Nothing in this app can report its own death, so this module does
-// the next best thing: every daily run checks the things that fail SILENTLY over months and turns them
-// into a message on the error webhook, with de-duplication and a weekly "I'm alive" heartbeat.
+// the next best thing: every daily run checks the things that fail SILENTLY over months. Alerting goes to
+// healthchecks.io ONLY (the operator has no webhook): any open RED makes the cron ping
+// HEALTHCHECK_PING_URL/fail with a plain-text list of the REDs, which healthchecks.io emails
+// (pingHealthcheckForRun). Warnings ride along in that body but never email. notifyError/notifyInfo still
+// run (logs; ERROR_WEBHOOK_URL if anyone ever reads it).
 //
 //   • cron heartbeats — each daily cron records a heartbeat; the OTHER cron alerts if it goes stale
 //     (both dying at once is what HEALTHCHECK_PING_URL — an external dead-man's switch — is for)
@@ -21,7 +24,7 @@
 import tls from "tls";
 import { LIST_NAMES, currentSnapshot, lastChecked } from "./sanctionLists";
 import type { PrismaClient } from "@prisma/client";
-import { notifyError, notifyInfo } from "./notify";
+import { notifyError, notifyInfo, pingHealthcheck } from "./notify";
 import { xrplRpc, XRPL_NODES, sweepNodeHealth, MIN_HEALTHY_NODES } from "./xrplNodes";
 import { getAmendmentStatuses } from "./amendments";
 import { xrpUsd } from "./xrpPrice";
@@ -412,17 +415,63 @@ async function applyFinding(prisma: PrismaClient, f: Finding, n: NonNullable<Wat
     }
     return "quiet";
   }
+  // Always record the finding's CURRENT level + message (`marker`), even when the re-alert below is
+  // suppressed: openRedAlerts() reads it so every cron can ping healthchecks.io /fail while a RED is open —
+  // including REDs from checks only the other cron runs.
+  const marker = `${f.level}: ${f.message}`.slice(0, 500);
   const repeatMs = f.level === "red" ? 3 * DAY : 7 * DAY;
   const last = row?.lastCompletedPassAt?.getTime() ?? 0;
-  if (alerting && Date.now() - last < repeatMs) return "quiet";
+  if (alerting && Date.now() - last < repeatMs) {
+    if (row?.marker !== marker) await prisma.indexerCheckpoint.update({ where: { id }, data: { marker } });
+    return "quiet";
+  }
   if (f.level === "red") await n.error(`watchdog RED: ${f.key}`, new Error(f.message));
   else await n.info(`watchdog warning: ${f.key}`, `⚠️ ${f.message}`);
   await prisma.indexerCheckpoint.upsert({
     where: { id },
-    create: { id, status: "alerting", lastCompletedPassAt: new Date() },
-    update: { status: "alerting", lastCompletedPassAt: new Date() },
+    create: { id, status: "alerting", marker, lastCompletedPassAt: new Date() },
+    update: { status: "alerting", marker, lastCompletedPassAt: new Date() },
   });
   return "alerted";
+}
+
+/**
+ * Every RED watchdog finding still open, from any cron. A finding closes (status idle) only when the cron
+ * that runs that check sees it ok again, so this is the right input for the healthchecks.io /fail decision.
+ */
+export async function openRedAlerts(prisma: PrismaClient): Promise<Array<{ key: string; message: string }>> {
+  const rows = await prisma.indexerCheckpoint.findMany({
+    where: { id: { startsWith: "watchdog:alert:" }, status: "alerting", marker: { startsWith: "red:" } },
+  });
+  return rows.map((r) => ({ key: r.id.slice("watchdog:alert:".length), message: (r.marker ?? "").slice(5) }));
+}
+
+/**
+ * The healthchecks.io ping for a cron run: "/fail" if anything is RED, else success. `extraReds` are
+ * run-local REDs that aren't watchdog findings (a health-probe red, the watchdog itself crashing).
+ */
+export async function pingHealthcheckForRun(
+  prisma: PrismaClient,
+  cron: string,
+  result: WatchdogResult | null,
+  extraReds: string[] = []
+): Promise<{ fail: boolean }> {
+  const reds = [...extraReds];
+  try {
+    for (const r of await openRedAlerts(prisma)) reds.push(`${r.key}: ${r.message}`);
+  } catch (e) {
+    reds.push(`could not read open watchdog alerts: ${e instanceof Error ? e.message : String(e)}`);
+  }
+  if (!result) reds.push("the watchdog itself threw — nothing was checked this run");
+  const warns = (result?.findings ?? []).filter((f) => f.level === "warn").map((f) => `${f.key}: ${f.message}`);
+  const body = [
+    reds.length ? `XRPLHub ${cron}: ${reds.length} RED` : `XRPLHub ${cron}: no RED (${warns.length} warning(s))`,
+    ...reds.map((r) => `RED  ${r}`),
+    ...warns.map((w) => `warn ${w}`),
+    `at ${new Date().toISOString()}`,
+  ].join("\n");
+  await pingHealthcheck(reds.length ? "/fail" : "", body);
+  return { fail: reds.length > 0 };
 }
 
 export async function runWatchdog(prisma: PrismaClient, opts: WatchdogOptions = {}): Promise<WatchdogResult> {

@@ -13,7 +13,7 @@ import { runMptIndexerPass, maybeAnchor } from "@/lib/mptIndexer";
 import { isAdmin } from "@/lib/adminAuth";
 import { healthProbe } from "@/lib/health";
 import { notifyError, pingHealthcheck } from "@/lib/notify";
-import { recordHeartbeat, runWatchdog } from "@/lib/watchdog";
+import { recordHeartbeat, runWatchdog, pingHealthcheckForRun } from "@/lib/watchdog";
 import { forceFlushXrplCounters } from "@/lib/xrplCounters";
 
 export const runtime = "nodejs";
@@ -57,11 +57,13 @@ export async function GET(req: Request) {
       await notifyError("cron/index-mpts watchdog", e);
       return null;
     });
-    await pingHealthcheck();
+    // healthchecks.io is the alert channel: /fail on any open RED (watchdog or money-path health), else success.
+    await pingHealthcheckForRun(prisma, "cron/index-mpts", watchdog, health.reds.map((r) => `health ${r.name} DOWN: ${r.detail}`));
 
     return NextResponse.json({ ...progress, anchor, health: { overall: health.overall, reds: health.reds, ambers: health.ambers }, watchdog: watchdog ? { alerted: watchdog.alerted, recovered: watchdog.recovered, weeklySent: watchdog.weeklySent, open: watchdog.findings.filter((f) => f.level !== "ok").map((f) => ({ key: f.key, level: f.level, message: f.message })) } : null });
   } catch (err) {
     await notifyError("cron/index-mpts", err);
+    await pingHealthcheck("/fail", `XRPLHub cron/index-mpts CRASHED: ${err instanceof Error ? err.message : String(err)}`);
     console.error("[cron/index-mpts]", err);
     return NextResponse.json(
       { error: "indexer_failed", message: err instanceof Error ? err.message : "unknown" },
