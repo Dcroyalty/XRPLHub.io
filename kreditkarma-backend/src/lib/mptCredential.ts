@@ -13,8 +13,9 @@
 // the "we issue, they accept" score-credential flow. A pending credential is never usable until CredentialAccept.
 
 import type { PrismaClient } from "@prisma/client";
-import { convertStringToHex, unixTimeToRippleTime, rippleTimeToUnixTime, type SubmittableTransaction } from "xrpl";
-import { EXPECTED_ISSUER, buildCredentialCreate } from "./credentials";
+import { Wallet, convertStringToHex, unixTimeToRippleTime, rippleTimeToUnixTime, type SubmittableTransaction } from "xrpl";
+import { EXPECTED_ISSUER, buildCredentialCreate, connectMainnetOrThrow, WrongIssuerError, type IssueResult } from "./credentials";
+import { deleteExpiredCredentialIfAny } from "./credentialOps";
 
 export const MPT_CRED_NAMESPACE = "io.xrplhub.mpt.v1";
 export const MPT_DECLARED_TYPE = "io.xrplhub.mpt.v1.declared";
@@ -89,4 +90,46 @@ export async function queueMptDeclaredCredential(prisma: PrismaClient, issuer: s
     },
   });
   return { queued: true, reason: "queued" };
+}
+
+/**
+ * Sign + submit on mainnet from CREDENTIAL_ISSUER_SEED. Unlike the score credential, no re-check is
+ * needed before issuing: the fact attested ("a declaration was recorded at issuance time") does not
+ * change after the fact. It was already true the moment mptissue delivered.
+ */
+export async function issueMptDeclaredCredential(plan: MptDeclaredPlan): Promise<IssueResult> {
+  const seed = process.env.CREDENTIAL_ISSUER_SEED;
+  if (!seed) throw new Error("CREDENTIAL_ISSUER_SEED is not set");
+  const wallet = Wallet.fromSeed(seed);
+  if (wallet.classicAddress !== EXPECTED_ISSUER) {
+    throw new WrongIssuerError(`REFUSING: CREDENTIAL_ISSUER_SEED derives ${wallet.classicAddress}, expected ${EXPECTED_ISSUER}.`);
+  }
+  if (plan.issuer !== EXPECTED_ISSUER) {
+    throw new WrongIssuerError(`REFUSING: plan issuer ${plan.issuer} != ${EXPECTED_ISSUER}.`);
+  }
+
+  const client = await connectMainnetOrThrow();
+  try {
+    await deleteExpiredCredentialIfAny(client, wallet, EXPECTED_ISSUER, plan.subject, plan.credentialTypeHex);
+
+    const prepared = await client.autofill(plan.txjson);
+    const signed = wallet.sign(prepared);
+    const res = await client.submitAndWait(signed.tx_blob);
+    const meta = res.result.meta;
+    const engineResult = meta && typeof meta === "object" ? (meta as { TransactionResult: string }).TransactionResult : "unknown";
+    return {
+      network: "mainnet",
+      txHash: res.result.hash,
+      validated: res.result.validated ?? false,
+      engineResult,
+      ledgerIndex: res.result.ledger_index,
+      feeDrops: (prepared as { Fee?: string }).Fee,
+      // IssueResult.plan is typed for the score credential's IssuePlan; this family's plan shape
+      // differs (no score/tier/methodology). Cast is safe -- callers of THIS function only ever read
+      // the fields MptDeclaredPlan actually has.
+      plan: plan as unknown as IssueResult["plan"],
+    };
+  } finally {
+    await client.disconnect().catch(() => {});
+  }
 }

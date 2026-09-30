@@ -26,6 +26,8 @@ import { runLendingSweep } from "@/lib/lendingSweep";
 import { forceFlushXrplCounters } from "@/lib/xrplCounters";
 import { runScreeningBackup } from "@/lib/screenBackup";
 import { sweepPurchaseIntents } from "@/lib/purchaseIntent";
+import { runAutoIssuance } from "@/lib/credentialAutoIssue";
+import { runExpiredCredentialCleanup } from "@/lib/credentialCleanup";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -56,6 +58,24 @@ export async function GET(req: Request) {
       process.env.CREDENTIAL_CENSUS_ENABLED === "true"
         ? await runIndexerPass(prisma, { budgetMs: 12_000 })
         : { census: "disabled" as const };
+
+    // Automatic credential issuance -- a genuine no-op until CREDENTIAL_ISSUER_SEED is set (see
+    // credentialAutoIssue.ts's header). Runs early, right after the census, while the cron's time
+    // budget is freshest: real mainnet submitAndWait calls (up to MAX_PER_RUN of them) are the slowest
+    // single thing this cron does.
+    const autoIssuance = await runAutoIssuance(prisma, { deadlineMs: t0 + 30_000 }).catch((e) => {
+      void notifyError("cron/index-credentials auto-issuance", e);
+      return { ran: false, reason: "auto-issuance threw", issuedToday: 0, cap: 0, processed: [] };
+    });
+
+    // Same dormant-until-the-seed-is-set posture as auto-issuance above. Recycles reserve from expired,
+    // never-accepted credentials -- separate from deleteExpiredCredentialIfAny (which only fires
+    // opportunistically when REISSUING to the same subject; most expired-unaccepted credentials never
+    // get reissued at all and would sit locked forever without this sweep).
+    const credentialCleanup = await runExpiredCredentialCleanup({ deadlineMs: t0 + 35_000 }).catch((e) => {
+      void notifyError("cron/index-credentials credential-cleanup", e);
+      return { ran: false, reason: "cleanup threw", totalHeld: 0, qualifying: 0, deleted: 0, failed: 0 };
+    });
 
     // Every sanctions list (OFAC-SDN, EU-FSF, UK-SL). Each list is independent: one failing or gated list never blocks the others,
     // and each alerts on its own fetch/parse/integrity failures. This catches anything ELSE that throws (database, unexpected).
@@ -126,7 +146,7 @@ export async function GET(req: Request) {
       return null;
     });
     await pingHealthcheck();
-    return NextResponse.json({ ...progress, sdn, monitor, lendingSweep, screeningAnchor, lendingAnchor, underwriteAnchor, screeningBackup, purchaseIntents, monitorAnchor, watchdog: watchdog ? { alerted: watchdog.alerted, recovered: watchdog.recovered, open: watchdog.findings.filter((f) => f.level !== "ok").map((f) => ({ key: f.key, level: f.level, message: f.message })) } : null });
+    return NextResponse.json({ ...progress, autoIssuance, credentialCleanup, sdn, monitor, lendingSweep, screeningAnchor, lendingAnchor, underwriteAnchor, screeningBackup, purchaseIntents, monitorAnchor, watchdog: watchdog ? { alerted: watchdog.alerted, recovered: watchdog.recovered, open: watchdog.findings.filter((f) => f.level !== "ok").map((f) => ({ key: f.key, level: f.level, message: f.message })) } : null });
   } catch (err) {
     await notifyError("cron/index-credentials", err);
     console.error("[cron/index-credentials]", err);

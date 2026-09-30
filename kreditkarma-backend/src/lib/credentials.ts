@@ -31,6 +31,7 @@ import {
   type LedgerEntryRequest,
 } from "xrpl";
 import { scoreWallet, AccountNotFoundError, METHODOLOGY } from "./xrplscore";
+import { deleteExpiredCredentialIfAny } from "./credentialOps";
 
 // ── HARD MAINNET LOCK ────────────────────────────────────────────────────────
 export const MAINNET_NETWORK_ID = 0; // mainnet=0, testnet=1, devnet=2
@@ -366,6 +367,11 @@ export async function issueScoreCredential(plan: IssuePlan): Promise<IssueResult
 
   const client = await connectMainnetOrThrow();
   try {
+    // A CredentialCreate for a (issuer, subject, type) that already exists fails with tecDUPLICATE
+    // regardless of expiry -- if this subject already holds an EXPIRED credential of this same tier
+    // (e.g. from a prior 90-day cycle), delete it first. See credentialOps.ts.
+    await deleteExpiredCredentialIfAny(client, wallet, EXPECTED_ISSUER, plan.subject, plan.credentialTypeHex);
+
     const prepared = await client.autofill(plan.txjson);
     const signed = wallet.sign(prepared);
     const res = await client.submitAndWait(signed.tx_blob);

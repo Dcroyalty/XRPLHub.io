@@ -29,6 +29,7 @@ import { ANCHOR_ACCOUNT } from "./mptAnchor";
 import { EXPECTED_ISSUER } from "./credentials";
 import { TREASURY } from "./pricing";
 import { maxTotalSubjects } from "./monitorEngine";
+import { checkCredentialAnomalies } from "./credentialAnomalyWatch";
 
 export type Level = "ok" | "warn" | "red";
 export interface Finding {
@@ -187,6 +188,17 @@ async function checkCredentialQueueBacklog(prisma: PrismaClient): Promise<Findin
   if (oldestDays > 14 || total > 25) return { key: "credential-queue-backlog", level: "red", message };
   if (oldestDays > 7 || total > 15) return { key: "credential-queue-backlog", level: "warn", message };
   return { key: "credential-queue-backlog", level: "ok", message };
+}
+
+/** Ledger-based, trusts nothing about how a CredentialCreate got there -- see credentialAnomalyWatch.ts.
+ *  This is the one check that still matters even if CREDENTIAL_ISSUER_SEED itself were ever stolen. */
+async function checkCredentialAnomaly(prisma: PrismaClient): Promise<Finding> {
+  const r = await checkCredentialAnomalies(prisma);
+  if (r.anomalies.length > 0) {
+    const detail = r.anomalies.slice(0, 5).map((a) => `${a.txHash.slice(0, 12)}… subject=${a.subject.slice(0, 10)}… type=${a.credentialType}`).join(" | ");
+    return { key: "credential-anomaly", level: "red", message: `${r.anomalies.length} CredentialCreate(s) from the issuer with no matching request in our database: ${detail}` };
+  }
+  return { key: "credential-anomaly", level: "ok", message: `${r.scanned} issuer CredentialCreate(s) checked through ledger #${r.lastLedgerChecked}, all accounted for` };
 }
 
 async function checkDomains(): Promise<Finding> {
@@ -433,6 +445,7 @@ export async function runWatchdog(prisma: PrismaClient, opts: WatchdogOptions = 
     add("credential-expiry", checkCredentialExpiry);
     add("credential-issuer-reserve", checkCredentialIssuerReserve);
     add("credential-queue-backlog", () => checkCredentialQueueBacklog(prisma));
+    add("credential-anomaly", () => checkCredentialAnomaly(prisma), 10000);
     add("screening-backup", () => checkScreeningBackup(prisma));
     add("domain-expiry", checkDomains, 9000);
     add("xns-expiry", checkXns, 9000);

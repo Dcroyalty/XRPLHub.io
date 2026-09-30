@@ -83,47 +83,53 @@ Already-live features (Credentials/XLS-70, PermissionedDomains, MPTokensV1) are 
 | `ERROR_WEBHOOK_URL` (Discord/Slack) | set | recreate if the webhook is deleted | **the weekly heartbeat message stops** (see §8) |
 | Vercel plan | **(inferred)** Hobby: 2 crons/day, 60 s functions | — | not detectable from inside; see §9 |
 
-## 5. Credential issuance & cleanup — hand-run by design, never automatic
+## 5. Credential issuance & cleanup — automatic since 2026-09-29
 
-`scripts/issue-queued-credentials.cjs` (issues what has been requested) and `scripts/cleanup-unaccepted-credentials.mjs`
-(deletes what was never accepted) both need `CREDENTIAL_ISSUER_SEED` to sign, and that seed is **deliberately never
-set in Vercel** — nothing that signs a credential transaction runs unattended, on any schedule. Both must be run by
-hand, from your own machine, on `.env`'s production values. This is a permanent design choice, not a gap to close.
+**This reverses what this section said before.** Issuance and cleanup used to be hand-run by design,
+specifically because `CREDENTIAL_ISSUER_SEED` was never on Vercel. The owner made the deliberate call to
+change that — moving the seed onto Vercel so the cron can sign directly — with real guardrails attached
+(below), not as a casual flip. Read this whole section before touching any of it.
 
-**If `issue-queued-credentials.cjs` is never run:** queued requests just sit in the `CredentialRequest` table
-(`status: "queued"`) forever. Nothing on the ledger, no reserve consumed, no error — the requester's own
-`GET /api/credentials/*-request?subject=…` keeps answering "queued for issuance by a person; nothing for you to sign
-yet", so nobody is misled into thinking it failed. But nobody gets their credential either, and one queue fills
-itself without anyone asking: **every `mptissue` purchase auto-queues an `mpt-declared` request** (§ Track 1c in
-`docs/CREDENTIAL-SPEC.md`), so that backlog grows with sales volume even if you never look at it. The
-`screen-nomatch` credential is also time-sensitive in a way the others aren't — its whole value is a *recent* check,
-and a request that sits queued for weeks before being issued (re-screened fresh at that moment, per
-`scripts/issue-screen-credential.mjs`) delivers a credential dated far later than whatever the requester actually
-expected when they asked.
+**What runs automatically now, both in `cron/index-credentials` (06:00 UTC), both a genuine no-op if
+`CREDENTIAL_ISSUER_SEED` is unset — same dormant-until-set posture the screening backup (§6) already
+established:**
+- `runAutoIssuance()` (`src/lib/credentialAutoIssue.ts`) — processes the `CredentialRequest` queue,
+  oldest first, up to 5 per run. Every family re-verifies the underlying fact FRESH immediately before
+  signing (re-scores, re-screens, or re-checks the domain link — never trusts what the request was
+  queued under): `issueScoreCredential`, `issueMptDeclaredCredential`, `issueScreenCredential`,
+  `issueDomainCredential`. A request that no longer qualifies is marked `failed` with the reason, not
+  retried forever.
+- `runExpiredCredentialCleanup()` (`src/lib/credentialCleanup.ts`) — deletes unaccepted credentials more
+  than 7 days past expiry, up to 10 per run, reclaiming issuer reserve. Same policy the old
+  `cleanup-unaccepted-credentials.mjs` used; accepted credentials are never touched (that reserve belongs
+  to the subject).
 
-**If `cleanup-unaccepted-credentials.mjs` is never run:** nothing bad happens fast, but nothing recovers either —
-there is no protocol-level expiry cleanup on the XRP Ledger (confirmed against xrpl.org, not assumed), so an
-unaccepted, expired credential sits on the **issuer's** reserve (0.2 XRP each) indefinitely. This is a live, near-term
-constraint, not a hypothetical: as of 2026-09-27 the issuer wallet had roughly **0.1 XRP of spendable headroom past
-its reserve** — room for about one more pending credential across all four families combined. A handful of requested-
-but-never-accepted credentials piling up without cleanup is enough to leave the issuer unable to issue anything new
-at all until either the wallet is funded or the cleanup script is run. (Accepted-but-expired credentials are not
-touched by this script and are not this problem — that reserve already belongs to the subject.)
+**Guardrails:**
+1. **Fresh re-verification at signing** — see above; this was already true of the hand-run scripts and
+   nothing here weakens it.
+2. **Daily issuance cap** — `CREDENTIAL_DAILY_CAP` (default **20**), counted live from the database
+   (`CredentialRequest.status='issued'` since UTC midnight), not an in-memory counter, so it can't drift
+   across deploys. A run that would exceed it stops and leaves the rest queued for tomorrow.
+3. **Per-run cap** — 5 issuances / 10 deletions per cron pass, same bounded-step pattern every other
+   piece of this cron already uses.
+4. **Ledger-based anomaly watchdog** — `src/lib/credentialAnomalyWatch.ts`, wired into `runWatchdog` as
+   `credential-anomaly`. Reads the issuer's own `account_tx` history (checkpointed, incremental) and
+   flags any `CredentialCreate` from `EXPECTED_ISSUER` that doesn't match a `CredentialRequest` row this
+   app marked `issued`. This is deliberately ledger-first: it trusts nothing about how a credential got
+   onto the chain, so it catches misuse even if the seed itself were stolen and used from somewhere
+   outside this codebase entirely — a stolen-key issuance still shows up as a `CredentialCreate` on the
+   ledger, and it still won't match anything in the database.
 
-**How often to run each:**
-- `issue-queued-credentials.cjs` — list-only (no `--issue`) costs nothing and is safe to run anytime; do it at least
-  **weekly**, and issue promptly whenever anything is queued rather than letting a backlog form — especially for
-  `screen-nomatch`, where staleness undermines the point, and for `mpt-declared`, whose queue you don't control the
-  arrival rate of.
-- `cleanup-unaccepted-credentials.mjs` — nothing qualifies until 7 days past expiry, so **monthly** is enough at
-  today's volume. Also run it (list-only first) whenever you're about to issue something and the issuer's spendable
-  XRP looks thin — it's the fastest way to find reserve to release.
+**The hand-run scripts still exist and still work** (`scripts/issue-queued-credentials.cjs`,
+`scripts/cleanup-unaccepted-credentials.mjs`) — useful for a backlog that needs attention faster than the
+next cron pass, or if `CREDENTIAL_ISSUER_SEED` is ever pulled from Vercel again and this reverts to the
+old hand-run posture with zero code changes needed.
 
-**Honest gap:** the watchdog does not currently check the size of the `CredentialRequest` queue, how long anything in
-it has sat unresolved, or the issuer wallet's live reserve headroom for the three newer families — only the one
-score credential's own expiry is watched (§4). Someone letting both scripts lapse for months would get no alert.
-Adding `queued-credential-backlog` and `credential-issuer-reserve` checks to `src/lib/watchdog.ts` would close this;
-not done as part of this note.
+**What still needs a human:** approving the underlying REQUEST in the first place is not automated and
+was never meant to be for `score`/`mpt-declared` (both are "we issue because you already engaged us" --
+no separate approval gate) or `screen-nomatch`/`domain-verified` (both self-serve, gated by the live
+re-check itself, not a person). Nothing about this automation added a new approval step; it only
+automated the SIGNING of requests that were already going to be issued.
 
 ## 6. The 10-year screening-receipt retention obligation — what it actually requires
 
@@ -301,3 +307,38 @@ Neon's pooled connection string (`-pooler` host, or `pgbouncer=true`) — get it
 production, redeploy. This is the standard fix for exactly this architecture and should be low-risk, but
 changing the primary database connection string is not something to do unverified right before a traffic
 spike is expected — schedule it with a quiet window to confirm nothing broke.
+
+## 15. Storefront auto-detection (2026-09-29)
+
+`src/lib/purchaseIntent.ts` -- a manually-sent storefront payment (no Xaman, no injected wallet, no hash
+ever pasted) is now caught two ways: a client-side poll by destination tag while the tab is open (fast),
+and a cron sweep (`sweepPurchaseIntents`, in `cron/index-credentials`) for the case where the customer
+closes the tab and never comes back at all. `paymentGate.ts` itself was never touched -- this only
+discovers a candidate tx hash and hands it to the exact same `verifyPayment`/`registerPayment` the
+paste-a-hash path already used. **Needs `npx prisma db push` run once** to create the `PurchaseIntent`
+table (blocked from me by the permission system as a production DB change) -- the code is deploy-safe
+either way (every path degrades to pre-existing behavior if the table doesn't exist yet), but the feature
+itself is a no-op until that push runs.
+
+## 16. Admin auth: Xaman sign-in (2026-09-29)
+
+`/admin` no longer uses a pasted `ADMIN_API_TOKEN` in a password field. Sign in with a wallet in
+`ADMIN_WALLETS` (env, comma-separated; defaults to the treasury alone) via Xaman SignIn -- same
+challenge/signature mechanism as the free-key flow (`src/lib/freeKey.ts`), just gated by the allowlist
+instead of minting a key. Issues a short-lived (1h) HMAC-signed session cookie, signed with
+`ADMIN_API_TOKEN` itself (no new secret). `ADMIN_API_TOKEN` in a header keeps working exactly as before
+for scripts and crons -- this was purely additive to `isAdmin()` (`src/lib/adminAuth.ts`).
+
+## 17. MPP (Machine Payments Protocol) -- scaffolded, not built (2026-09-29)
+
+`src/app/api/mpp/[resource]/route.ts` exists as an isolated route slot, gated behind `MPP_ENABLED` (unset
+= off, the only state that currently exists). **This is a stub, not a working integration** -- given the
+scope of everything else built the same night, a half-finished payment-acceptance path was judged worse
+than none. What's still needed before it can do anything: the `xrpl-mpp-sdk` + `mppx` dependencies
+(`xrpl-mpp-sdk` was still beta -- `0.1.0-beta.3` -- checked directly against npm on 2026-09-29, not from
+memory), a durable replay store (their docs require Postgres or DynamoDB; in-memory is explicitly
+dev-only), and an HMAC secret (`MPP_CHALLENGE_SECRET`, `openssl rand -base64 32`) for challenge signing.
+Their peer dependency range (`xrpl >=4.0.0 <5.0.0`) matches this project's pinned 4.6.0 today, but is
+**incompatible with the Batch transaction type** (needs `xrpl.js` 5.1.0+, sec 11) -- building MPP for real
+forecloses Batch and vice versa on the current dependency graph. Don't start wiring the real SDK in
+without re-confirming that tradeoff still holds.

@@ -21,9 +21,10 @@
 // live holder needs a fresh screen and a fresh CredentialCreate roughly every 30 days if they want to stay covered.
 
 import type { PrismaClient } from "@prisma/client";
-import { convertStringToHex, unixTimeToRippleTime, rippleTimeToUnixTime, type SubmittableTransaction } from "xrpl";
-import { EXPECTED_ISSUER, buildCredentialCreate } from "./credentials";
+import { Wallet, convertStringToHex, unixTimeToRippleTime, rippleTimeToUnixTime, type SubmittableTransaction } from "xrpl";
+import { EXPECTED_ISSUER, buildCredentialCreate, connectMainnetOrThrow, WrongIssuerError, type IssueResult } from "./credentials";
 import { screenAll, type ScreenOutcome } from "./screen";
+import { deleteExpiredCredentialIfAny } from "./credentialOps";
 
 export const SCREEN_CRED_NAMESPACE = "io.xrplhub.screen.v2";
 export const SCREEN_NOMATCH_TYPE = "io.xrplhub.screen.v2.nomatch";
@@ -106,4 +107,48 @@ export async function requestScreenCredential(
     data: { kind: "screen-nomatch", subject, tier: "nomatch", credentialType: SCREEN_NOMATCH_TYPE, subjectRef: outcome.queryId, status: "queued" },
   });
   return { queued: true, requestId: row.id, outcome, reused: false };
+}
+
+/**
+ * Sign + submit on mainnet from CREDENTIAL_ISSUER_SEED. UNLIKE mpt-declared, the fact this attests DOES
+ * change day to day (lists update) -- ALWAYS re-screens immediately before signing and refuses if the
+ * address is listed at that moment. The request's original screen (possibly hours or days old) is never
+ * trusted for the actual issuance decision.
+ */
+export async function issueScreenCredential(prisma: PrismaClient, plan: ScreenCredPlan): Promise<IssueResult> {
+  const seed = process.env.CREDENTIAL_ISSUER_SEED;
+  if (!seed) throw new Error("CREDENTIAL_ISSUER_SEED is not set");
+  const wallet = Wallet.fromSeed(seed);
+  if (wallet.classicAddress !== EXPECTED_ISSUER) {
+    throw new WrongIssuerError(`REFUSING: CREDENTIAL_ISSUER_SEED derives ${wallet.classicAddress}, expected ${EXPECTED_ISSUER}.`);
+  }
+  if (plan.issuer !== EXPECTED_ISSUER) {
+    throw new WrongIssuerError(`REFUSING: plan issuer ${plan.issuer} != ${EXPECTED_ISSUER}.`);
+  }
+
+  // Re-screen at issuance time. Refuse outright if listed NOW, regardless of what the queued request found.
+  const fresh = await screenAll(prisma, plan.subject, "operator:issue-screen-credential", {});
+  if (fresh.leaf.result.listed) throw new ScreenCredListedError(fresh);
+
+  const client = await connectMainnetOrThrow();
+  try {
+    await deleteExpiredCredentialIfAny(client, wallet, EXPECTED_ISSUER, plan.subject, plan.credentialTypeHex);
+
+    const prepared = await client.autofill(plan.txjson);
+    const signed = wallet.sign(prepared);
+    const res = await client.submitAndWait(signed.tx_blob);
+    const meta = res.result.meta;
+    const engineResult = meta && typeof meta === "object" ? (meta as { TransactionResult: string }).TransactionResult : "unknown";
+    return {
+      network: "mainnet",
+      txHash: res.result.hash,
+      validated: res.result.validated ?? false,
+      engineResult,
+      ledgerIndex: res.result.ledger_index,
+      feeDrops: (prepared as { Fee?: string }).Fee,
+      plan: plan as unknown as IssueResult["plan"],
+    };
+  } finally {
+    await client.disconnect().catch(() => {});
+  }
 }

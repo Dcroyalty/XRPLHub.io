@@ -11,10 +11,11 @@
 // DNS-reassignment window of up to 90 days is a real, if small, exposure — flagged, not solved, here.
 
 import type { PrismaClient } from "@prisma/client";
-import { convertStringToHex, unixTimeToRippleTime, rippleTimeToUnixTime, type SubmittableTransaction } from "xrpl";
-import { EXPECTED_ISSUER, buildCredentialCreate } from "./credentials";
+import { Wallet, convertStringToHex, unixTimeToRippleTime, rippleTimeToUnixTime, type SubmittableTransaction } from "xrpl";
+import { EXPECTED_ISSUER, buildCredentialCreate, connectMainnetOrThrow, WrongIssuerError, type IssueResult } from "./credentials";
 import { verifyDomainTwoWay, type TomlAccountsCheck } from "./domainVerify";
 import { xrplRpc } from "./xrplNodes";
+import { deleteExpiredCredentialIfAny } from "./credentialOps";
 
 export const DOMAIN_CRED_NAMESPACE = "io.xrplhub.domain.v1";
 export const DOMAIN_VERIFIED_TYPE = "io.xrplhub.domain.v1.verified";
@@ -138,4 +139,47 @@ export async function requestDomainCredential(
     data: { kind: "domain-verified", subject, tier: "verified", credentialType: DOMAIN_VERIFIED_TYPE, subjectRef: domain, status: "queued" },
   });
   return { queued: true, requestId: row.id, domain, reused: false };
+}
+
+/**
+ * Sign + submit on mainnet from CREDENTIAL_ISSUER_SEED. The domain link can change (DNS reassigned,
+ * toml edited, Domain field cleared) between when a request was queued and issuance -- ALWAYS re-checks
+ * both directions immediately before signing via verifySubjectDomainNow, which throws on any failure.
+ */
+export async function issueDomainCredential(plan: DomainCredPlan): Promise<IssueResult> {
+  const seed = process.env.CREDENTIAL_ISSUER_SEED;
+  if (!seed) throw new Error("CREDENTIAL_ISSUER_SEED is not set");
+  const wallet = Wallet.fromSeed(seed);
+  if (wallet.classicAddress !== EXPECTED_ISSUER) {
+    throw new WrongIssuerError(`REFUSING: CREDENTIAL_ISSUER_SEED derives ${wallet.classicAddress}, expected ${EXPECTED_ISSUER}.`);
+  }
+  if (plan.issuer !== EXPECTED_ISSUER) {
+    throw new WrongIssuerError(`REFUSING: plan issuer ${plan.issuer} != ${EXPECTED_ISSUER}.`);
+  }
+
+  // Re-verify both directions right now. Throws (NoDomainDeclaredError / DomainNotVerifiedError /
+  // LedgerUnavailableError) if it no longer holds -- never signs on a stale verification.
+  await verifySubjectDomainNow(plan.subject);
+
+  const client = await connectMainnetOrThrow();
+  try {
+    await deleteExpiredCredentialIfAny(client, wallet, EXPECTED_ISSUER, plan.subject, plan.credentialTypeHex);
+
+    const prepared = await client.autofill(plan.txjson);
+    const signed = wallet.sign(prepared);
+    const res = await client.submitAndWait(signed.tx_blob);
+    const meta = res.result.meta;
+    const engineResult = meta && typeof meta === "object" ? (meta as { TransactionResult: string }).TransactionResult : "unknown";
+    return {
+      network: "mainnet",
+      txHash: res.result.hash,
+      validated: res.result.validated ?? false,
+      engineResult,
+      ledgerIndex: res.result.ledger_index,
+      feeDrops: (prepared as { Fee?: string }).Fee,
+      plan: plan as unknown as IssueResult["plan"],
+    };
+  } finally {
+    await client.disconnect().catch(() => {});
+  }
 }
