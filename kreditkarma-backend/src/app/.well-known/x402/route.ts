@@ -394,7 +394,9 @@ export async function GET(req: Request) {
       facilitator: FACILITATOR_URL,
       network: XRPL_NETWORK,
       payTo: TREASURY_ADDRESS,
-      resources: [
+      // Base entries FIRST, XRPL entries LAST: xrpl-ai.org keeps the last entry it sees for a URL, so the RLUSD listing must win
+      // there (it registers only xrpl:0 entries). Stable sort — order within each rail is unchanged.
+      resources: ([
         {
           resource: `${origin}/api/x402/score`,
           method: "GET",
@@ -523,7 +525,7 @@ export async function GET(req: Request) {
         // Base twins of score and report (XRPL-only until 2026-10-05).
         baseWalletGetResource(origin, "/api/x402/score", "XRPLScore — wallet creditworthiness score", SCORE_SCHEMA.description, PRICE_PER_SCORE_USDC, SCORE_SCHEMA),
         baseWalletGetResource(origin, "/api/x402/report", "Full wallet risk report", REPORT_SCHEMA.description, PRICE_PER_REPORT_USDC, REPORT_SCHEMA),
-      ],
+      ] as { network: string }[]).sort((x, y) => Number(x.network === XRPL_NETWORK) - Number(y.network === XRPL_NETWORK)),
       links: {
         mcp: `${origin}/api/mcp`,
         openapi: `${origin}/openapi.json`,
