@@ -188,7 +188,8 @@ type CheckNode = { index: string; InvoiceID?: string; Expiration?: number; SendM
 
 /** Refresh every SpendCheck of a plan from the ledger: unsigned -> open (on ledger) -> expired / closed (cashed | cancelled). */
 export async function syncPlanChecks(prisma: PrismaClient, planId: string, funder: string): Promise<{ ok: boolean; closeTime: number | null }> {
-  const rows = await prisma.spendCheck.findMany({ where: { planId, status: { in: ["unsigned", "open", "expired"] } } });
+  // Also re-check closed rows whose "how" is still unknown (a history read can miss; the next sync fills it in).
+  const rows = await prisma.spendCheck.findMany({ where: { planId, OR: [{ status: { in: ["unsigned", "open", "expired"] } }, { status: "closed", closedHow: null }] } });
   if (!rows.length) return { ok: true, closeTime: null };
   const objs = await rpc("account_objects", { account: funder, type: "check", limit: 400 });
   const ledger = await rpc("ledger", {});
@@ -201,8 +202,10 @@ export async function syncPlanChecks(prisma: PrismaClient, planId: string, funde
   let history: { tx?: Record<string, unknown>; tx_json?: Record<string, unknown>; meta?: Record<string, unknown> }[] | null = null;
   const loadHistory = async () => {
     if (history) return history;
-    const h = await rpc("account_tx", { account: funder, limit: 400, ledger_index_min: -1, ledger_index_max: -1 });
-    history = ((h?.transactions as typeof history) ?? []);
+    // NO ledger_index here: on Clio (s1/s2.ripple.com) ledger_index:"validated" overrides ledger_index_min/max and
+    // narrows account_tx to the current ledger only — the history comes back empty (found 2026-10-05).
+    const h = await xrplRpc("account_tx", { account: funder, limit: 400, ledger_index_min: -1, ledger_index_max: -1 });
+    history = h.ok ? (((h.body.result as Record<string, unknown>)?.transactions as typeof history) ?? []) : [];
     return history;
   };
   const created = new Map<string, string>(); // invoiceId -> checkId from a CheckCreate we never saw on the ledger
@@ -231,6 +234,7 @@ export async function syncPlanChecks(prisma: PrismaClient, planId: string, funde
     const checkId = r.checkId ?? created.get(r.invoiceId) ?? null;
     if (!checkId) continue; // never created: stays unsigned
     const how = closedBy.get(checkId) ?? null;
+    if (r.status === "closed" && !how) continue; // still unknown — try again next sync
     await prisma.spendCheck.update({ where: { id: r.id }, data: { status: "closed", checkId, closedHow: how } });
   }
   return { ok: true, closeTime };

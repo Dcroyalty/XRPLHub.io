@@ -43,7 +43,7 @@ export async function POST(req: Request) {
     reserve: {
       perCheckXrp: reserve,
       upFrontXrp: Number((reserve * v.totalChecks).toFixed(6)),
-      note: `${v.totalChecks} open check${v.totalChecks === 1 ? "" : "s"} hold ${Number((reserve * v.totalChecks).toFixed(6))} XRP of your reserve while open. It comes back as each check is cashed or cancelled.`,
+      note: `${v.totalChecks} open check${v.totalChecks === 1 ? " holds" : "s hold"} ${Number((reserve * v.totalChecks).toFixed(6))} XRP of your reserve while open. It comes back as each check is cashed or cancelled.`,
     },
     funderRlusd: balance,
     funded: balance === null ? null : balance >= v.totalBudgetCents / 100,
