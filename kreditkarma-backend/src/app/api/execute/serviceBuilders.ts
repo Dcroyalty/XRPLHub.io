@@ -9,7 +9,9 @@
 // step 1 and later steps are built by id (ctx.planIds).
 
 import { createHash } from 'crypto';
-import { LSF, ammExists, findPaths, getAccount, getAmm, getLines } from '@/lib/serviceChain';
+import { LSF, ammExists, findPaths, getAccount, getAmm, getDelegate, getLines } from '@/lib/serviceChain';
+import { buildDelegateGrant, grantedPermissions, parsePermissions } from '@/lib/delegation';
+import { serviceAvailability } from '@/lib/serviceAmendments';
 import {
   BAD, CAUTION, CAUTION_STEPS, NEED, SAFE, SAFE_STEPS,
   amountOf, assetFrom, currencyCode, hexOf, isAddr, isDomain, positiveDecimal, str, truthy,
@@ -354,5 +356,36 @@ export const richBuilders: Record<string, Builder> = {
         return BAD('you hold no LP tokens for that pool, so there is nothing to withdraw');
     }
     return SAFE(tx, mode === 'all' ? 'AMM Liquidity Exit (withdraw everything)' : mode === 'single' ? 'AMM Liquidity Exit (one asset)' : 'AMM Liquidity Exit (both assets)');
+  },
+
+  // ── Permission Delegation (XLS-75) ─────────────────────────────────────────
+  // DelegateSet granting `delegate` the right to sign the chosen transaction types for this account. Amendment-gated
+  // (PermissionDelegationV1_1, fail closed — see serviceAmendments.ts). Revoking is free and separate:
+  // POST /api/delegate/revoke. Rules + per-permission copy: src/lib/delegation.ts.
+  delegate: async (account, p) => {
+    const avail = await serviceAvailability('delegate');
+    if (!avail.available) return BAD(avail.message ?? 'Permission delegation is not available yet.');
+
+    const delegate = str(p.delegate);
+    if (!delegate) return NEED(['delegate', 'permissions']);
+    if (!isAddr(delegate)) return BAD('the delegate must be a valid XRPL address (r…) whose checksum verifies');
+    if (delegate === account) return BAD('the delegate must be a different account from yours');
+    const perms = parsePermissions(p.permissions);
+    if (!perms.ok) return str(p.permissions) ? BAD(perms.error) : NEED(['permissions']);
+
+    // Read before building: the ledger refuses a delegate that doesn't exist (tecNO_TARGET) after you've paid, and an
+    // existing grant to the same account is REPLACED, not merged — the label says which.
+    const [me, them, existing] = await Promise.all([getAccount(account), getAccount(delegate), getDelegate(account, delegate)]);
+    if (!me || !them || existing === null) return BAD(LEDGER_UNREACHABLE);
+    if (!me.found) return BAD('your account is not activated on the XRP Ledger');
+    if (!them.found) return BAD('the delegate account does not exist on the XRP Ledger yet — it must be activated (funded) before you can delegate to it');
+
+    const built = buildDelegateGrant(account, delegate, perms.values);
+    if (!built.ok) return BAD(built.error);
+    const before = existing ? grantedPermissions(existing) : [];
+    const label = existing
+      ? `Replace delegate permissions (${before.length} → ${perms.values.length})`
+      : `Grant delegate ${perms.values.length} permission${perms.values.length === 1 ? '' : 's'}`;
+    return CAUTION(built.txjson, label);
   },
 };

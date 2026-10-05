@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { SERVICE_PRICE_USD } from '@/lib/servicePrices';
+import { DELEGABLE_PERMISSIONS, MAX_DELEGATE_PERMISSIONS } from '@/lib/delegationPermissions';
 import { GRANT_APPLICATIONS_OPEN, GRANTS_PAUSED_TITLE, GRANTS_PAUSED_MESSAGE, GRANTS_DONATE_NOTE } from '@/lib/grantsStatus';
 import WalletPicker from '@/lib/wallet/WalletPicker';
 import XamanPayPrompt from '@/components/XamanPayPrompt';
@@ -115,7 +116,7 @@ import { PRODUCTS, type Product } from '@/lib/serviceContent';
 // transaction. Defaults + placeholders keep input clean; the engine validates.
 // Products NOT listed here need no params — they execute straight to Xaman sign.
 type PickerKind = 'checks'|'nfts'|'mpts'|'holders';
-type ExecField = { key:string; label:string; placeholder?:string; type?:'text'|'number'|'select'|'picker'|'datetime'; options?:string[]; default?:string; help?:string; required?:boolean; pickerType?:PickerKind };
+type ExecField = { key:string; label:string; placeholder?:string; type?:'text'|'number'|'select'|'picker'|'datetime'|'permissions'; options?:string[]; default?:string; help?:string; required?:boolean; pickerType?:PickerKind };
 // Ripple epoch = seconds since 2000-01-01T00:00:00Z (946,684,800s after the Unix epoch) — same constant every server
 // file that handles Ripple time defines locally (e.g. src/lib/lendingExposure.ts); used here only to turn a
 // datetime-local picker into the raw seconds EscrowCreate.FinishAfter needs.
@@ -125,6 +126,10 @@ const RIPPLE_EPOCH_OFFSET = 946_684_800;
 const WELL_KNOWN_ISSUERS: Record<string,string> = { RLUSD: 'rMxCKbEDwqr76QuheSUMdEGf4B9xJ8m5De' };
 const EXEC_FIELDS: Record<string, ExecField[]> = {
   // Wallet security (caution tier handled server-side)
+  delegate: [
+    { key:'delegate', label:'Account to authorize (the delegate)', placeholder:'rXXX…', required:true, help:'They sign with their own key. It must be an activated account, and not yours.' },
+    { key:'permissions', label:`What they may sign for you (up to ${MAX_DELEGATE_PERMISSIONS})`, type:'permissions', required:true, help:'You will confirm every one of these in plain English before you sign.' },
+  ],
   multisig: [
     { key:'signers', label:'Signer wallet addresses', placeholder:'rAAA…, rBBB…, rCCC…', help:'Comma-separated XRPL addresses allowed to co-sign', required:true },
     { key:'quorum', label:'Required signatures (quorum)', type:'number', default:'2', help:'How many signers must approve each transaction', required:true },
@@ -629,6 +634,139 @@ function DateTimeField({ value, onChange }: { value: string; onChange: (v: strin
   );
 }
 
+// Permission Delegation (XLS-75): pick up to MAX_DELEGATE_PERMISSIONS permissions, grouped by what they can do to you.
+// Value is the comma-joined list the server's parsePermissions() reads; every item shows exactly what it allows (the same
+// copy, from src/lib/delegationPermissions.ts, that the confirmation step repeats before signing).
+const RISK_GROUPS: { risk:'spend'|'control'|'low'; title:string; color:string }[] = [
+  { risk:'spend', title:'Can move, sell or destroy what you hold', color:'#f87171' },
+  { risk:'control', title:'Changes how your account or tokens behave', color:'#f59e0b' },
+  { risk:'low', title:'Brings value in, or only cleans up', color:'#10b981' },
+];
+function PermissionsField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const chosen = value.split(',').map(s => s.trim()).filter(Boolean);
+  const toggle = (v: string) => {
+    const next = chosen.includes(v) ? chosen.filter(c => c !== v) : chosen.length >= MAX_DELEGATE_PERMISSIONS ? chosen : [...chosen, v];
+    onChange(next.join(','));
+  };
+  return (
+    <div>
+      <p style={{ fontSize:11,color:'rgba(255,255,255,.4)',marginBottom:8 }}>{chosen.length} of {MAX_DELEGATE_PERMISSIONS} chosen</p>
+      {RISK_GROUPS.map(g => (
+        <div key={g.risk} style={{ marginBottom:10 }}>
+          <p style={{ fontSize:10,fontWeight:700,color:g.color,letterSpacing:'.08em',textTransform:'uppercase',marginBottom:5 }}>{g.title}</p>
+          {DELEGABLE_PERMISSIONS.filter(d => d.risk === g.risk).map(d => {
+            const on = chosen.includes(d.value);
+            const full = !on && chosen.length >= MAX_DELEGATE_PERMISSIONS;
+            return (
+              <label key={d.value} style={{ display:'flex',gap:9,alignItems:'flex-start',padding:'7px 9px',borderRadius:9,marginBottom:4,cursor:full?'not-allowed':'pointer',opacity:full?.4:1,background:on?`${g.color}14`:'rgba(255,255,255,.03)',border:`1px solid ${on?g.color+'55':'rgba(255,255,255,.06)'}` }}>
+                <input type="checkbox" checked={on} disabled={full} onChange={()=>toggle(d.value)} style={{ marginTop:3 }} />
+                <span>
+                  <span style={{ fontSize:13,fontWeight:700,color:'#fff' }}>{d.label}</span>
+                  <span style={{ fontSize:10,color:'rgba(255,255,255,.35)',fontFamily:"'IBM Plex Mono',monospace",marginLeft:6 }}>{d.value}</span>
+                  <span style={{ display:'block',fontSize:11,color:'rgba(255,255,255,.5)',lineHeight:1.55,marginTop:2 }}>{d.allows}</span>
+                </span>
+              </label>
+            );
+          })}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Delegation info-step panel: the LIVE amendment state (Buy stays disabled until the ledger says it's active) and the
+// FREE revoke — list who this wallet has delegated to and take it back with one signature. Server: /api/delegate.
+type DelegationAvail = { available:boolean; message:string|null; earliestActivation:string|null };
+type DelegationRow = { delegate:string; permissions:{ value:string; label:string; risk:string }[] };
+function useDelegationAvailability(enabled: boolean) {
+  const [avail, setAvail] = useState<DelegationAvail|null>(null);
+  useEffect(() => {
+    if (!enabled) return;
+    let dead = false;
+    const unknown = { available:false, message:'Could not check availability — try again shortly.', earliestActivation:null };
+    fetch(`${API_URL}/api/delegate`).then(r => r.json()).then(d => { if (!dead) setAvail(d?.availability ?? unknown); })
+      .catch(() => { if (!dead) setAvail(unknown); });
+    return () => { dead = true; };
+  }, [enabled]);
+  return avail;
+}
+function DelegationPanel({ account, avail, walletSel }: { account:string; avail:DelegationAvail|null; walletSel:string }) {
+  const [rows, setRows] = useState<DelegationRow[]|null>(null);
+  const [err, setErr] = useState('');
+  const [busy, setBusy] = useState('');
+  const [sign, setSign] = useState<{ delegate:string; qr:string|null; link:string|null; txjson:Record<string,unknown> }|null>(null);
+  useEffect(() => {
+    if (!account || !avail?.available) return;
+    let dead = false;
+    fetch(`${API_URL}/api/delegate?account=${encodeURIComponent(account)}`)
+      .then(async r => { const d = await r.json(); if (!r.ok) throw new Error(d.message || 'lookup failed'); return d; })
+      .then(d => { if (!dead) setRows(d.delegations ?? []); })
+      .catch(e => { if (!dead) setErr(e instanceof Error ? e.message : 'Could not read your delegations.'); });
+    return () => { dead = true; };
+  }, [account, avail?.available]);
+  // While a revoke is out for signature, watch the LEDGER (not the wallet) until the delegation is gone.
+  useEffect(() => {
+    if (!sign) return;
+    const iv = setInterval(async () => {
+      try {
+        const r = await fetch(`${API_URL}/api/delegate?account=${encodeURIComponent(account)}`);
+        const d = await r.json();
+        if (r.ok && !(d.delegations ?? []).some((x: DelegationRow) => x.delegate === sign.delegate)) { setSign(null); setRows(d.delegations ?? []); setBusy(''); }
+      } catch { /* keep polling */ }
+    }, 4000);
+    return () => clearInterval(iv);
+  }, [sign, account]);
+  const revoke = async (delegate: string) => {
+    setBusy(delegate); setErr('');
+    try {
+      const r = await fetch(`${API_URL}/api/delegate`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ account, delegate }) });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.message || 'Could not build the revoke');
+      if (walletSel !== 'xaman') {
+        const provider = getWalletProvider(walletSel);
+        if (provider?.submitTx) { await provider.submitTx(d.txjson); setSign({ delegate, qr:null, link:null, txjson:d.txjson }); return; }
+      }
+      setSign({ delegate, qr:d.qr_png ?? null, link:d.deep_link ?? null, txjson:d.txjson });
+    } catch (e) { setErr(e instanceof WalletCancelled ? 'You declined the signature.' : e instanceof Error ? e.message : 'Revoke failed'); setBusy(''); }
+  };
+
+  if (!avail) return <p style={{ fontSize:12,color:'rgba(255,255,255,.35)',marginBottom:16 }}>Checking the XRP Ledger for the PermissionDelegationV1_1 amendment…</p>;
+  if (!avail.available) {
+    return (
+      <div style={{ background:'rgba(34,211,238,.07)',border:'1px solid rgba(34,211,238,.35)',borderRadius:12,padding:'13px 16px',marginBottom:18 }}>
+        <p style={{ fontSize:11,fontWeight:700,color:'#22d3ee',letterSpacing:'.06em',textTransform:'uppercase',marginBottom:6 }}>Live from the XRP Ledger · not active yet</p>
+        <p style={{ fontSize:13,color:'rgba(255,255,255,.7)',lineHeight:1.7 }}>{avail.message}</p>
+      </div>
+    );
+  }
+  return (
+    <div style={{ background:'rgba(255,255,255,.03)',border:'1px solid rgba(255,255,255,.08)',borderRadius:12,padding:'13px 16px',marginBottom:18 }}>
+      <p style={{ fontSize:11,fontWeight:700,color:'#22d3ee',letterSpacing:'.06em',textTransform:'uppercase',marginBottom:6 }}>Revoke a delegation — free</p>
+      {!account && <p style={{ fontSize:12,color:'rgba(255,255,255,.5)' }}>Connect your wallet to see who can sign for your account, and revoke them with one signature.</p>}
+      {account && rows === null && !err && <p style={{ fontSize:12,color:'rgba(255,255,255,.4)' }}>Reading your delegations…</p>}
+      {account && rows && rows.length === 0 && <p style={{ fontSize:12,color:'rgba(255,255,255,.5)' }}>No account can sign for this wallet right now.</p>}
+      {(rows ?? []).map(row => (
+        <div key={row.delegate} style={{ display:'flex',justifyContent:'space-between',gap:10,alignItems:'center',padding:'8px 0',borderTop:'1px solid rgba(255,255,255,.06)',flexWrap:'wrap' }}>
+          <div style={{ minWidth:0 }}>
+            <p style={{ fontSize:12,fontFamily:"'IBM Plex Mono',monospace",color:'#fff' }}>{row.delegate.slice(0,10)}…{row.delegate.slice(-6)}</p>
+            <p style={{ fontSize:11,color:'rgba(255,255,255,.45)' }}>{row.permissions.map(p => p.label).join(' · ')}</p>
+          </div>
+          <button disabled={!!busy} onClick={()=>revoke(row.delegate)} style={{ ...Btn('ghost', undefined, { fontSize:12, padding:'7px 12px', opacity: busy && busy !== row.delegate ? .4 : 1 }) }}>{busy === row.delegate ? 'Waiting for signature…' : 'Revoke'}</button>
+        </div>
+      ))}
+      {sign && (
+        <div style={{ marginTop:10,textAlign:'center' }}>
+          {sign.qr && <img src={sign.qr} alt="Scan with Xaman to revoke" style={{ width:170,height:170,borderRadius:12,background:'#fff',padding:6 }} />}
+          {sign.link && <a href={sign.link} target="_blank" rel="noreferrer" style={{ display:'block',fontSize:12,color:'#22d3ee',marginTop:8 }}>Open in Xaman →</a>}
+          {!sign.qr && !sign.link && walletSel === 'xaman' && <pre style={{ fontSize:10,textAlign:'left',whiteSpace:'pre-wrap',color:'rgba(255,255,255,.6)' }}>{JSON.stringify(sign.txjson, null, 2)}</pre>}
+          <p style={{ fontSize:11,color:'rgba(255,255,255,.4)',marginTop:6 }}>Watching the ledger — this updates by itself once the revoke validates.</p>
+        </div>
+      )}
+      {err && <p style={{ fontSize:12,color:'#fca5a5',marginTop:8 }}>⚠️ {err}</p>}
+    </div>
+  );
+}
+
 // ─── PRODUCT MODAL (real polling payment gate) ───
 function ProductModal({ show, onClose, product, connectedWallet }: { show:boolean; onClose:()=>void; product:Product|null; connectedWallet:string }) {
   const [currency, setCurrency] = useState<Currency>('RLUSD');
@@ -674,6 +812,9 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
     fetch(`${API_URL}/api/mpt/permanence`).then(r => r.json()).then(d => { if (!dead && Array.isArray(d?.headline)) setMptPerm(d); }).catch(() => { if (!dead) setMptPerm(null); });
     return () => { dead = true; };
   }, [step, product?.id]);
+  // Amendment-gated service (today: delegate): Buy is disabled until the validated ledger says the amendment is active.
+  const delegAvail = useDelegationAvailability(show && product?.id === 'delegate');
+  const buyBlocked = product?.id === 'delegate' && !delegAvail?.available;
   const exPollRef = useRef<ReturnType<typeof setTimeout>|null>(null);
   const pollRef   = useRef<ReturnType<typeof setTimeout>|null>(null);
   const cancelRef = useRef(false);
@@ -967,6 +1108,8 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
                   <PickerField field={f} value={exForm[f.key] ?? ''} onChange={v=>setF(f.key,v)} account={connectedWallet} />
                 ) : f.type==='datetime' ? (
                   <DateTimeField value={exForm[f.key] ?? ''} onChange={v=>setF(f.key,v)} />
+                ) : f.type==='permissions' ? (
+                  <PermissionsField value={exForm[f.key] ?? ''} onChange={v=>setF(f.key,v)} />
                 ) : (
                   <input type={f.type==='number'?'number':'text'} value={exForm[f.key] ?? f.default ?? ''} onChange={e=>setF(f.key,e.target.value)} placeholder={f.placeholder||''} style={{ ...INP, fontFamily:(f.key.toLowerCase().includes('address')||f.key.includes('issuer')||f.key.includes('destination')||f.key.includes('wallet')||f.key.includes('Id')||f.key.includes('holder')||f.key.includes('subject'))?"'IBM Plex Mono',monospace":'inherit', fontSize:f.type==='number'?14:13 }} />
                 )}
@@ -1280,7 +1423,8 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
       <div style={{ background:'rgba(255,255,255,.03)',borderRadius:11,padding:'11px 15px',marginBottom:20 }}>
         <p style={{ fontSize:11,color:'rgba(255,255,255,.3)',lineHeight:1.7 }}><strong style={{ color:'rgba(255,255,255,.45)' }}>Disclosure: </strong>On-chain operational service. You sign every transaction yourself in Xaman; we never hold your keys or funds. Not insurance, securities, or financial advice. All XRPL transactions are irrevocable.</p>
       </div>
-      <button onClick={()=>setStep('checkout')} style={{ ...Btn('color',product.color,{width:'100%',padding:'15px',fontSize:16}) }}>Buy Now — {product.priceRLUSD} RLUSD →</button>
+      {product.id === 'delegate' && <DelegationPanel account={connectedWallet} avail={delegAvail} walletSel={walletSel} />}
+      <button disabled={buyBlocked} onClick={()=>{ if (!buyBlocked) setStep('checkout'); }} style={{ ...Btn('color',product.color,{width:'100%',padding:'15px',fontSize:16,opacity:buyBlocked?.4:1,cursor:buyBlocked?'not-allowed':'pointer'}) }}>{buyBlocked ? (delegAvail ? 'Not available yet — switches on by itself' : 'Checking availability…') : <>Buy Now — {product.priceRLUSD} RLUSD →</>}</button>
     </Overlay>
   );
 }
@@ -2067,6 +2211,7 @@ export default function XRPLHubHome() {
     // ── Wallet security (advanced, last) ──
     'multisig',       // Multi-sig
     'regkey',         // Regular key
+    'delegate',       // Permission delegation (XLS-75)
     'depositauth',    // Deposit auth
     'desttag',        // Destination tag lock
   ];

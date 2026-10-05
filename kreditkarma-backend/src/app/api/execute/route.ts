@@ -26,6 +26,7 @@ import { priceUsd } from '@/lib/pricing';
 import { ADMIN_ONLY_SERVICE_IDS } from '@/lib/servicePrices';
 import { safeIdentifier } from '@/lib/xumm';
 import { isAdmin, adminUnauthorized } from '@/lib/adminAuth';
+import { SERVICE_REQUIRED_AMENDMENT, serviceAvailability } from '@/lib/serviceAmendments';
 
 const XUMM_API = 'https://xumm.app/api/v1/platform/payload';
 
@@ -54,6 +55,15 @@ export async function POST(req: NextRequest) {
     // Admin-only products (health checks, never sold) — genuinely gated, not just unlisted.
     if (ADMIN_ONLY_SERVICE_IDS.has(String(productId)) && !isAdmin(req)) {
       return adminUnauthorized();
+    }
+
+    // An amendment-gated service that isn't live yet: refuse BEFORE touching the payment, so a payment someone made
+    // anyway (manual / by destination tag) stays unused and works here the moment the amendment activates.
+    if (SERVICE_REQUIRED_AMENDMENT[String(productId)]) {
+      const avail = await serviceAvailability(String(productId));
+      if (!avail.available) {
+        return NextResponse.json({ error: `${avail.message} If you already paid, your payment has not been used — it will work here once this is live.`, code: 'not_available', retry: true }, { status: 409 });
+      }
     }
 
     // ── 1. the payment: verified on the ledger against OUR price table ──

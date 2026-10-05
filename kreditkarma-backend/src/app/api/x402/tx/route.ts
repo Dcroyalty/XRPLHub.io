@@ -26,6 +26,7 @@ import { BUILDABLE_SERVICE_IDS } from "@/app/api/execute/serviceCatalog";
 import { TX_SCHEMA } from "@/lib/x402Schemas";
 import { confirmationFor, TX_RESERVED_QUERY_KEYS } from "@/lib/txPurchase";
 import { isValidXrplAddress } from "@/lib/address";
+import { SERVICE_REQUIRED_AMENDMENT, serviceAvailability } from "@/lib/serviceAmendments";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -89,11 +90,17 @@ const core = async (req: NextRequest): Promise<NextResponse<unknown>> => {
 
 // Refuse a request that has nothing to pay against BEFORE any challenge: an unknown service, or a mistyped account.
 // A bare request (no productId, no account) still gets the 402 so discovery crawlers can index the route.
-const refuse = (req: NextRequest): Response | null => {
+const refuse = async (req: NextRequest): Promise<Response | null> => {
   const url = new URL(req.url);
   const explicit = url.searchParams.get("productId");
   if (explicit !== null && !KNOWN.has(explicit.trim().toLowerCase())) {
     return fail(404, "bad_request", `Unknown productId "${explicit.slice(0, 40)}". See /api/mcp list_xrpl_services.`);
+  }
+  // An amendment-gated service that isn't live yet gets no payment challenge at all (src/lib/serviceAmendments.ts).
+  const pid = productOf(req);
+  if (SERVICE_REQUIRED_AMENDMENT[pid]) {
+    const avail = await serviceAvailability(pid);
+    if (!avail.available) return fail(409, "not_available", `${avail.message} Nothing was priced or charged.`, { earliestActivation: avail.earliestActivation });
   }
   const account = (url.searchParams.get("account") ?? "").trim();
   if (account && !isAddr(account)) {

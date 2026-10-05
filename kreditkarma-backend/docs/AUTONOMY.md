@@ -51,6 +51,7 @@ read the answer is `unknown` and lending **fails closed** while MPT copy fails t
 |---|---|---|
 | **LendingProtocol (XLS-66)** | `lendingProtocolActive()` in `src/lib/lendingLedger.ts` → `getAmendmentStatus("LendingProtocol")` | `/api/lending/exposure`, `/api/x402/lending/exposure`, `/api/x402/lending/underwrite`, MCP `get_lending_exposure` / `get_underwriting_inputs`, the daily borrower sweep (`lendingSweep.ts`, cron 06:00), and the monitoring engine's loan events (`monitorEngine.ts`, evaluated each pass) |
 | **DynamicMPT (XLS-94)** and **ConfidentialTransfer (XLS-96)** | `getAmendmentStatuses([...])` in `src/lib/mptPermanence.ts` | `/api/mpt/permanence`, `/api/mpt/search`, `/api/mpt/issuer` — the permanence / confidential-holder copy flips by itself |
+| **PermissionDelegationV1_1 (XLS-75)** | `serviceAvailability()` in `src/lib/serviceAmendments.ts` (map `SERVICE_REQUIRED_AMENDMENT`) | storefront service #35 `delegate`: the builder (so `/api/execute`, `/api/x402/tx` and the free preview), `/api/create-payment` (no payment can be created while inactive), `/api/x402/tx` `refuse()` (no 402 challenge while inactive), the free revoke `/api/delegate`, the Buy button (`/api/services/availability`). Majority since 2026-09-24 21:25 UTC → earliest activation **2026-10-08 21:25 UTC**. Nothing to do at activation. |
 | SingleAssetVault (XLS-65) | not consumed by product code (vault profiles are not built) | the watchdog only announces its activation |
 
 When LendingProtocol or SingleAssetVault first reads `active`, the watchdog posts one message ("XLS-66 is now ACTIVE …")
@@ -294,10 +295,13 @@ stop and resolve it first.
 
 **MPP and Batch can't both ship on the current dependency graph.** `xrpl-mpp-sdk` (Ripple's beta SDK for
 Stripe/Tempo's Machine Payments Protocol, added in XRPL AI Starter Kit 1.1) pins its `xrpl` peer dependency
-to `>=4.0.0 <5.0.0`. The `Batch` transaction type needs `xrpl.js` `5.1.0+`. Picking up one forecloses the
-other without forking a dependency. Neither is in this codebase yet (checked — no `Batch` transaction-type
-code anywhere). Decide which one XRPLHub wants first; don't start building against either assuming the
-other stays available.
+to `>=4.0.0 <5.0.0`. **Corrected 2026-10-05 (verified on Devnet, BatchV1_1 + fixBatchV1_2 live):** the 5.1.0+
+requirement applies only to MULTI-ACCOUNT batches — BatchV1_1 changed the payload each `BatchSigner` signs, and
+xrpl.js 5.0.0's old payload is rejected (`temBAD_SIGNATURE`). A SINGLE-ACCOUNT Batch (every inner transaction from
+the signer, no `BatchSigners`) is built, validated, encoded and signed correctly by the pinned 4.6.0: two
+CheckCreates in one tfAllOrNothing Batch returned tesSUCCESS, and an all-or-nothing batch with one bad inner applied
+nothing. So MPP (needs <5) and single-account Batch can coexist on 4.6; never build a multi-account Batch on 4.x.
+BatchV1_1 activates no earlier than 2026-10-09 14:46 UTC.
 
 ## 12. Admin-only paid-path health check (2026-09-29)
 

@@ -46,6 +46,16 @@ export const SERVICE_CATALOG: ServiceDef[] = [
   { id: "regkey", label: "Set regular key", category: "Wallet security", tier: "caution",
     gives: "A SetRegularKey txjson adding a backup signing key (master key still works).",
     params: [P("regularKey", "address", true, "Backup key address", "rBackupKeyAddr...")] },
+  { id: "delegate", label: "Permission delegation (let another account sign specific transaction types for you)", category: "Wallet security", tier: "caution",
+    gives:
+      "A DelegateSet txjson (XLS-75) letting another account sign up to 10 chosen transaction types for yours — with its own key; yours never leave you. " +
+      "Re-running for the same delegate REPLACES its list. Revoking is free: POST /api/delegate {account, delegate}. " +
+      "Only available once the PermissionDelegationV1_1 amendment is active on mainnet (switches on by itself; GET /api/services/availability). " +
+      "The paid path forces a confirmation step spelling out what each permission allows.",
+    params: [
+      P("delegate", "address", true, "The account you are authorizing (must already exist on the ledger, and not be yours)", "rDelegate..."),
+      P("permissions", "string", true, "Comma-separated, 1-10 of: Payment, OfferCreate, CheckCreate, CheckCash, CheckCancel, TrustSet, TrustlineAuthorize, PaymentMint, AccountDomainSet, … (full list with what each allows: GET /api/delegate)", "CheckCash,CheckCancel"),
+    ] },
   { id: "depositauth", label: "Enable Deposit Auth", category: "Wallet security", tier: "safe",
     gives: "An AccountSet txjson that blocks unsolicited incoming payments.", params: [] },
   { id: "desttag", label: "Require destination tag", category: "Wallet security", tier: "safe",

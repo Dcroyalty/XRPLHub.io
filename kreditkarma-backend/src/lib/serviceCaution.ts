@@ -4,6 +4,8 @@
 // a sign request; the page renders heading / listTitle / warning / irreversible / confirmPrompt.
 // Wording is grounded in the XRPL reference for each flag (see comments).
 
+import { DELEGATION_NEVER, parsePermissions, permissionInfo } from '@/lib/delegation';
+
 export interface CautionCopy {
   heading: string;
   listTitle: string;
@@ -68,6 +70,33 @@ export function cautionCopyFor(productId: string, params: Record<string, unknown
       ],
       confirmPrompt:
         `I understand that after this, only ${q} of my ${n} signers can ever move funds from this account, and that if they cannot be reached the account and its funds are lost for good.`,
+    };
+  }
+
+  if (productId === 'delegate') {
+    // XLS-75 (PermissionDelegationV1_1). Behaviour verified on Devnet — see src/lib/delegation.ts.
+    const parsed = parsePermissions(params.permissions);
+    const perms = parsed.ok ? parsed.values.map((v) => permissionInfo(v)!).filter(Boolean) : [];
+    const who = String(params.delegate ?? '').trim() || 'the delegate';
+    const spend = perms.filter((p) => p.risk === 'spend');
+    return {
+      heading: spend.length ? 'Read carefully — this gives another account power to move your funds' : 'Read carefully — you are giving another account power over yours',
+      listTitle: 'Exactly what this allows, and what it does not',
+      warning:
+        `You are letting ${who} sign ${perms.length} kind${perms.length === 1 ? '' : 's'} of transaction on behalf of your account. ` +
+        'They sign with THEIR OWN key — you keep yours — and anything they sign is final on the ledger, exactly as if you had signed it. They do not need to ask you first.',
+      irreversible: [
+        ...perms.map((p) => `${p.risk === 'spend' ? '⚠ CAN MOVE YOUR ASSETS — ' : ''}${p.label} (${p.value}): ${p.allows}`),
+        ...(spend.length
+          ? [`${spend.length} of these can move, sell or destroy what you hold. Only delegate to an account whose keys you, or someone you fully trust, control.`]
+          : []),
+        `It can never: ${DELEGATION_NEVER.join('; ')}.`,
+        `If ${who} already holds permissions from you, this REPLACES them with exactly the list above.`,
+        'You can revoke this at any time, for free, from this page (one transaction you sign). Anything they did before you revoke stays done.',
+        'While it is active it holds 0.2 XRP of your balance as owner reserve; revoking returns it. The delegate pays the network fee on every transaction they send for you.',
+      ],
+      confirmPrompt:
+        `I understand that ${who} will be able to ${perms.map((p) => p.label.toLowerCase()).join(', ')} for my account without asking me, that what they sign is final, and that I can revoke this at any time.`,
     };
   }
   return null;

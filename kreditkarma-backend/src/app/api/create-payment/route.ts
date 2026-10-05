@@ -14,6 +14,7 @@ import {
 } from '@/lib/pricing'
 import { prisma } from '@/lib/xrplscore-db'
 import { allocateDestinationTag } from '@/lib/purchaseIntent'
+import { SERVICE_REQUIRED_AMENDMENT, serviceAvailability } from '@/lib/serviceAmendments'
 
 const NAMES: Record<string, string> = {
   multisig:'Multi-Sig Fortress', regkey:'Regular Key Rotator', depositauth:'Deposit Auth Guard',
@@ -28,7 +29,7 @@ const NAMES: Record<string, string> = {
   globalfreeze:'Global Freeze', freezeline:'Freeze a Trust Line',
   checkcreate:'Create a Check', checkcash:'Cash a Check', checkcancel:'Cancel a Check',
   depositpreauth:'Deposit Preauthorization', ammwithdraw:'AMM Liquidity Exit', tickets:'Ticket Batch Setup',
-  credentialissue:'Issue a Credential', permdomain:'Permissioned Domain',
+  credentialissue:'Issue a Credential', permdomain:'Permissioned Domain', delegate:'Permission Delegation',
   credential:'XRPLScore Verified Credential (90 days)',
   donate:'Community Grant treasury donation',
 }
@@ -48,6 +49,14 @@ export async function POST(req: NextRequest) {
 
     if (!/^[a-z0-9]{2,32}$/.test(product)) {
       return NextResponse.json({ error: 'Invalid product.' }, { status: 400 })
+    }
+
+    // A service that needs an amendment can't be paid for until the ledger says it's active (fail closed).
+    if (SERVICE_REQUIRED_AMENDMENT[product]) {
+      const avail = await serviceAvailability(product)
+      if (!avail.available) {
+        return NextResponse.json({ error: `${avail.message} No payment was created.`, code: 'not_available', earliestActivation: avail.earliestActivation }, { status: 409 })
+      }
     }
 
     // ── the amount to charge — from OUR table, never from the request ──

@@ -40,6 +40,7 @@ export const SERVICE_PRICE_USD: Readonly<Record<string, number>> = Object.freeze
   tickets: 20,
   credentialissue: 35,
   permdomain: 45,
+  delegate: 35, // caution tier: between regkey (30, unrestricted backup key) and issuerdecl (40); revoking is free
   // Not a builder service: the paid XRPLScore credential (/api/credential).
   credential: 1,
 });

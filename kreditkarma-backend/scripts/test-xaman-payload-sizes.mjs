@@ -3,7 +3,7 @@
  *
  * Measures, LOCALLY, every custom_meta field XUMM_API actually validates -- identifier (max 40),
  * blob stringified (max 1500), instruction (max 280), per docs.xaman.dev's post-payload reference --
- * for the EXECUTE payload (every step of every one of the 34 services) and the PAYMENT payload (every
+ * for the EXECUTE payload (every step of every one of the storefront services) and the PAYMENT payload (every
  * service + donate), using the real builders. No network call to Xaman, no money moved.
  *
  * Run: node scripts/test-xaman-payload-sizes.mjs

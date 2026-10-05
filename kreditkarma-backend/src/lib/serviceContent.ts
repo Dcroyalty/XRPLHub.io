@@ -1,5 +1,5 @@
 // src/lib/serviceContent.ts
-// The ONE source of the storefront's marketing/content copy for all 34 services (name, tagline, description, feature
+// The ONE source of the storefront's marketing/content copy for every service (name, tagline, description, feature
 // bullets, category, emoji, color) — consumed by the client homepage (src/app/page.tsx) AND the server-rendered
 // per-service pages (src/app/services/[id]/page.tsx) so the two can never drift apart. Prices are NOT here — they
 // come from src/lib/servicePrices.ts, merged in below, same as before this file existed.
@@ -21,6 +21,11 @@ export const RAW_PRODUCTS = [
     desc:'You provide the regular key. We build the SetRegularKey transaction. You sign it in Xaman.',
     aiDetail:'We build a SetRegularKey transaction so you can sign day-to-day with a rotatable key while your master key stays cold.',
     features:['SetRegularKey built to your spec','Rotatable signing key','Master key stays offline','You sign it in your wallet','TX hash receipt'] },
+  { id:'delegate', cat:'Wallet Security', emoji:'🤝', name:'Permission Delegation', featured:false, tag:'NEW', comingSoon:false, color:'#22d3ee',
+    amendment:'DelegateSet · XLS-75', tagline:'Let another account sign specific transaction types for you',
+    desc:'Let another account sign these specific transaction types for you. You keep your keys and can revoke anytime. You pick the account and up to 10 permissions; we build the exact DelegateSet transaction, show you in plain English what each permission lets them do, and you sign it in your own wallet. Available the moment the PermissionDelegationV1_1 amendment goes live on the XRP Ledger.',
+    aiDetail:'We build a DelegateSet transaction (XLS-75). The other account signs with its own key, so yours never leave you. You confirm exactly what each permission allows before you sign. Re-running replaces the list, and revoking is free and takes one signature.',
+    features:['DelegateSet built to your spec','Up to 10 named permissions','Plain-English confirmation of each','Free one-signature revoke','You keep your keys'] },
   { id:'depositauth', cat:'Wallet Security', emoji:'🛡️', name:'Deposit Auth Guard', featured:false, comingSoon:false, color:'#10b981',
     amendment:'AccountSet · asfDepositAuth', tagline:'Block unsolicited incoming payments',
     desc:'We build the AccountSet (asfDepositAuth) transaction. You sign it — only pre-authorized senders can deposit.',

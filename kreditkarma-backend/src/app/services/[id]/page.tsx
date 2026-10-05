@@ -2,7 +2,7 @@
 // One server-rendered, statically-generated page per storefront service. This is the crawlable counterpart to the
 // client-rendered homepage catalog (src/lib/serviceContent.ts is the single content source for both) — real HTML in
 // the initial response, a unique <title>/description per service, and Product/Offer + FAQPage JSON-LD, so a search
-// engine has something to index besides one page that answers for all 34 services at once.
+// engine has something to index besides one page that answers for every service at once.
 //
 // The interactive buy flow (wallet connect, payment, signing) still lives entirely on the homepage — this page's CTA
 // deep-links to /?product=<id>, which opens that exact product's modal (see the effect in page.tsx). Nothing here

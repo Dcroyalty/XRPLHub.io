@@ -137,3 +137,21 @@ export async function findPaths(args: {
   if (!r || r.error) return null;
   return (r.alternatives as PathAlternative[] | undefined) ?? [];
 }
+
+/** The Delegate object `account` granted to `authorize` (XLS-75): its node, `false` when there is none, null if unreadable. */
+export async function getDelegate(account: string, authorize: string): Promise<Obj | false | null> {
+  const r = await call("ledger_entry", { delegate: { account, authorize } });
+  if (!r) return null;
+  if (r.error === "entryNotFound") return false;
+  const node = r.node as Obj | undefined;
+  return node && node.LedgerEntryType === "Delegate" ? node : null;
+}
+
+/** Every Delegate object `account` owns (the accounts it has authorized), or null if unreadable. */
+export async function listDelegates(account: string): Promise<Obj[] | null> {
+  const r = await call("account_objects", { account, type: "delegate", limit: 400 });
+  if (!r) return null;
+  if (r.error === "actNotFound") return [];
+  const objs = r.account_objects;
+  return Array.isArray(objs) ? (objs as Obj[]).filter((o) => o.LedgerEntryType === "Delegate" && o.Account === account) : null;
+}

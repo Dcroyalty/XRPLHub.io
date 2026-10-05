@@ -2,7 +2,7 @@
 
 **On-chain creditworthiness for the XRP Ledger.** XRPLHub gives any XRPL wallet a
 300–850 credit-style score (**XRPLScore**) computed from 8 public-ledger signals,
-sells ready-to-sign prebuilt XRPL transactions for 34 actions, issues signed
+sells ready-to-sign prebuilt XRPL transactions for 35 actions, issues signed
 score certificates (XRPLHub's own attestation), and runs a community micro-grant fund
 (human-reviewed; applications currently paused).
 
@@ -64,9 +64,9 @@ own wallet; XRPLHub never signs for anyone.
 | Tool | What you get | Cost |
 |---|---|---|
 | `check_xrpl_score` | 300–850 score, grade, percentile, 8-signal breakdown, tips. Param: `wallet_address`. | free |
-| `list_xrpl_services` | All 34 `build_xrpl_transaction` actions, each with params + examples. Call this first. No params. | free |
+| `list_xrpl_services` | All 35 `build_xrpl_transaction` actions, each with params + examples. Call this first. No params. | free |
 | `preview_xrpl_transaction` | Describe one action before buying it: what it does, what's irreversible, the price, every field it needs. No signable txjson. Params: `product_id`, `params` (optional). | free |
-| `build_xrpl_transaction` | Buy the unsigned, ready-to-sign txjson for one of 34 actions — the storefront price, paid via x402 (USDC on Base or RLUSD on XRPL). Params: `product_id`, `wallet_address`, `params`, `confirm_caution` (caution-tier only). | storefront price |
+| `build_xrpl_transaction` | Buy the unsigned, ready-to-sign txjson for one of 35 actions — the storefront price, paid via x402 (USDC on Base or RLUSD on XRPL). Params: `product_id`, `wallet_address`, `params`, `confirm_caution` (caution-tier only). | storefront price |
 | `issue_score_credential` | Score certificate signed by XRPLHub (score computed fresh at issuance), with a URL where XRPLHub confirms it — XRPLHub's own attestation, not independently verifiable. 90 days. Params: `wallet_address`, `currency`, `uuid`. | 1 XRP / 1 RLUSD |
 | `check_service_health` | Is the money path working right now — database, Xaman, both x402 facilitators, the anchor config, alerting — before you pay. No params. | free |
 
@@ -121,7 +121,7 @@ own wallet; XRPLHub never signs for anyone.
 - OpenAPI 3.1: https://www.xrplhub.io/openapi.json
 - `GET /api/x402/score?wallet=r...` — 300–850 score + 8 signals
 - `GET /api/x402/report?wallet=r...` — score + risk flags + recommendations + on-chain snapshot
-- `GET /api/x402/tx?productId=<id>&account=r...` — one prebuilt XRPL transaction (34 actions)
+- `GET /api/x402/tx?productId=<id>&account=r...` — one prebuilt XRPL transaction (35 actions)
 
 ### llms.txt
 

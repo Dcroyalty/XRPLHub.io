@@ -89,7 +89,7 @@ export async function GET(req: Request) {
       prisma.donation.aggregate({
         _sum: { amount: true },
       }).catch(() => ({ _sum: { amount: 0 } })),
-      // Recent storefront (34-service) payments received
+      // Recent storefront-service payments received
       prisma.purchase.findMany({
         orderBy: { verifiedAt: 'desc' },
         take: 25,
@@ -160,7 +160,7 @@ export async function GET(req: Request) {
         totalXRP: Math.round(totalDonatedXRP * 100) / 100,
         recent: donations,
       },
-      // Payments received (the 34-service storefront)
+      // Payments received (the service storefront)
       payments: {
         byStatus: purchaseStatusCounts,
         recent: recentPurchases,

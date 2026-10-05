@@ -25,7 +25,7 @@ The live production app is a single Next.js project in **`kreditkarma-backend/`*
 ## Products
 
 - **XRPLScore** — a 300–850 credit-style score for an XRPL wallet.
-- **34 paid XRPL transaction services** — on-chain actions (trustlines, escrows, AMM, NFT,
+- **35 paid XRPL transaction services** — on-chain actions (trustlines, escrows, AMM, NFT,
   etc.) we BUILD the exact transaction for; the customer signs it. `BUILDABLE_SERVICE_IDS`
   in `src/app/api/execute/serviceCatalog.ts` is the ONE source of that count (a build-time
   check, `scripts/check-service-parity.mjs`, fails if the page, catalog, prices or builders

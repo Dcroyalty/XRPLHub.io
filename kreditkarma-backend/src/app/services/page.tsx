@@ -1,17 +1,18 @@
 // src/app/services/page.tsx — server-rendered hub linking every per-service page (src/app/services/[id]/page.tsx),
-// grouped by category. Gives search engines a real internal-linking path to all 34 pages instead of relying on the
+// grouped by category. Gives search engines a real internal-linking path to every per-service page instead of relying on the
 // sitemap alone, and is itself a crawlable page for broad "XRPL services" / "XRPL transaction builder" searches.
 import type { Metadata } from "next";
 import Link from "next/link";
 import { RAW_PRODUCTS } from "@/lib/serviceContent";
 import { priceInfo } from "@/lib/txPurchase";
+import { SERVICE_COUNT } from "@/app/api/execute/serviceCatalog";
 
 export const dynamic = "force-static";
 
 const ORIGIN = "https://www.xrplhub.io";
-const TITLE = "34 done-for-you XRPL transaction services | XRPLHub";
+const TITLE = `${SERVICE_COUNT} done-for-you XRPL transaction services | XRPLHub`;
 const DESCRIPTION =
-  "Escrows, checks, trust lines, multi-sig, AMM pools, NFTs, credentials and more — XRPLHub builds the exact unsigned XRPL transaction for 34 services. You review it and sign with your own wallet; XRPLHub never holds your keys.";
+  `Escrows, checks, trust lines, multi-sig, delegation, AMM pools, NFTs, credentials and more — XRPLHub builds the exact unsigned XRPL transaction for ${SERVICE_COUNT} services. You review it and sign with your own wallet; XRPLHub never holds your keys.`;
 
 export const metadata: Metadata = {
   title: TITLE,
