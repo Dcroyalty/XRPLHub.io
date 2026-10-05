@@ -557,6 +557,7 @@ export async function GET(req: Request) {
       // routes. `error` is always one of these keys; the value describes it.
       errorCodes: X402_ERROR_CODES,
       guarantees: {
+        deliveryOrder: "/api/x402/tx (a signable transaction): built first (a request that can't be built is never charged), then the payment settles, and ONLY THEN is the transaction delivered — on a settle failure you get 402 error:settlement_failed_not_delivered and nothing. Data resources keep deliver-then-settle (below).",
         settlement: "On every resource, on both rails: the payment settles ONLY after the paid work returns success (XRPL: t54 settles after the handler; Base: withX402 settles only on a <400 response). A handler failure returns error:handler_failed and does NOT charge you — retry with the same PAYMENT-SIGNATURE within maxTimeoutSeconds.",
         idempotency: "Send an Idempotency-Key header (or rely on the payment's invoiceId). A retried request replays the original response — you can never pay twice.",
       },

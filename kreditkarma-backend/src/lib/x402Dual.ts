@@ -55,6 +55,9 @@ export interface DualOpts {
   core: (req: NextRequest) => Promise<Response>;
   /** XRPL rail only: reshape the shared handler's JSON body into the `data` of the { data, x402 } envelope (default: as is). */
   xrplData?: (body: unknown) => unknown;
+  /** XRPL rail: hand the result over only after settlement (see serveX402Paid). The Base rail (x402-next) already
+   *  withholds the body when its settle fails. */
+  deliverOnlyIfSettled?: boolean;
   /** Refuse a malformed request BEFORE any challenge (nothing to pay against). Return a Response to refuse. */
   refuse?: (req: NextRequest) => Response | null | Promise<Response | null>;
 }
@@ -121,6 +124,7 @@ export function dualX402(opts: DualOpts): (req: NextRequest) => Promise<Response
         challengeDescription: opts.description.slice(0, 480),
         requirements,
         handler: async () => toHandlerResult(await opts.core(req), opts.xrplData),
+        deliverOnlyIfSettled: opts.deliverOnlyIfSettled,
       });
     }
 

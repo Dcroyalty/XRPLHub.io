@@ -117,6 +117,7 @@ export const X402_ERROR_CODES = {
   xrpl_unavailable: "One or more XRPL calls could not be read (rate-limit / timeout / upstream error). No result was produced and you were NOT charged. Retry shortly — see `message` for which calls failed.",
   confirmation_required: "This service is caution-tier: it changes account security or permissions and can be hard or impossible to undo. You were NOT charged. Show `details` (what is irreversible) to the wallet owner and, once they have confirmed, repeat the request with confirmCaution=true.",
   amendment_not_active: "The XRPL amendment this data depends on (XLS-66 LendingProtocol) is not enabled on mainnet yet. You were NOT charged; any facts that are available are in `details`. The route starts serving on activation with no redeploy.",
+  settlement_failed_not_delivered: "Your payment did not settle (after one inline retry), so the result was NOT delivered and nothing was charged. Retry with a fresh payment. (Routes that deliver something you could use without paying — a signable transaction — only hand it over after the payment has settled.)",
   settlement_failed: "The result was computed and is returned, but on-ledger settlement FAILED (after one inline retry): no payment was collected and none will be retried automatically. The response says x402.success:false and x402.settled:false. You were NOT charged.",
   idempotent_replay: "This Idempotency-Key (or invoiceId) was already processed — the original response is returned unchanged.",
   request_in_progress: "A request with this Idempotency-Key (or invoiceId) is still being processed. Retry shortly.",
@@ -292,6 +293,12 @@ export interface ServeX402Opts {
   challengeDescription: string;
   /** Runs BEFORE settlement. Return ok:false to refuse without charging. */
   handler: () => Promise<HandlerResult>;
+  /**
+   * Hand the result over ONLY after the payment has settled (owner rule 2026-10-05, /api/x402/tx). The handler still runs
+   * first (a request that can't be built is never charged); on a settle failure the result is withheld and the caller
+   * gets 402 settlement_failed_not_delivered. Data endpoints leave this off and keep deliver-then-report.
+   */
+  deliverOnlyIfSettled?: boolean;
 }
 
 const IN_PROGRESS_TTL_MS = 120_000;
@@ -418,6 +425,16 @@ export async function serveX402Paid(opts: ServeX402Opts): Promise<NextResponse> 
   }
   const txHash = settledOk ? ((settled.body ?? {}) as { transaction?: string }).transaction ?? null : null;
   const payer = ((settled.body ?? {}) as { payer?: string }).payer ?? null;
+
+  if (!settledOk && opts.deliverOnlyIfSettled) {
+    // Withhold: the built result never leaves the server unpaid. Status 402 marks the idempotency row failed, so the
+    // caller can retry with a fresh payment.
+    void notifyError(`x402 settle-failed-withheld ${resource}`, new Error("settlement failed; result withheld (deliverOnlyIfSettled)"), { invoiceId });
+    return finish(
+      { error: "settlement_failed_not_delivered", message: X402_ERROR_CODES.settlement_failed_not_delivered, settled: false, facilitator: settled.body ?? settled.error ?? null },
+      402, false, null
+    );
+  }
 
   if (settledOk) {
     await recordPaidInvoice(prisma, { plan, amountRlusd, txHash });

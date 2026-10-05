@@ -289,7 +289,7 @@ export async function GET(req: Request) {
           description:
             "The signable transaction JSON for any of " + SERVICE_COUNT + " XRPL actions (CheckCreate, Escrow, " +
             "TrustSet, NFT mint/sell/burn, AMM create/deposit, DEX order, MPT issue/send, multisig, " +
-            "DID, credentials, permissioned domains, and more), delivered ONLY after payment. Priced per action at the storefront " +
+            "DID, credentials, permissioned domains, and more), delivered ONLY after your payment has SETTLED on either rail — a payment that fails to settle gets 402 settlement_failed_not_delivered and no transaction. Priced per action at the storefront " +
             "price ($" + STANDARD_BUILD_USD + " per standard build, $" + CAUTION_BUILD_USD + " per caution-tier build; see /api/pricing; the amount shown is for the default productId=checkcreate). Pay on either rail: " +
             "RLUSD on the XRP Ledger (x402 v2 via t54: PAYMENT-REQUIRED header, retry with PAYMENT-SIGNATURE) or USDC on Base " +
             "(x402 v1: retry with X-PAYMENT). You are charged only if the transaction builds. Caution-tier actions (irreversible) " +

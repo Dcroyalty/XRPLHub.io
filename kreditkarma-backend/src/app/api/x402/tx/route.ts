@@ -144,5 +144,8 @@ export const GET = dualX402({
   schemas: TX_SCHEMA,
   base: (req) => baseFor(productOf(req))(req),
   core,
+  // A signable transaction is usable the moment it's seen, so it is NEVER handed over before the payment settles — on
+  // either rail (XRPL: here; Base: x402-next withholds the body when its settle fails).
+  deliverOnlyIfSettled: true,
   refuse,
 });

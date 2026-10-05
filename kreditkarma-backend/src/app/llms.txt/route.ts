@@ -180,6 +180,8 @@ x402 pay-per-call — EVERY paid route below takes RLUSD on the XRP Ledger (t54)
 - GET ${origin}/api/x402/score?wallet=r... — 300-850 score + 8 signals, $0.02
 - GET ${origin}/api/x402/report?wallet=r... — score + risk flags + recommendations + on-chain snapshot, $0.08
 - GET ${origin}/api/x402/tx?productId=<id>&account=r...[&<params>][&confirmCaution=true] — the unsigned txjson for one of ${SERVICE_COUNT} actions, at the STOREFRONT price of that action ($${STANDARD_BUILD_USD} per standard build, $${CAUTION_BUILD_USD} per caution-tier build; see ${origin}/api/pricing). Payable on either rail (RLUSD on XRPL, or USDC on Base). Caution-tier actions are refused unpaid until confirmCaution=true.
+- /api/x402/tx hands over the transaction ONLY after your payment has settled (a failed settle returns 402
+  settlement_failed_not_delivered and no transaction).
 - The 402 challenge embeds the full schema. Settlement fires ONLY after the paid
   work succeeds — a handler failure returns error:"handler_failed" and does NOT
   charge you (retry with the same PAYMENT-SIGNATURE). Send an Idempotency-Key

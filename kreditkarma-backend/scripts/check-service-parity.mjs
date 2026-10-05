@@ -160,6 +160,7 @@ for (const f of walk("src")) {
   if (!/priceUsd\(/.test(tx)) fail("src/app/api/x402/tx/route.ts must be priced from the storefront table (priceUsd), so no service is sold below its storefront price");
   if (/PRICE_PER_TX_PRODUCT_RLUSD/.test(tx)) fail("src/app/api/x402/tx/route.ts uses a flat price constant");
   if (!/dualX402\(/.test(tx)) fail("src/app/api/x402/tx/route.ts must serve both x402 rails (dualX402)");
+  if (!/deliverOnlyIfSettled:\s*true/.test(tx)) fail("src/app/api/x402/tx/route.ts must set deliverOnlyIfSettled: true — a signable transaction is never handed over before the payment settles (owner rule 2026-10-05)");
 }
 
 // ── one product, one price, every rail ───────────────────────────────────────────────────────────────────────────────
