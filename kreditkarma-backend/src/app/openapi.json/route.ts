@@ -141,7 +141,7 @@ export async function GET(req: Request) {
         "ready-to-sign prebuilt XRPL transactions for " + SERVICE_COUNT + " actions. No account, no API key, no signup. " +
         "A free (unauthenticated) score is also at GET /api/score/{wallet}. UNSIGNED ONLY: XRPLHub builds transactions and " +
         "scores wallets but never signs or holds keys; the caller signs with their own wallet.\n\n" +
-        "AGENT SAFETY on /api/x402/{score,report,tx}: the on-ledger payment settles ONLY after the paid " +
+        "AGENT SAFETY on every x402 route, on both rails (RLUSD on XRPL or USDC on Base, same price): the payment settles ONLY after the paid " +
         "work returns success — a handler failure returns `error: \"handler_failed\"` and does NOT charge " +
         "you (retry with the same PAYMENT-SIGNATURE within maxTimeoutSeconds). Send an `Idempotency-Key` " +
         "header (or rely on the payment invoiceId) — a retried request replays the original response, so " +
@@ -213,11 +213,11 @@ export async function GET(req: Request) {
           summary: "XRPLScore — wallet creditworthiness score (x402 exact scheme)",
           description:
             "Get a 300–850 creditworthiness score for one XRPL wallet with an 8-signal breakdown. " +
-            "Official x402 exact scheme via the t54 facilitator; pay by presigned RLUSD payment. " +
-            "Send ?wallet=<r-address>. No signup.",
+            "x402 exact scheme on either rail at the same $0.02: RLUSD on the XRP Ledger (t54, PAYMENT-SIGNATURE) or USDC on Base " +
+            "(CDP, X-PAYMENT). Send ?wallet=<r-address>. No signup.",
           tags: ["Scoring"],
           parameters: [walletParam()],
-          "x-payment-info": payment(PRICE_PER_SCORE_RLUSD, "Single wallet score, RLUSD via x402 facilitator."),
+          "x-payment-info": payment(PRICE_PER_SCORE_RLUSD, "Single wallet score — RLUSD on XRPL or USDC on Base, same price."),
           responses: {
             "200": ok("Wallet score with the 8 signals, grade and percentile.", scoreSchema, scoreExample),
             "402": resp402,
@@ -232,10 +232,10 @@ export async function GET(req: Request) {
           description:
             "Everything the score endpoint returns plus machine-readable risk flags, ranked " +
             "recommendations, and an on-chain snapshot (balance, spendable XRP, trust lines, tx " +
-            "count, DEX/AMM/NFT activity). Send ?wallet=<r-address>. No signup.",
+            "count, DEX/AMM/NFT activity). $0.08 on either rail: RLUSD on XRPL (t54) or USDC on Base (CDP). Send ?wallet=<r-address>. No signup.",
           tags: ["Scoring"],
           parameters: [walletParam()],
-          "x-payment-info": payment(PRICE_PER_PRODUCT_RLUSD, "Full risk report for one wallet, RLUSD via x402 facilitator."),
+          "x-payment-info": payment(PRICE_PER_PRODUCT_RLUSD, "Full risk report for one wallet — RLUSD on XRPL or USDC on Base, same price."),
           responses: {
             "200": ok(
               "Full risk report.",

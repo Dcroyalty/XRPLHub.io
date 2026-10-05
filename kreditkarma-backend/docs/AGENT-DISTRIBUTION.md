@@ -18,10 +18,11 @@ Agents sign with their own wallet (Ripple's XRPL AI Starter Kit has Wallet and P
 ## x402: which resources take which rail
 
 `/.well-known/x402` lists 15 entries (11 URLs). XRPL-native (RLUSD via t54, x402 v2, `PAYMENT-REQUIRED` header, network `xrpl:0`):
-`score` ($0.02, GET), `report` ($0.08) — XRPL only; and, **on both rails at the same face value**: `tx` (priced per action at the storefront price, $15–$80, `src/lib/servicePrices.ts`), `usdc/score` (POST, $0.02 — the same score and price as `score`), `usdc/mpt/{id}`, `screen/ofac`, `lending/exposure`,
+**every per-call resource on both rails at the same face value** (since 2026-10-05 also `score` ($0.02, GET) and `report` ($0.08), XRPL-only before): `tx` (priced per action at the storefront price, $15–$80, `src/lib/servicePrices.ts`), `usdc/score` (POST, $0.02 — the same score and price as `score`), `usdc/mpt/{id}`, `screen/ofac`, `lending/exposure`,
 `lending/underwrite` (`src/lib/x402Dual.ts`: `PAYMENT-SIGNATURE` header = XRPL rail,
 `X-PAYMENT` = Base rail; the 402 body stays the v1 Base challenge, the v2 XRPL challenge is in the header).
 Base-only by design: `checkout/usdc/{starter,growth,scale}` (human subscription plans that mint a key before settlement).
+Re-checked 2026-10-05 and kept: on the XRPL rail `serveX402Paid` DELIVERS the result even when settlement then fails (`src/lib/x402.ts`, "result delivered, money uncollected"), so an XRPL plan purchase whose settlement the buyer makes fail would hand over a live $29–$499 key for free. RLUSD buyers use the ledger-verified `/api/checkout`. The build guard (`check-service-parity.mjs`) fails any `/api/x402/*` route that is not dual-rail.
 Principle (owner, 2026-09-25): one product, one price, every rail — `usdc/score` was $0.01 on Base vs $0.02 on XRPL and was unified on $0.02.
 
 ## mcp.so submission — paste as a new issue on https://github.com/chatmcp/mcpso/issues

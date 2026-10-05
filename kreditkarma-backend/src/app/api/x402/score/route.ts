@@ -1,58 +1,25 @@
 // src/app/api/x402/score/route.ts
-// XRPLScore over the official x402 v2 protocol (XRPL exact scheme, t54).
+// XRPLScore, paid per call over x402 on EITHER rail at one price ($0.02): RLUSD on the XRP Ledger (x402 v2, t54) or
+// USDC on Base (x402 v1, CDP). XRPL-only until 2026-10-05 — an existing XRPL client sees no change. The same product
+// (POST body instead of GET query) is POST /api/x402/usdc/score.
 //
-// AGENT-SAFE (serveX402Paid): the 402 challenge carries full input+output
-// schema; settlement fires ONLY after computeScore() succeeds; a retried
-// request (Idempotency-Key or the invoiceId) replays the stored response
-// instead of paying again. A caller can never pay twice or pay for nothing.
-import { NextResponse } from "next/server";
-import { prisma } from "@/lib/xrplscore-db";
-import { computeScore, isValidXrplAddress, AccountNotFoundError, XrplUnavailableError } from "@/lib/engine";
-import { PRICE_PER_SCORE_RLUSD, TREASURY_ADDRESS } from "@/lib/paycall";
-import { rlusdRequirements, serveX402Paid, type HandlerResult } from "@/lib/x402";
+// AGENT-SAFE: schema in the challenge; settle only after computeScore() succeeds; a retried request (Idempotency-Key
+// or the invoiceId) replays the stored response instead of paying again. Wiring: src/lib/x402WalletGet.ts.
+import { computeScore } from "@/lib/engine";
+import { PRICE_PER_SCORE_RLUSD } from "@/lib/paycall";
+import { PRICE_PER_SCORE_USDC } from "@/lib/x402Base";
 import { SCORE_SCHEMA } from "@/lib/x402Schemas";
+import { walletGetDual } from "@/lib/x402WalletGet";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const RESOURCE = "/api/x402/score";
-
-export async function GET(req: Request) {
-  if (!TREASURY_ADDRESS) return NextResponse.json({ error: "misconfigured" }, { status: 500 });
-  const wallet = new URL(req.url).searchParams.get("wallet");
-
-  return serveX402Paid({
-    req,
-    prisma,
-    resource: RESOURCE,
-    plan: "x402:score",
-    amountRlusd: PRICE_PER_SCORE_RLUSD,
-    challengeDescription: `XRPLScore 300-850 wallet risk score${wallet ? " for " + wallet : ""}`,
-    requirements: (invoiceId) =>
-      rlusdRequirements({
-        payTo: TREASURY_ADDRESS,
-        amountRlusd: PRICE_PER_SCORE_RLUSD,
-        invoiceId,
-        name: "XRPLScore — Wallet Risk Score",
-        description: SCORE_SCHEMA.description,
-        schemas: SCORE_SCHEMA,
-      }),
-    handler: async (): Promise<HandlerResult> => {
-      if (!wallet || !isValidXrplAddress(wallet)) {
-        return { ok: false, code: "bad_request", status: 400, message: "Provide a valid XRPL wallet (&wallet=r...)." };
-      }
-      try {
-        return { ok: true, data: await computeScore(wallet) };
-      } catch (err) {
-        if (err instanceof AccountNotFoundError) {
-          return { ok: false, code: "account_not_found", status: 404, message: "That wallet is not an activated account on XRPL mainnet." };
-        }
-        if (err instanceof XrplUnavailableError) {
-          // Not scored, not charged, retryable — err.message names the calls that failed.
-          return { ok: false, code: "xrpl_unavailable", status: 503, message: err.message };
-        }
-        throw err; // serveX402Paid turns this into handler_failed (not charged, retryable)
-      }
-    },
-  });
-}
+export const GET = walletGetDual({
+  resource: "/api/x402/score",
+  plan: "x402:score",
+  amountRlusd: PRICE_PER_SCORE_RLUSD,
+  amountUsdc: PRICE_PER_SCORE_USDC,
+  name: "XRPLScore — Wallet Risk Score",
+  schema: SCORE_SCHEMA,
+  compute: computeScore,
+});

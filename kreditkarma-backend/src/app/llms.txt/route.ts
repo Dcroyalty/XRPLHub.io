@@ -173,11 +173,11 @@ MCP server (Streamable HTTP, JSON-RPC 2.0, no auth):
 
 Health: GET ${origin}/api/health  (503 when a money-path component is down; ?deep=1 for live facilitator probes)
 
-x402 pay-per-call (RLUSD, t54 facilitator, no signup):
+x402 pay-per-call — EVERY paid route below takes RLUSD on the XRP Ledger (t54) OR USDC on Base (CDP), same price, no signup:
 - Discovery: ${origin}/.well-known/x402  (carries per-resource inputSchema + outputSchema, the errorCodes map, and the settlement/idempotency guarantees)
 - OpenAPI 3.1: ${origin}/openapi.json
-- GET ${origin}/api/x402/score?wallet=r... — 300-850 score + 8 signals
-- GET ${origin}/api/x402/report?wallet=r... — score + risk flags + recommendations + on-chain snapshot
+- GET ${origin}/api/x402/score?wallet=r... — 300-850 score + 8 signals, $0.02
+- GET ${origin}/api/x402/report?wallet=r... — score + risk flags + recommendations + on-chain snapshot, $0.08
 - GET ${origin}/api/x402/tx?productId=<id>&account=r...[&<params>][&confirmCaution=true] — the unsigned txjson for one of ${SERVICE_COUNT} actions, at the STOREFRONT price of that action ($15–$80, see ${origin}/api/pricing). Payable on either rail (RLUSD on XRPL, or USDC on Base). Caution-tier actions are refused unpaid until confirmCaution=true.
 - The 402 challenge embeds the full schema. Settlement fires ONLY after the paid
   work succeeds — a handler failure returns error:"handler_failed" and does NOT
@@ -186,14 +186,14 @@ x402 pay-per-call (RLUSD, t54 facilitator, no signup):
 - RETIRED (410, use the x402 route above): /api/x402-tx, /api/v1/wallet-report,
   /api/v1/pay-per-score.
 
-x402 pay-per-call (USDC on Base, CDP facilitator, no signup):
+More x402 pay-per-call routes (both rails, same price):
 - POST ${origin}/api/x402/usdc/score — 300-850 score, $0.02 (body {"wallet":"r..."}; same product and price as GET /api/x402/score)
 - GET ${origin}/api/x402/usdc/mpt/<48-hex id> — full MPT issuer risk, $0.01
 - GET ${origin}/api/x402/screen/ofac?address=r... — OFAC SDN screening attestation, $0.01 (process not ground truth; see the screening section above)
 - GET ${origin}/api/x402/lending/exposure?borrower=r... — XLS-66 cross-broker lending exposure, full detail + attestation, $0.01 (503 until XLS-66 activates; see the lending section above)
 - GET ${origin}/api/x402/lending/underwrite?borrower=r... — full underwriting-inputs bundle, $0.05, facts only, no recommendation (503 until XLS-66 activates)
 
-The score, mpt, screen/ofac, lending/exposure and lending/underwrite routes above are payable on EITHER rail at the same face value: USDC on Base
+Every route above is payable on EITHER rail at the same face value: USDC on Base
 (X-PAYMENT header) or RLUSD on the XRP Ledger via the t54 facilitator (x402 v2: the 402 response carries a PAYMENT-REQUIRED header with
 network "xrpl:0"; retry with a PAYMENT-SIGNATURE header). On the XRPL rail the response is wrapped as { data, x402 } and you are only
 charged after the result is produced. One product, one price, every rail: POST /api/x402/usdc/score and GET /api/x402/score are the same $0.02 score.

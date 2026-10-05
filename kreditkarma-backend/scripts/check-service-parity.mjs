@@ -158,12 +158,23 @@ for (const f of walk("src")) {
   const paycall = read("src/lib/paycall.ts");
   const base = read("src/lib/x402Base.ts");
   const num = (src, name) => { const m = new RegExp("export const " + name + "\\s*=\\s*([0-9.]+)").exec(src); return m ? Number(m[1]) : null; };
-  for (const k of ["SCORE", "SCREEN", "MPT", "EXPOSURE", "UNDERWRITE"]) {
-    const r = num(paycall, "PRICE_PER_" + k + "_RLUSD");
-    const u = num(base, "PRICE_PER_" + k + "_USDC");
-    if (r === null || u === null) fail("price pair PRICE_PER_" + k + "_{RLUSD,USDC} not found (paycall.ts / x402Base.ts)");
-    else if (r !== u) fail("PRICE_PER_" + k + ": RLUSD " + r + " != USDC " + u + " — one product, one price, every rail");
+  // [RLUSD constant suffix, USDC constant suffix] — the report's RLUSD price predates the pairing and is named PRODUCT.
+  for (const [rk, uk] of [["SCORE", "SCORE"], ["SCREEN", "SCREEN"], ["MPT", "MPT"], ["EXPOSURE", "EXPOSURE"], ["UNDERWRITE", "UNDERWRITE"], ["PRODUCT", "REPORT"]]) {
+    const r = num(paycall, "PRICE_PER_" + rk + "_RLUSD");
+    const u = num(base, "PRICE_PER_" + uk + "_USDC");
+    if (r === null || u === null) fail("price pair PRICE_PER_" + rk + "_RLUSD / PRICE_PER_" + uk + "_USDC not found (paycall.ts / x402Base.ts)");
+    else if (r !== u) fail("PRICE_PER_" + rk + "_RLUSD " + r + " != PRICE_PER_" + uk + "_USDC " + u + " — one product, one price, every rail");
   }
+}
+
+// ── every per-call x402 route serves BOTH rails (owner rule, 2026-10-05) ────────────────────────────────────────────
+// A paid route under /api/x402 must go through the dual-rail wrapper (dualX402 directly, or walletGetDual) — a new
+// single-rail route fails the build instead of quietly shipping. Exempt BY DESIGN: /api/checkout/usdc/* (plan purchases):
+// the XRPL rail delivers the result even when settlement then fails, and a plan's result is a live API key.
+for (const f of walk("src/app/api/x402")) {
+  if (!/route\.ts$/.test(f)) continue;
+  const src = read(f);
+  if (!/dualX402\(|walletGetDual\(/.test(src)) fail(`${f}: paid x402 route is not dual-rail (use dualX402 / walletGetDual)`);
 }
 
 if (problems.length) {

@@ -22,8 +22,8 @@ export interface X402ResourceSchema {
 export const SCORE_SCHEMA: X402ResourceSchema = {
   description:
     "300–850 on-chain creditworthiness score for one XRPL wallet with the 8-signal breakdown " +
-    "(account age, tx history, financial health, tokens, DEX, AMM, security config, NFTs). One RLUSD " +
-    "payment = one score. No account, no key.",
+    "(account age, tx history, financial health, tokens, DEX, AMM, security config, NFTs). One payment " +
+    "(RLUSD on XRPL or USDC on Base, same price) = one score. No account, no key.",
   input: {
     type: "object",
     properties: { wallet: walletProp },
@@ -36,8 +36,8 @@ export const SCORE_SCHEMA: X402ResourceSchema = {
 export const REPORT_SCHEMA: X402ResourceSchema = {
   description:
     "Everything the score returns plus machine-readable risk flags, ranked recommendations, and an " +
-    "on-chain snapshot (balance, spendable XRP, trust lines, tx count, DEX/AMM/NFT activity). One RLUSD " +
-    "payment = one report.",
+    "on-chain snapshot (balance, spendable XRP, trust lines, tx count, DEX/AMM/NFT activity). One payment " +
+    "(RLUSD on XRPL or USDC on Base, same price) = one report.",
   input: {
     type: "object",
     properties: { wallet: walletProp },

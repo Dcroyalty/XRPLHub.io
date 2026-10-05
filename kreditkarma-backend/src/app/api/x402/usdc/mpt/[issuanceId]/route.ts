@@ -1,12 +1,12 @@
 // src/app/api/x402/usdc/mpt/[issuanceId]/route.ts
-// The FULL MPT issuance risk view, paid: $0.01 in USDC on Base via x402.
+// The FULL MPT issuance risk view, paid: $0.01 per call on EITHER x402 rail — USDC on Base or RLUSD on XRPL (dualX402 below).
 // The free /api/mpt/:issuanceId gives issuance facts + issuer powers +
 // issuer score/grade. This adds the parts that cost real live work —
 // account age, blackhole check, xrp-ledger.toml domain verification, the
 // full credential list, and the Bithomp cross-check — plus the `related`
 // cross-sell block.
 //
-// Same withX402 v1 wrapper as /api/x402/usdc/score: settles only after a
+// Base rail: the same withX402 v1 wrapper as /api/x402/usdc/score, settling only after a
 // successful response. See src/lib/x402Base.ts for the pinning rationale.
 import { NextRequest, NextResponse } from "next/server";
 import { withX402 } from "x402-next";

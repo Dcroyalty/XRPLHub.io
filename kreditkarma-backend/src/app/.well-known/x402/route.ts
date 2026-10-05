@@ -4,11 +4,12 @@
 // xrpl-ai.org / x402scan auto-discovery finds and lists all of them — each with
 // an inputSchema (every query param, its values, an example) and an
 // outputSchema + outputExample so a crawler knows exactly what it gets back.
-// Eight resources are XRPL-native: score and report (XRPL only) and the six that are payable on BOTH rails
-// (tx, usdc/score, mpt, screen/ofac, lending/exposure, lending/underwrite — see src/lib/x402Dual.ts). The dual ones appear
-// twice: once as the Base/USDC entry and once as the XRPL/RLUSD entry, for the SAME URL, at the same price. The
-// plan-purchase resources (checkout/usdc/*) stay Base-only. One product, one price, every rail: POST usdc/score and
-// GET /api/x402/score are the same $0.02 score.
+// Since 2026-10-05 every PER-CALL resource is payable on BOTH rails (src/lib/x402Dual.ts): score, report, tx, usdc/score,
+// mpt, screen/ofac, lending/exposure, lending/underwrite. Each appears twice: once as the Base/USDC entry and once as the
+// XRPL/RLUSD entry, for the SAME URL, at the same price. One product, one price, every rail: POST usdc/score and
+// GET /api/x402/score are the same $0.02 score. The plan purchases (checkout/usdc/*) stay Base-only BY DESIGN: the XRPL
+// rail delivers the result even if settlement fails afterwards (x402.ts serveX402Paid), and for a plan the result is a
+// live $29-$499 API key. RLUSD buyers use the ledger-verified /api/checkout instead.
 
 import { NextResponse } from "next/server";
 import {
@@ -30,7 +31,7 @@ import {
   TREASURY_ADDRESS,
 } from "@/lib/paycall";
 import { BUILDABLE_SERVICE_IDS, SERVICE_COUNT } from "@/app/api/execute/serviceCatalog";
-import { BASE_PAY_TO, BASE_NETWORK, USDC_BASE_ASSET, CDP_FACILITATOR_URL, PRICE_PER_SCORE_USDC, PRICE_PER_MPT_USDC, PRICE_PER_SCREEN_USDC, PRICE_PER_EXPOSURE_USDC, PRICE_PER_UNDERWRITE_USDC } from "@/lib/x402Base";
+import { BASE_PAY_TO, BASE_NETWORK, USDC_BASE_ASSET, CDP_FACILITATOR_URL, PRICE_PER_SCORE_USDC, PRICE_PER_MPT_USDC, PRICE_PER_SCREEN_USDC, PRICE_PER_EXPOSURE_USDC, PRICE_PER_UNDERWRITE_USDC, PRICE_PER_REPORT_USDC } from "@/lib/x402Base";
 import { UNDERWRITE_DISCLAIMER } from "@/lib/underwriteCanon";
 import {
   SCREEN_OFAC_DESCRIPTION,
@@ -93,6 +94,30 @@ function usdcPlanResource(origin: string, planId: PlanId) {
     },
     outputSchema: USDC_PLAN_OUTPUT_SCHEMA,
     outputExample: usdcPlanOutputExample(planId),
+  };
+}
+
+// Base/USDC entry for a GET ?wallet=r... resource that was XRPL-only until 2026-10-05 (score, report).
+function baseWalletGetResource(origin: string, path: string, name: string, description: string, amountUsdc: number, schema: { input: unknown; output: unknown; outputExample: unknown }) {
+  return {
+    resource: `${origin}${path}`,
+    method: "GET",
+    name: `${name} — pay in USDC on Base`,
+    description,
+    x402Version: 1,
+    scheme: "exact",
+    network: BASE_NETWORK,
+    asset: USDC_BASE_ASSET,
+    assetSymbol: "USDC",
+    payTo: BASE_PAY_TO,
+    maxTimeoutSeconds: 300,
+    facilitator: CDP_FACILITATOR_URL,
+    noSignup: true,
+    amount: amountUsdc.toFixed(6),
+    alsoPayableOnXrpl: "this same URL accepts RLUSD on the XRP Ledger at the same price (see its xrpl:0 entry)",
+    inputSchema: schema.input,
+    outputSchema: schema.output,
+    outputExample: schema.outputExample,
   };
 }
 
@@ -364,7 +389,7 @@ export async function GET(req: Request) {
       description:
         "On-chain creditworthiness scoring for the XRP Ledger. A 300–850 score from 8 signals, " +
         "full risk reports, and ready-to-sign prebuilt XRPL transactions for " + SERVICE_COUNT + " actions. " +
-        "Pay per call in RLUSD — no account, no API key, no signup.",
+        "Pay per call in RLUSD on the XRP Ledger or USDC on Base, same price — no account, no API key, no signup.",
       provider: { name: "XRPLHub.io", url: origin, contact: "support@xrplhub.io" },
       facilitator: FACILITATOR_URL,
       network: XRPL_NETWORK,
@@ -495,6 +520,9 @@ export async function GET(req: Request) {
         usdcPlanResource(origin, "starter"),
         usdcPlanResource(origin, "growth"),
         usdcPlanResource(origin, "scale"),
+        // Base twins of score and report (XRPL-only until 2026-10-05).
+        baseWalletGetResource(origin, "/api/x402/score", "XRPLScore — wallet creditworthiness score", SCORE_SCHEMA.description, PRICE_PER_SCORE_USDC, SCORE_SCHEMA),
+        baseWalletGetResource(origin, "/api/x402/report", "Full wallet risk report", REPORT_SCHEMA.description, PRICE_PER_REPORT_USDC, REPORT_SCHEMA),
       ],
       links: {
         mcp: `${origin}/api/mcp`,
@@ -527,7 +555,7 @@ export async function GET(req: Request) {
       // routes. `error` is always one of these keys; the value describes it.
       errorCodes: X402_ERROR_CODES,
       guarantees: {
-        settlement: "On /api/x402/{score,report,tx} and on the XRPL rail of the dual-rail routes (mpt, screen/ofac, lending/exposure, lending/underwrite): the on-ledger payment settles ONLY after the paid work returns success. A handler failure returns error:handler_failed and does NOT charge you — retry with the same PAYMENT-SIGNATURE within maxTimeoutSeconds.",
+        settlement: "On every resource, on both rails: the payment settles ONLY after the paid work returns success (XRPL: t54 settles after the handler; Base: withX402 settles only on a <400 response). A handler failure returns error:handler_failed and does NOT charge you — retry with the same PAYMENT-SIGNATURE within maxTimeoutSeconds.",
         idempotency: "Send an Idempotency-Key header (or rely on the payment's invoiceId). A retried request replays the original response — you can never pay twice.",
       },
     },
