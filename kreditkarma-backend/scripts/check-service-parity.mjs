@@ -81,6 +81,17 @@ for (const id of adminOnlyIds) {
 const names = read("src/app/api/create-payment/route.ts");
 const nameKeys = [...names.slice(names.indexOf("const NAMES"), names.indexOf("const MAX_DONATION")).matchAll(/([a-z0-9]+):'/g)].map((m) => m[1]).filter((k) => !["credential", "donate"].includes(k));
 
+// ── prices follow the tier (owner decision 2026-10-05): standard build $1, caution-tier build $5, every rail ──
+{
+  const priceOf = Object.fromEntries([...prices.matchAll(/^  ([a-z0-9]+): ([\d.]+)/gm)].map((m) => [m[1], Number(m[2])]));
+  const cautionIds = entries.filter((e) => /tier: "caution"/.test(e.slice(0, 400))).map((e) => e.slice(0, e.indexOf('"')));
+  for (const id of buildable) {
+    const want = cautionIds.includes(id) ? 5 : 1;
+    if (priceOf[id] !== want) fail(`servicePrices.ts: "${id}" is $${priceOf[id]} but a ${cautionIds.includes(id) ? "caution-tier" : "standard"} build costs $${want}`);
+  }
+  if (!/STANDARD_BUILD_USD = 1;/.test(prices) || !/CAUTION_BUILD_USD = 5;/.test(prices)) fail("servicePrices.ts: STANDARD_BUILD_USD must be 1 and CAUTION_BUILD_USD must be 5");
+}
+
 const N = buildable.length;
 same("page vs catalog", set(pageIds), set(buildable), "the homepage", "the catalog (buildable)");
 same("price table vs catalog", set(priceKeysPublic), set(buildable), "servicePrices.ts", "the catalog (buildable)");

@@ -4,43 +4,51 @@
 // The server verifies every payment against THIS table (see pricing.ts / paymentGate.ts);
 // an XRP price is never stored — it is derived from a live rate at request time.
 
+/**
+ * Service build prices (owner decision 2026-10-05): every standard build is $1 and every caution-tier build is $5, on every
+ * rail (storefront XRP/RLUSD, x402 RLUSD, x402 USDC). Tier comes from serviceCatalog.ts; check-service-parity.mjs fails the
+ * build if any price here disagrees with its tier. Was $15–$80 per service before 2026-10-05.
+ */
+export const STANDARD_BUILD_USD = 1;
+export const CAUTION_BUILD_USD = 5;
+
 /** USD (= RLUSD) list price of each storefront service. */
 export const SERVICE_PRICE_USD: Readonly<Record<string, number>> = Object.freeze({
-  multisig: 60,
-  regkey: 30,
-  depositauth: 20,
-  desttag: 15,
-  issuerdecl: 40,
-  tokenfee: 25,
-  issuercfg: 80,
-  trustline: 20,
-  rippling: 20,
-  dexorder: 25,
-  ammlaunch: 75,
-  ammentry: 35,
-  smartswap: 25,
-  paychannel: 50,
-  nftmint: 30,
-  nftburn: 20,
-  nftoffer: 20,
-  identity: 20,
-  did: 35,
-  compliance: 55,
-  escrow: 40,
-  mptissue: 55,
-  mptsend: 20,
-  trustsend: 25,
-  globalfreeze: 30,
-  freezeline: 25,
-  checkcreate: 20,
-  checkcash: 15,
-  checkcancel: 15,
-  depositpreauth: 20, // replaced the duplicate desttagreq (same price point)
-  ammwithdraw: 25, // replaced the duplicate dextrade (same price point)
-  tickets: 20,
-  credentialissue: 35,
-  permdomain: 45,
-  delegate: 35, // caution tier: between regkey (30, unrestricted backup key) and issuerdecl (40); revoking is free
+  multisig: 5,
+  regkey: 5,
+  depositauth: 1,
+  desttag: 1,
+  issuerdecl: 5,
+  tokenfee: 1,
+  issuercfg: 1,
+  trustline: 1,
+  rippling: 1,
+  dexorder: 1,
+  ammlaunch: 1,
+  ammentry: 1,
+  smartswap: 1,
+  paychannel: 1,
+  nftmint: 1,
+  nftburn: 1,
+  nftoffer: 1,
+  identity: 1,
+  did: 1,
+  compliance: 1,
+  escrow: 1,
+  mptissue: 5,
+  mptsend: 1,
+  trustsend: 1,
+  globalfreeze: 1,
+  freezeline: 1,
+  checkcreate: 1,
+  checkcash: 1,
+  checkcancel: 1,
+  depositpreauth: 1, // replaced the duplicate desttagreq (same price point)
+  ammwithdraw: 1, // replaced the duplicate dextrade (same price point)
+  tickets: 1,
+  credentialissue: 1,
+  permdomain: 1,
+  delegate: 5,
   // Not a builder service: the paid XRPLScore credential (/api/credential).
   credential: 1,
 });

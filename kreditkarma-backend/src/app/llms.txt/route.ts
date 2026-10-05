@@ -2,6 +2,7 @@
 // https://llmstxt.org — a concise, LLM-friendly map of XRPLHub for agents and
 // AI crawlers. Plain text, stable URL: https://www.xrplhub.io/llms.txt
 
+import { STANDARD_BUILD_USD, CAUTION_BUILD_USD } from "@/lib/servicePrices";
 import { PLAN_ORDER, PLANS } from "@/lib/plans";
 import { SERVICE_CATALOG, SERVICE_COUNT } from "@/app/api/execute/serviceCatalog";
 import { priceUsd } from "@/lib/pricing";
@@ -178,7 +179,7 @@ x402 pay-per-call — EVERY paid route below takes RLUSD on the XRP Ledger (t54)
 - OpenAPI 3.1: ${origin}/openapi.json
 - GET ${origin}/api/x402/score?wallet=r... — 300-850 score + 8 signals, $0.02
 - GET ${origin}/api/x402/report?wallet=r... — score + risk flags + recommendations + on-chain snapshot, $0.08
-- GET ${origin}/api/x402/tx?productId=<id>&account=r...[&<params>][&confirmCaution=true] — the unsigned txjson for one of ${SERVICE_COUNT} actions, at the STOREFRONT price of that action ($15–$80, see ${origin}/api/pricing). Payable on either rail (RLUSD on XRPL, or USDC on Base). Caution-tier actions are refused unpaid until confirmCaution=true.
+- GET ${origin}/api/x402/tx?productId=<id>&account=r...[&<params>][&confirmCaution=true] — the unsigned txjson for one of ${SERVICE_COUNT} actions, at the STOREFRONT price of that action ($${STANDARD_BUILD_USD} per standard build, $${CAUTION_BUILD_USD} per caution-tier build; see ${origin}/api/pricing). Payable on either rail (RLUSD on XRPL, or USDC on Base). Caution-tier actions are refused unpaid until confirmCaution=true.
 - The 402 challenge embeds the full schema. Settlement fires ONLY after the paid
   work succeeds — a handler failure returns error:"handler_failed" and does NOT
   charge you (retry with the same PAYMENT-SIGNATURE). Send an Idempotency-Key

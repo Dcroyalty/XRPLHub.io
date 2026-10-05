@@ -66,7 +66,7 @@ own wallet; XRPLHub never signs for anyone.
 | `check_xrpl_score` | 300–850 score, grade, percentile, 8-signal breakdown, tips. Param: `wallet_address`. | free |
 | `list_xrpl_services` | All 35 `build_xrpl_transaction` actions, each with params + examples. Call this first. No params. | free |
 | `preview_xrpl_transaction` | Describe one action before buying it: what it does, what's irreversible, the price, every field it needs. No signable txjson. Params: `product_id`, `params` (optional). | free |
-| `build_xrpl_transaction` | Buy the unsigned, ready-to-sign txjson for one of 35 actions — the storefront price, paid via x402 (USDC on Base or RLUSD on XRPL). Params: `product_id`, `wallet_address`, `params`, `confirm_caution` (caution-tier only). | storefront price |
+| `build_xrpl_transaction` | Buy the unsigned, ready-to-sign txjson for one of 35 actions — the storefront price ($1 standard, $5 caution-tier), paid via x402 (USDC on Base or RLUSD on XRPL). Params: `product_id`, `wallet_address`, `params`, `confirm_caution` (caution-tier only). | storefront price |
 | `issue_score_credential` | Score certificate signed by XRPLHub (score computed fresh at issuance), with a URL where XRPLHub confirms it — XRPLHub's own attestation, not independently verifiable. 90 days. Params: `wallet_address`, `currency`, `uuid`. | 1 XRP / 1 RLUSD |
 | `check_service_health` | Is the money path working right now — database, Xaman, both x402 facilitators, the anchor config, alerting — before you pay. No params. | free |
 

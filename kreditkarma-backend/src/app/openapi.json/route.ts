@@ -5,6 +5,7 @@
 // with an example so a crawler knows exactly what to send AND what it gets back.
 // The discovery doc endpoint declares security:[] so it isn't probed as a paid product.
 
+import { STANDARD_BUILD_USD, CAUTION_BUILD_USD } from "@/lib/servicePrices";
 import { NextResponse } from "next/server";
 import {
   PRICE_PER_SCORE_RLUSD,
@@ -289,7 +290,7 @@ export async function GET(req: Request) {
             "The signable transaction JSON for any of " + SERVICE_COUNT + " XRPL actions (CheckCreate, Escrow, " +
             "TrustSet, NFT mint/sell/burn, AMM create/deposit, DEX order, MPT issue/send, multisig, " +
             "DID, credentials, permissioned domains, and more), delivered ONLY after payment. Priced per action at the storefront " +
-            "price ($15–$80, see /api/pricing; the amount shown is for the default productId=checkcreate). Pay on either rail: " +
+            "price ($" + STANDARD_BUILD_USD + " per standard build, $" + CAUTION_BUILD_USD + " per caution-tier build; see /api/pricing; the amount shown is for the default productId=checkcreate). Pay on either rail: " +
             "RLUSD on the XRP Ledger (x402 v2 via t54: PAYMENT-REQUIRED header, retry with PAYMENT-SIGNATURE) or USDC on Base " +
             "(x402 v1: retry with X-PAYMENT). You are charged only if the transaction builds. Caution-tier actions (irreversible) " +
             "are refused unpaid, with what is irreversible, until confirmCaution=true. The wallet owner signs the returned txjson — " +
@@ -314,7 +315,7 @@ export async function GET(req: Request) {
               schema: { type: "string" },
             },
           ],
-          "x-payment-info": payment(priceUsd("checkcreate") ?? 20, "One signable XRPL transaction at the storefront price of the requested action (amount shown = productId checkcreate); RLUSD on XRPL or USDC on Base via x402."),
+          "x-payment-info": payment(priceUsd("checkcreate") ?? STANDARD_BUILD_USD, "One signable XRPL transaction at the storefront price of the requested action (amount shown = productId checkcreate); RLUSD on XRPL or USDC on Base via x402."),
           responses: {
             "200": ok(
               "The unsigned transaction, ready for `account` to sign.",

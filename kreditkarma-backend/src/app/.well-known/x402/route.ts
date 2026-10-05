@@ -46,7 +46,7 @@ import {
 } from "@/lib/lendingExposure";
 import { PLANS, type PlanId } from "@/lib/plans";
 import { priceUsd } from "@/lib/pricing";
-import { SERVICE_PRICE_USD } from "@/lib/servicePrices";
+import { SERVICE_PRICE_USD, STANDARD_BUILD_USD } from "@/lib/servicePrices";
 import { USDC_PLAN_OUTPUT_SCHEMA, usdcPlanOutputExample } from "@/lib/checkoutUsdc";
 import { walletProp, SCORE_OUTPUT_SCHEMA as scoreOutputSchema, SCORE_OUTPUT_EXAMPLE as scoreOutputExample } from "@/lib/scoreSchema";
 import { SCORE_SCHEMA, REPORT_SCHEMA, TX_SCHEMA } from "@/lib/x402Schemas";
@@ -333,7 +333,7 @@ function txBaseResource(origin: string) {
     maxTimeoutSeconds: 300,
     facilitator: CDP_FACILITATOR_URL,
     noSignup: true,
-    amount: (priceUsd("checkcreate") ?? 20).toFixed(6),
+    amount: (priceUsd("checkcreate") ?? STANDARD_BUILD_USD).toFixed(6),
     ...txPricing(origin),
     inputSchema: TX_SCHEMA.input,
     outputSchema: TX_SCHEMA.output,
@@ -428,7 +428,7 @@ export async function GET(req: Request) {
           name: "Prebuilt XRPL transaction (" + SERVICE_COUNT + " actions)",
           description: TX_SCHEMA.description,
           ...common,
-          amount: (priceUsd("checkcreate") ?? 20).toFixed(6),
+          amount: (priceUsd("checkcreate") ?? STANDARD_BUILD_USD).toFixed(6),
           ...txPricing(origin),
           inputSchema: TX_SCHEMA.input,
           outputSchema: TX_SCHEMA.output,
