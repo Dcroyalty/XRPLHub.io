@@ -3,9 +3,15 @@
 //
 // Every node below was verified 2026-09-08: server_info -> network_id 0, full
 // history (complete_ledgers "32570-<tip>"), and a live account_info call.
+// Re-verified 2026-10-04 (all six: mainnet, full history, <1s on both :443 and
+// :51234). s-west/s-east.ripple.com were dropped that day: they are now DNS
+// CNAMEs of s1.ripple.com, so they weren't extra nodes — they made one Ripple
+// cluster three ring slots and three votes in the staleness majority below,
+// and all three went "down" together when s1 did. Before adding a node, check
+// its DNS isn't an alias of one already here.
 //
 // Rotation: each xrplRpc() call takes the next node in the ring, so the 7
-// parallel calls a single score fires land on 7 different nodes instead of
+// parallel calls a single score fires spread across the nodes instead of
 // hammering one. A node that 429s (or whose RateLimit-Remaining runs low) is
 // cooled for its Reset window and skipped — the request never fails while any
 // other node is healthy.
@@ -18,8 +24,6 @@ export const XRPL_NODES = [
   "https://xrpl.link",
   "https://s1.ripple.com:51234",
   "https://s2.ripple.com:51234",
-  "https://s-west.ripple.com:51234",
-  "https://s-east.ripple.com:51234",
   "https://rippled.xrptipbot.com",
 ];
 

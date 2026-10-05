@@ -85,7 +85,7 @@ async function requestWithRetry(client, req, attempts = 4) {
 
 function isMarkerError(err) {
   const msg = String(err && (err.message || err.data?.error || err));
-  return /markerMalformed|invalid.*marker/i.test(msg);
+  return /markerMalformed|markerDoesNotExist|invalid.*marker/i.test(msg);
 }
 
 async function main() {

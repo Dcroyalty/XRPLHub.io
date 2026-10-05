@@ -15,7 +15,8 @@
 
 import type { Client } from "xrpl";
 import type { PrismaClient } from "@prisma/client";
-import { connectMainnetOrThrow, validatedLedgerCloseTimeRipple } from "./credentials";
+import { validatedLedgerCloseTimeRipple } from "./credentials";
+import { isMarkerError, connectForWalk, handOffMarker } from "./markerWalk";
 
 const CHECKPOINT_ID = "credential";
 const PAGE_LIMIT = 200;
@@ -24,17 +25,10 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-// ledger_data markers are tied to the specific backend node that issued
-// them - the mainnet endpoints here front load-balanced clusters, so a
-// reconnect (or even the next scheduled invocation, hours later) can land on
-// a different node that rejects a previously-good marker outright. Not
-// transient - retrying it can never succeed. Detected so the pass restarts
-// from the beginning instead of getting permanently stuck retrying a dead
-// marker on every future cron tick forever.
-function isMarkerError(err: unknown): boolean {
-  const msg = String(err instanceof Error ? err.message : err);
-  return /markerMalformed|invalid.*marker/i.test(msg);
-}
+// A marker one node rejects is not transient on that node — retrying it there
+// can never succeed. The walk is pinned to the node that accepts resumed
+// markers and hands a rejected one to the others before restarting the pass
+// (see markerWalk.ts), so it never gets stuck on a dead marker forever.
 
 /** Retry one request a couple of times with backoff before giving up on it —
  * a single transient timeout shouldn't waste this invocation's whole budget. */
@@ -89,7 +83,8 @@ export async function runIndexerPass(
   const passNumber = isNewPass ? checkpoint.passNumber + 1 : checkpoint.passNumber;
   let marker: string | null = isNewPass ? null : checkpoint.marker;
 
-  const client: Client = await connectMainnetOrThrow();
+  let client: Client = await connectForWalk();
+  let triedForMarker = new Set<string>(); // nodes that already rejected the current marker
   let objectsSeen = 0;
   let pagesWalked = 0;
   let completed = false;
@@ -116,13 +111,20 @@ export async function runIndexerPass(
         } as unknown as Parameters<typeof client.request>[0]);
       } catch (err) {
         if (isMarkerError(err) && marker !== null) {
-          // Restart this pass from the beginning — rows already collected
-          // under this passNumber stay valid and get re-confirmed.
+          const next = await handOffMarker(client, triedForMarker);
+          if (next) {
+            client = next;
+            continue;
+          }
+          // No available node accepts it — restart this pass from the beginning.
+          // Rows already collected under this passNumber stay valid and get re-confirmed.
           marker = null;
+          triedForMarker = new Set();
           continue;
         }
         throw err;
       }
+      triedForMarker = new Set();
       const result = res.result as { state?: Record<string, unknown>[]; marker?: string };
       pagesWalked++;
 

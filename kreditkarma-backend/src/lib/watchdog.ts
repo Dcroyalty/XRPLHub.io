@@ -344,7 +344,7 @@ async function checkNodeStaleness(): Promise<Finding> {
   return { key: "node-staleness", level: "ok", message: `${r.responded}/${XRPL_NODES.length} nodes healthy, ledger ${r.majorityLedgerIndex}` };
 }
 
-/** The score/monitoring/amendment reads rotate across 8 public XRPL nodes. Some are hobbyist hosts that will
+/** The score/monitoring/amendment reads rotate across the public XRPL nodes in XRPL_NODES (6 as of Oct 2026). Some are hobbyist hosts that will
  *  disappear over two years; the rotation hides that until they are ALL gone, so count the healthy ones. */
 async function checkNodes(): Promise<Finding> {
   const results = await Promise.all(
@@ -362,7 +362,7 @@ async function checkNodes(): Promise<Finding> {
   const healthy = results.filter((r) => r.ok).length;
   const dead = results.filter((r) => !r.ok).map((r) => new URL(r.url).host);
   if (healthy <= 2) return { key: "xrpl-nodes", level: "red", message: `only ${healthy} of ${results.length} public XRPL nodes answer as mainnet (down: ${dead.join(", ")}) — scores, monitoring and amendment detection are about to fail; update XRPL_NODES in src/lib/xrplNodes.ts` };
-  if (healthy <= 5) return { key: "xrpl-nodes", level: "warn", message: `${healthy} of ${results.length} public XRPL nodes healthy (down: ${dead.join(", ")}) — refresh the node list in src/lib/xrplNodes.ts` };
+  if (dead.length >= 2) return { key: "xrpl-nodes", level: "warn", message: `${healthy} of ${results.length} public XRPL nodes healthy (down: ${dead.join(", ")}) — refresh the node list in src/lib/xrplNodes.ts` };
   return { key: "xrpl-nodes", level: "ok", message: `${healthy} of ${results.length} public XRPL nodes healthy${dead.length ? ` (down: ${dead.join(", ")})` : ""}` };
 }
 
@@ -504,7 +504,7 @@ export async function runWatchdog(prisma: PrismaClient, opts: WatchdogOptions = 
     add("tls-cert", checkTls);
     add("xrpl-nodes", checkNodes, 8000);
     add("bithomp-key", checkBithomp);
-    add("node-staleness", checkNodeStaleness, 15000); // 8 parallel server_info calls, 6s timeout each
+    add("node-staleness", checkNodeStaleness, 15000); // one parallel server_info call per node, 6s timeout each
     add("xrp-price", checkXrpPrice);
   }
 

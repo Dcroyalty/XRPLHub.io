@@ -34,7 +34,12 @@ export async function GET(req: Request) {
     // Leave headroom under the 60s ceiling for the anchor + health steps
     // (connect + autofill + submitAndWait ~= 8-12s when an anchor is due).
     // (32s -> 24s: the watchdog below needs a few seconds; the indexer is resumable, so nothing is lost.)
-    const progress = await runMptIndexerPass(prisma, { budgetMs: 24_000 });
+    // The indexer must never take the anchor down with it (Oct 3: a markerDoesNotExist escaped the walk,
+    // crashed this route, and that day's anchor never published). It's resumable; the anchor isn't.
+    const progress = await runMptIndexerPass(prisma, { budgetMs: 24_000 }).catch(async (e) => {
+      await notifyError("cron/index-mpts indexer", e);
+      return { indexerError: e instanceof Error ? e.message : String(e) };
+    });
     const anchor = await maybeAnchor(prisma);
 
     // Daily "is the money path working" sweep — alert on anything red.

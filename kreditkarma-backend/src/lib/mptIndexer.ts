@@ -19,7 +19,7 @@
 
 import type { Client } from "xrpl";
 import type { PrismaClient } from "@prisma/client";
-import { connectMainnetOrThrow, validatedLedgerCloseTimeRipple } from "./credentials";
+import { validatedLedgerCloseTimeRipple } from "./credentials";
 import { scoreWallet, AccountNotFoundError } from "./xrplscore";
 import { bithompMptsByIssuer, bithompRecentMpts } from "./bithomp";
 import { MPT_LSF_CAN_HOLD_CONFIDENTIAL } from "./mptFlags";
@@ -42,15 +42,12 @@ import {
   type AnchorMemoPayload,
 } from "./mptAnchor";
 import { notifyError } from "./notify";
+import { isMarkerError, connectForWalk, handOffMarker } from "./markerWalk";
 
 const PAGE_LIMIT = 200;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
-}
-function isMarkerError(err: unknown): boolean {
-  const msg = String(err instanceof Error ? err.message : err);
-  return /markerMalformed|invalid.*marker/i.test(msg);
 }
 async function requestWithRetry(client: Client, req: Parameters<Client["request"]>[0], attempts = 3) {
   let lastErr: unknown;
@@ -155,6 +152,10 @@ export interface MptPassProgress {
     objectsSeen: number;
     completed: boolean;
     lastCompletedPassAt: string | null;
+    /** How many times a rejected marker forced a clean restart of the pass this run. */
+    markerRestarts: number;
+    /** A non-marker walk failure: the walk stopped early, progress up to it was saved. */
+    error?: string;
   };
 }
 
@@ -219,10 +220,14 @@ export async function runMptIndexerPass(
   const passNumber = isNewPass ? checkpoint.passNumber + 1 : checkpoint.passNumber;
   let marker: string | null = isNewPass ? null : checkpoint.marker;
 
-  const client: Client = await connectMainnetOrThrow();
+  // Pinned to xrplcluster (see markerWalk.ts) so a saved marker resumes instead of restarting the pass.
+  let client: Client = await connectForWalk();
   let pagesWalked = 0;
   let objectsSeen = 0;
   let completed = false;
+  let markerRestarts = 0;
+  let triedForMarker = new Set<string>(); // nodes that already rejected the current marker
+  let walkError: string | undefined;
   try {
     const nowRipple = await validatedLedgerCloseTimeRipple(client);
     if (isNewPass) {
@@ -246,11 +251,26 @@ export async function runMptIndexerPass(
         } as unknown as Parameters<typeof client.request>[0]);
       } catch (err) {
         if (isMarkerError(err) && marker !== null) {
-          marker = null; // node handoff — restart the pass, rows keep their passNumber and get re-confirmed
+          // 1) Hand the marker to every other reachable walk node before giving up on it.
+          const next = await handOffMarker(client, triedForMarker);
+          if (next) {
+            client = next;
+            continue;
+          }
+          // 2) No available node accepts it — only now restart the pass. Rows keep their passNumber
+          //    and get re-confirmed. Stay on whichever node we're connected to.
+          marker = null;
+          triedForMarker = new Set();
+          markerRestarts++;
           continue;
         }
-        throw err;
+        // Anything else: stop the walk, keep the progress made so far (saved below), and let the
+        // caller go on to the anchor. A walk failure must never abort the cron.
+        walkError = err instanceof Error ? err.message : String(err);
+        await notifyError("cron/index-mpts walk", err, { marker, pagesWalked, passNumber });
+        break;
       }
+      triedForMarker = new Set();
       const result = res.result as { state?: Record<string, unknown>[]; marker?: string };
       pagesWalked++;
       for (const node of result.state ?? []) {
@@ -304,6 +324,8 @@ export async function runMptIndexerPass(
         objectsSeen,
         completed,
         lastCompletedPassAt: cpAfter?.lastCompletedPassAt ? cpAfter.lastCompletedPassAt.toISOString() : null,
+        markerRestarts,
+        ...(walkError ? { error: walkError } : {}),
       },
     };
   } finally {

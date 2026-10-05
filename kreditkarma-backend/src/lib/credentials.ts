@@ -122,9 +122,11 @@ export function verificationUri(subject: string): string {
 
 // ── MAINNET CONNECTION GUARD ─────────────────────────────────────────────────
 
-export async function connectMainnetOrThrow(opts?: { fastWalk?: boolean }): Promise<Client> {
+/** `endpoints` overrides the try-in-order list (markerWalk.ts pins ledger_data walks with it).
+ *  The mainnet guards below apply identically whichever list is used. */
+export async function connectMainnetOrThrow(opts?: { fastWalk?: boolean; endpoints?: readonly string[] }): Promise<Client> {
   let lastErr: unknown;
-  const endpoints = opts?.fastWalk ? MAINNET_ENDPOINTS_FAST_WALK : MAINNET_ENDPOINTS;
+  const endpoints = opts?.endpoints ?? (opts?.fastWalk ? MAINNET_ENDPOINTS_FAST_WALK : MAINNET_ENDPOINTS);
   for (const wss of endpoints) {
     const client = new Client(wss);
     try {

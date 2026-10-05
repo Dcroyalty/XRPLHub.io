@@ -61,7 +61,7 @@ const FLAG = { locked: 1, canLock: 2, requireAuth: 4, canEscrow: 8, canTrade: 16
 function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
 function isMarkerError(err) {
   const msg = String(err && (err.message || err.data?.error || err));
-  return /markerMalformed|invalid.*marker/i.test(msg);
+  return /markerMalformed|markerDoesNotExist|invalid.*marker/i.test(msg);
 }
 function safeDecode(hex) { try { return convertHexToString(hex); } catch { return hex; } }
 function deriveIssuanceId(sequence, issuer) {

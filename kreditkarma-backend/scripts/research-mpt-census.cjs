@@ -38,7 +38,7 @@ function sleep(ms) {
 
 function isMarkerError(err) {
   const msg = String(err && (err.message || err.data?.error || err));
-  return /markerMalformed|invalid.*marker/i.test(msg);
+  return /markerMalformed|markerDoesNotExist|invalid.*marker/i.test(msg);
 }
 
 function loadCheckpoint() {
