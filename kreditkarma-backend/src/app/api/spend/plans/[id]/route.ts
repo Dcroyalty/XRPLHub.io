@@ -1,0 +1,61 @@
+// src/app/api/spend/plans/[id]/route.ts
+// GET /api/spend/plans/:id — the funder dashboard. Refreshes every check from the ledger first (unsigned / open /
+// expired / closed-as-cashed-or-cancelled), then returns this period's checks — each unsigned one with its ready-to-sign
+// CheckCreate — the reserve currently held, prepayment status and whether one-signature Batch is available.
+// Read-only. The plan id is the dashboard's secret; every action it offers builds a transaction only the funder can sign.
+
+import { prisma } from "@/lib/xrplscore-db";
+import { rateLimit, rateLimited } from "@/lib/rateLimit";
+import { batchAvailability, checkCreateFor, ensurePeriodChecks, fromRipple, ownerReserveXrp, periodWindow, rlusdBalance, syncPlanChecks, type Period } from "@/lib/spendControls";
+import { SPEND_PLAN_MONTHLY_USD } from "@/lib/servicePrices";
+import { SPEND_DISCLOSURE, loadPlan, spendErr, spendJson } from "@/lib/spendApi";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const maxDuration = 25;
+
+export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }) {
+  const rl = rateLimit(req, "spend-dashboard", 30, 60_000);
+  if (!rl.ok) return rateLimited(rl);
+  const { id } = await ctx.params;
+  const plan = await loadPlan(id);
+  if (!plan) return spendErr(404, "not_found", "No plan with that id.");
+
+  const paid = !!plan.paidThrough && plan.paidThrough > new Date();
+  if (paid) await ensurePeriodChecks(prisma, plan);
+  const sync = await syncPlanChecks(prisma, plan.id, plan.funder);
+
+  const { start, end } = periodWindow(plan.period as Period);
+  const [rows, reserve, balance, batch, payments] = await Promise.all([
+    prisma.spendCheck.findMany({ where: { planId: plan.id }, include: { payee: true }, orderBy: [{ periodStart: "desc" }, { payee: { position: "asc" } }, { seq: "asc" }], take: 300 }),
+    ownerReserveXrp(),
+    rlusdBalance(plan.funder),
+    batchAvailability(),
+    prisma.spendPlanPayment.findMany({ where: { planId: plan.id }, orderBy: { paidAt: "desc" } }),
+  ]);
+  const holding = rows.filter((r) => r.status === "open" || r.status === "expired").length;
+  const current = rows.filter((r) => r.periodStart.getTime() === start.getTime());
+  const view = (r: (typeof rows)[number]) => {
+    const tx = r.status === "unsigned" && paid ? checkCreateFor(plan.funder, r) : null;
+    return {
+      invoiceId: r.invoiceId, checkId: r.checkId, payee: r.payee.label, payeeAddress: r.payee.address, category: r.payee.category,
+      seq: r.seq, amount: r.amount, currency: plan.currency, expires: fromRipple(r.expiration).toISOString(),
+      status: r.status, closedHow: r.closedHow, txjson: tx && tx.ok ? tx.txjson : null,
+    };
+  };
+  return spendJson({
+    plan: { id: plan.id, name: plan.name, funder: plan.funder, period: plan.period, checkSize: plan.checkSize, currency: plan.currency, status: plan.status, paidThrough: plan.paidThrough, shareLink: `/spend/s/${plan.shareToken}` },
+    payees: plan.payees.map((p) => ({ label: p.label, category: p.category, address: p.address, budget: p.budget, destinationTag: p.destinationTag })),
+    paid,
+    price: { usdPerMonth: SPEND_PLAN_MONTHLY_USD, currency: "RLUSD" },
+    period: { start, end },
+    current: current.map(view),
+    history: rows.filter((r) => r.periodStart.getTime() !== start.getTime()).slice(0, 100).map(view),
+    reserve: { perCheckXrp: reserve, heldNowXrp: Number((reserve * holding).toFixed(6)), openChecks: holding, note: "Comes back as each check is cashed or cancelled. Expired checks still hold it until someone cancels them — cancel them here." },
+    funderRlusd: balance,
+    ledgerSynced: sync.ok,
+    batch,
+    payments: payments.map((p) => ({ txHash: p.txHash, months: p.months, amount: p.amount, paidAt: p.paidAt })),
+    disclosure: SPEND_DISCLOSURE,
+  });
+}

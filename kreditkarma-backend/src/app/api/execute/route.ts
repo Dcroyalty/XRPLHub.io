@@ -27,6 +27,7 @@ import { ADMIN_ONLY_SERVICE_IDS } from '@/lib/servicePrices';
 import { safeIdentifier } from '@/lib/xumm';
 import { isAdmin, adminUnauthorized } from '@/lib/adminAuth';
 import { SERVICE_REQUIRED_AMENDMENT, serviceAvailability } from '@/lib/serviceAmendments';
+import { prisma } from '@/lib/xrplscore-db';
 
 const XUMM_API = 'https://xumm.app/api/v1/platform/payload';
 
@@ -73,6 +74,10 @@ export async function POST(req: NextRequest) {
     const pay = await verifyPayment(payTxHash.trim().toUpperCase(), String(productId));
     if (!pay.ok) {
       return NextResponse.json({ error: pay.reason, code: pay.code, ...(pay.retry ? { retry: true } : {}) }, { status: gateStatus(pay.code) });
+    }
+    // One ledger payment buys ONE thing: a hash already used to prepay a Spend Controls plan can't buy a service too.
+    if (await prisma.spendPlanPayment.findUnique({ where: { txHash: (pay.txHash || payTxHash).trim().toUpperCase() } }).catch(() => null)) {
+      return NextResponse.json({ error: 'This payment was already used to prepay a Spend Controls plan.', code: 'already_used' }, { status: 409 });
     }
     if (pay.payer !== account) {
       return NextResponse.json({ error: 'The service must be built for the wallet that paid.', code: 'sender_mismatch' }, { status: 403 });

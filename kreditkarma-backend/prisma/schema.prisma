@@ -860,3 +860,71 @@ model CredentialRequest {
   @@index([ipHash, requestedAt])
   @@index([kind, status])
 }
+
+// ── Spend Controls (2026-10-05): non-custodial spending plans on XRPL Checks ─────────────────────────────────────
+// XRPLHub stores the PLAN, never funds or keys. Every check is an unsigned CheckCreate the funder signs; merchants cash
+// with their own wallet. Ledger is the truth for check state — SpendCheck rows are what we built, refreshed from the ledger.
+model SpendPlan {
+  id          String    @id @default(cuid())
+  funder      String    // XRPL address that signs every CheckCreate / CheckCancel
+  name        String?
+  period      String    // "weekly" | "monthly"
+  currency    String    @default("RLUSD")
+  checkSize   String    // face value of each check (decimal string)
+  shareToken  String    @unique // the beneficiary link
+  paidThrough DateTime? // prepaid ($5/month) until; null = not paid yet
+  status      String    @default("draft") // draft | active | ended
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  payees      SpendPayee[]
+  checks      SpendCheck[]
+  payments    SpendPlanPayment[]
+
+  @@index([funder])
+}
+
+model SpendPayee {
+  id             String   @id @default(cuid())
+  planId         String
+  plan           SpendPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  address        String
+  label          String
+  category       String
+  budget         String   // per period, in the plan currency
+  destinationTag Int?
+  position       Int      @default(0)
+  checks         SpendCheck[]
+
+  @@index([planId])
+}
+
+model SpendCheck {
+  id         String    @id @default(cuid())
+  planId     String
+  plan       SpendPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  payeeId    String
+  payee      SpendPayee @relation(fields: [payeeId], references: [id], onDelete: Cascade)
+  periodStart DateTime
+  seq        Int        // 1..n within (payee, period)
+  amount     String
+  expiration Int        // Ripple-epoch seconds (end of the period)
+  invoiceId  String     @unique // 64-hex InvoiceID written into the CheckCreate — how we recognise it on the ledger
+  checkId    String?    @unique // ledger object id once created
+  status     String     @default("unsigned") // unsigned | open | expired | closed (cashed or cancelled)
+  closedHow  String?    // "cashed" | "cancelled" when known
+  updatedAt  DateTime   @updatedAt
+
+  @@unique([payeeId, periodStart, seq])
+  @@index([planId])
+}
+
+model SpendPlanPayment {
+  txHash  String   @id // single-use: one ledger payment extends one plan once
+  planId  String
+  plan    SpendPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  months  Int
+  amount  String
+  paidAt  DateTime @default(now())
+
+  @@index([planId])
+}

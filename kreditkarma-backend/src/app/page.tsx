@@ -258,11 +258,13 @@ const EXEC_FIELDS: Record<string, ExecField[]> = {
   // Payments
   checkcreate: [
     { key:'destination', label:'Pay to wallet', placeholder:'rXXX…', required:true },
-    { key:'amount', label:'Check amount (XRP)', type:'number', required:true },
+    { key:'currency', label:'Currency', type:'select', options:['XRP','RLUSD'], default:'XRP' },
+    { key:'amount', label:'Most it can be cashed for', type:'number', required:true, help:'A check does not lock funds — keep this much in your wallet until it is cashed.' },
   ],
   checkcash: [
     { key:'checkId', label:'Check ID', placeholder:'object hash', required:true, type:'picker', pickerType:'checks', help:'A check written to you (only the recipient can cash a check).' },
-    { key:'amount', label:'Amount to cash (XRP)', type:'number', required:true },
+    { key:'currency', label:'Currency', type:'select', options:['XRP','RLUSD'], default:'XRP', help:'Must match the check.' },
+    { key:'amount', label:'Amount to cash', type:'number', required:true, help:'At most the check’s maximum. A check is single-use: cashing less still closes it.' },
   ],
   checkcancel: [{ key:'checkId', label:'Check ID to cancel', placeholder:'object hash', required:true, type:'picker', pickerType:'checks', help:'A check you wrote, or one written to you.' }],
   escrow: [

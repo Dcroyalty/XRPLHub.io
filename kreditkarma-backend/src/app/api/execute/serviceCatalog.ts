@@ -241,16 +241,18 @@ export const SERVICE_CATALOG: ServiceDef[] = [
 
   // ── Payments ────────────────────────────────────────────────────
   { id: "checkcreate", label: "Create a check", category: "Payments", tier: "safe",
-    gives: "A CheckCreate txjson (deferred payment the recipient cashes later).",
+    gives: "A CheckCreate txjson (deferred payment the recipient cashes later), in XRP or RLUSD. A check does not lock funds; it holds 0.2 XRP of your reserve until cashed or cancelled.",
     params: [
       P("destination", "address", true, "Who can cash the check", "rDest..."),
-      P("amount", "string", true, "Max XRP the check is worth", "10"),
+      P("amount", "string", true, "Most the check can be cashed for", "10"),
+      P("currency", "string", false, "XRP (default) or RLUSD", "RLUSD"),
     ] },
   { id: "checkcash", label: "Cash a check", category: "Payments", tier: "safe",
-    gives: "A CheckCash txjson.",
+    gives: "A CheckCash txjson for an exact amount, in XRP or RLUSD. A check is single-use: cashing for less than its maximum still closes it. No RLUSD trust line needed beforehand.",
     params: [
-      P("checkId", "string", true, "Check object ID", "C4B900F...ledgerObjectHash"),
-      P("amount", "string", true, "XRP amount to receive", "10"),
+      P("checkId", "string", true, "Check object ID (64 hex)", "C4B900F...ledgerObjectHash"),
+      P("amount", "string", true, "Amount to receive (at most the check's maximum)", "10"),
+      P("currency", "string", false, "XRP (default) or RLUSD — must match the check", "RLUSD"),
     ] },
   { id: "checkcancel", label: "Cancel a check", category: "Payments", tier: "safe",
     gives: "A CheckCancel txjson.",

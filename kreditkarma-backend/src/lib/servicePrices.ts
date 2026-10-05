@@ -11,6 +11,8 @@
  */
 export const STANDARD_BUILD_USD = 1;
 export const CAUTION_BUILD_USD = 5;
+/** Spend Controls: one plan, per month, prepaid in RLUSD (owner decision 2026-10-05). Merchants cash free. */
+export const SPEND_PLAN_MONTHLY_USD = 5;
 
 /** USD (= RLUSD) list price of each storefront service. */
 export const SERVICE_PRICE_USD: Readonly<Record<string, number>> = Object.freeze({

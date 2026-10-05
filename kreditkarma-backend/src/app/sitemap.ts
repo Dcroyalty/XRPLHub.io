@@ -27,6 +27,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
     },
     ...servicePages,
     {
+      url:              `${base}/spend`,
+      lastModified:     now,
+      changeFrequency:  'monthly',
+      priority:         0.7,
+    },
+    {
       url:              `${base}/#products`,
       lastModified:     now,
       changeFrequency:  'weekly',

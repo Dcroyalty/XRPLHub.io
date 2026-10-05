@@ -22,6 +22,7 @@ import {
 } from './buildKit';
 import { richBuilders } from './serviceBuilders';
 import { planScoreDomain } from '@/lib/domainKit';
+import { buildCheckCancel, buildCheckCash, buildCheckCreate, parseCurrency } from '@/lib/checks';
 
 // ── Per-product builders ──────────────────────────────────────────────
 // account = the customer's own wallet (the signer). A builder may be async (it can read the
@@ -198,21 +199,30 @@ const builders: Record<string, Builder> = {
   },
 
   // ── PAYMENTS ──────────────────────────────────────────────────────
+  // XRP (default, unchanged) or RLUSD — one shared builder (src/lib/checks.ts) that also enforces a 64-hex CheckID,
+  // which xrpl.js validate() does not.
   checkcreate: (account, p) => {
     const dest = str(p.destination), amount = str(p.amount);
     if (!dest || !amount) return NEED(['destination', 'amount']);
     if (!isAddr(dest)) return BAD('invalid destination address');
-    return SAFE({ TransactionType: 'CheckCreate', Account: account, Destination: dest, SendMax: xrpToDrops(Number(amount)) }, 'Create Check');
+    const currency = parseCurrency(p.currency);
+    if (!currency) return BAD('currency must be XRP or RLUSD');
+    const b = buildCheckCreate({ account, destination: dest, currency, amount });
+    return b.ok ? SAFE(b.txjson, `Create Check (${currency})`) : BAD(b.error);
   },
   checkcash: (account, p) => {
     const checkId = str(p.checkId), amount = str(p.amount);
     if (!checkId || !amount) return NEED(['checkId', 'amount']);
-    return SAFE({ TransactionType: 'CheckCash', Account: account, CheckID: checkId, Amount: xrpToDrops(Number(amount)) }, 'Cash Check');
+    const currency = parseCurrency(p.currency);
+    if (!currency) return BAD('currency must be XRP or RLUSD');
+    const b = buildCheckCash({ account, checkId, currency, amount });
+    return b.ok ? SAFE(b.txjson, `Cash Check (${currency})`) : BAD(b.error);
   },
   checkcancel: (account, p) => {
     const checkId = str(p.checkId);
     if (!checkId) return NEED(['checkId']);
-    return SAFE({ TransactionType: 'CheckCancel', Account: account, CheckID: checkId }, 'Cancel Check');
+    const b = buildCheckCancel({ account, checkId });
+    return b.ok ? SAFE(b.txjson, 'Cancel Check') : BAD(b.error);
   },
   escrow: (account, p) => {
     const dest = str(p.destination), amount = str(p.amount), finishAfter = Number(p.finishAfter);

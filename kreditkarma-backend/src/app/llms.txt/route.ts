@@ -201,6 +201,17 @@ Every route above is payable on EITHER rail at the same face value: USDC on Base
 network "xrpl:0"; retry with a PAYMENT-SIGNATURE header). On the XRPL rail the response is wrapped as { data, x402 } and you are only
 charged after the result is produced. One product, one price, every rail: POST /api/x402/usdc/score and GET /api/x402/score are the same $0.02 score.
 
+## Spend Controls (non-custodial spending plans on XRPL Checks)
+
+${origin}/spend — a funder approves up to 10 payees (XRPL address + label + category + budget per week or month) and a check
+size; each payee's budget is split into RLUSD checks of that size. XRPLHub builds every CheckCreate unsigned — the funder
+signs each one; the merchant cashes with their own wallet (free); the funder cancels from the dashboard. $5/month per plan,
+prepaid in RLUSD from the funder's account. Each open check holds 0.2 XRP of the funder's reserve until cashed or cancelled.
+Not a bank, not a money transmitter; XRPLHub never holds funds or keys. Checks don't lock funds.
+- POST ${origin}/api/spend/plans?dryRun=1 — preview a plan (check split, reserve locked up front, funder RLUSD balance)
+- GET  ${origin}/api/spend/s/<shareToken> — the beneficiary view (available checks per place)
+- GET  ${origin}/api/spend/check/<CheckID> — a check as a merchant sees it; POST {amount} for the unsigned CheckCash
+
 ## B2B API (prepaid key, 30-day term)
 
 Buy a key at ${origin}/pricing — pay once in XRP, RLUSD, or USDC-on-Base (x402),
