@@ -6,7 +6,7 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import { API, Disclosure, s } from "./ui";
+import { API, Disclosure, s, useXapp } from "./ui";
 
 type Payee = { address: string; label: string; category: string; budget: string; destinationTag: string };
 const CATEGORIES = ["food", "groceries", "clothing", "school", "transport", "health", "housing", "utilities", "entertainment", "other"];
@@ -25,6 +25,9 @@ export default function SpendPage() {
   const [kind, setKind] = useState<"budget" | "subscription">(() => (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("kind") === "subscription" ? "subscription" : "budget"));
   const [currency, setCurrency] = useState<"RLUSD" | "XRP">("RLUSD");
   const [funder, setFunder] = useState("");
+  // Inside the Xaman xApp the funder IS the account Xaman confirmed — prefilled and locked.
+  const xapp = useXapp();
+  useEffect(() => { if (xapp) setFunder(xapp.account); }, [xapp]); // eslint-disable-line react-hooks/set-state-in-effect
   const [name, setName] = useState("");
   const [period, setPeriod] = useState<"weekly" | "monthly">("weekly");
   const [checkSize, setCheckSize] = useState("10");
@@ -68,7 +71,7 @@ export default function SpendPage() {
   return (
     <div style={s.shell}>
       <main style={s.page}>
-        <Link href="/" style={s.small}>← XRPLHub</Link>
+        {xapp ? <a href="/xapp/spend" style={s.small}>← My plans</a> : <Link href="/" style={s.small}>← XRPLHub</Link>}
         <h1 style={s.h1}>Spend Controls</h1>
         <p style={s.sub}>
           A spending plan for someone you support — only at places you approve, up to amounts you set, paid by XRPL checks in RLUSD.
@@ -98,7 +101,7 @@ export default function SpendPage() {
         <div style={s.card}>
           <p style={s.h2}>1. The {sub ? "subscription" : "plan"}</p>
           <label style={s.label}>Your XRPL account (the funder — you&apos;ll sign the checks from it)</label>
-          <input style={{ ...s.input, ...s.mono }} value={funder} onChange={(e) => setFunder(e.target.value)} placeholder="r…" />
+          <input style={{ ...s.input, ...s.mono, ...(xapp ? { background: "#f4f4f2" } : {}) }} value={funder} readOnly={!!xapp} onChange={(e) => setFunder(e.target.value)} placeholder="r…" />
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
             <div style={{ flex: "1 1 180px" }}><label style={s.label}>Name (optional)</label><input style={s.input} value={name} onChange={(e) => setName(e.target.value)} placeholder={sub ? "Gym membership" : "Sam's allowance"} /></div>
             <div style={{ flex: "1 1 120px" }}><label style={s.label}>Period</label>

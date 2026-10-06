@@ -94,6 +94,28 @@ export async function xummFetch(url: string, init: RequestInit = {}): Promise<Re
   throw lastErr instanceof Error ? lastErr : new Error("Xaman request failed");
 }
 
+/** What Xaman tells us about the user who opened our xApp (subset of xumm-sdk's xAppOttData). */
+export interface XappOtt {
+  account: string | null;
+  /** The user token for push (same concept as application.issued_user_token). */
+  userToken: string | null;
+  nodetype: string | null;      // "MAINNET" | "TESTNET" | ...
+  accountaccess: string | null; // "FULL" | "READONLY"
+}
+
+/**
+ * Resolve an xApp one-time token (the `xAppToken` query param Xaman opens our xApp with) — server-side, with our API
+ * key + secret, so the account can't be spoofed by the page. Single use: a second resolve of the same token fails.
+ * Endpoint per xumm-sdk xApp.get(ott): GET /platform/xapp/ott/{ott}.
+ */
+export async function getXappOtt(ott: string): Promise<XappOtt | null> {
+  const res = await xummFetch(`https://xumm.app/api/v1/platform/xapp/ott/${encodeURIComponent(ott)}`, { method: "GET" });
+  const d = (await res.json().catch(() => null)) as Record<string, unknown> | null;
+  if (!res.ok || !d || d.error) return null;
+  const str = (v: unknown) => (typeof v === "string" && v ? v : null);
+  return { account: str(d.account), userToken: str(d.user), nodetype: str(d.nodetype), accountaccess: str(d.accountaccess) };
+}
+
 /**
  * One authenticated call to Xaman's platform ping — the cheapest call that proves the API key + secret are accepted.
  * Never throws. `ok` means Xaman answered 2xx without an error body; `rejected` means it refused the credentials.

@@ -6,7 +6,7 @@ export default function robots(): MetadataRoute.Robots {
       {
         userAgent: '*',
         allow:     '/',
-        disallow:  ['/admin', '/api/'],
+        disallow:  ['/admin', '/api/', '/xapp/'], // /xapp/ only works inside the Xaman app
       },
     ],
     sitemap: 'https://www.xrplhub.io/sitemap.xml',

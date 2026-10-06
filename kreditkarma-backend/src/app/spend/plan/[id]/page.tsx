@@ -4,7 +4,7 @@
 
 import React, { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { API, Disclosure, SignPanel, fmtDate, s, type SignData } from "../../ui";
+import { API, Disclosure, SignPanel, fmtDate, s, useXapp, type SignData } from "../../ui";
 
 type Check = { invoiceId: string; checkId: string | null; payee: string; category: string; seq: number; amount: string; currency: string; expires: string; status: string; closedHow: string | null };
 type Dash = {
@@ -26,6 +26,7 @@ export default function PlanDashboard() {
   const [d, setD] = useState<Dash | null>(null);
   const [err, setErr] = useState("");
   const [sign, setSign] = useState<{ title: string; data: SignData } | null>(null);
+  const xapp = useXapp();
 
   const load = useCallback(async () => {
     try {
@@ -66,7 +67,7 @@ export default function PlanDashboard() {
   return (
     <div style={s.shell}>
       <main style={s.page}>
-        <a href="/spend" style={s.small}>← Spend Controls</a>
+        {xapp ? <a href="/xapp/spend" style={s.small}>← My plans</a> : <a href="/spend" style={s.small}>← Spend Controls</a>}
         <h1 style={s.h1}>{d.plan.name ?? (sub ? "Subscription" : "Spending plan")}</h1>
         <p style={s.sub}>{sub ? "Subscription" : "Budget"} · funder <span style={s.mono}>{d.plan.funder}</span> · {d.plan.period} · {sub ? `${d.plan.checkSize} ${cur} per period` : `checks of ${d.plan.checkSize} ${cur}`}</p>
         {sub && (
