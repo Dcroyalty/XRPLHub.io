@@ -34,7 +34,16 @@ The live production app is a single Next.js project in **`kreditkarma-backend/`*
   build if any transaction service price is not $0 or a payment step creeps back onto a transaction path.
 - **Still PAID** (prices in `src/lib/servicePrices.ts` / `src/lib/paycall.ts`, ledger-verified, single-use): score
   reports + score API, screening + receipts, monitoring, MPT data + issuer risk, credentials, lending/underwriting data,
-  API plans, the admin health check. Spend Controls is FREE (2026-10-06): no plan fee, same reasoning as transactions.
+  API plans, the admin health check, the agent payment pre-check (`/api/x402/precheck`, $0.03, both x402 rails,
+  `src/lib/paymentPrecheck.ts`). Spend Controls is FREE (2026-10-06): no plan fee, same reasoning as transactions.
+- **Spend Controls** (`src/lib/spendControls.ts`) — budgets (RLUSD) and SUBSCRIPTIONS (one payee, RLUSD or XRP). NEVER
+  create a future period's check: a check is cashable the moment it exists. The daily MPT cron pushes this period's
+  unsigned subscription check to the payer's Xaman app (`xamanUserToken`, never returned by an API). Checks, not
+  escrow, even for XRP (escrow locks funds and can't be cancelled before CancelAfter). The **xApp** (`/xapp/spend`)
+  shows ONLY Spend Controls and signs with `xumm-xapp-sdk` `openSignRequest` — never add the catalog, DEX or anything
+  Xaman does itself to it.
+- **Focus (competitive map, 2026-10-06):** lead with XRPLScore + monitoring + lending readiness, Spend Controls, MPT
+  issuer-power risk. Don't rebuild what Xaman charges for (DEX orders, swaps, AMM deposit/withdraw were removed).
 - **Community grants** — a person reviews every application; nothing is automated. The
   application form is gated by `GRANT_APPLICATIONS_OPEN` in `src/lib/grantsStatus.ts`
   (currently `false`: approved grants are waiting to be paid). Donations stay open.
