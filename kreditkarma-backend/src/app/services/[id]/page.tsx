@@ -37,7 +37,7 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   const { product, def } = hit;
   const price = priceInfo(def.id);
   const title = `${product.name} — ${product.tagline} | XRPLHub`;
-  const description = `${product.desc} ${price ? `$${price.usd} USD, paid in RLUSD, USDC or XRP.` : ""} Unsigned only — XRPLHub builds it, you sign with your own wallet.`.trim();
+  const description = `${product.desc} Free — no payment. Unsigned only — XRPLHub builds it, you sign with your own wallet.`.trim();
   const url = `${ORIGIN}/services/${def.id}`;
   return {
     title,
@@ -80,7 +80,7 @@ export default async function ServicePage({ params }: { params: Promise<{ id: st
     brand: { "@type": "Brand", name: "XRPLHub" },
     url,
     ...(price
-      ? { offers: { "@type": "Offer", price: String(price.usd), priceCurrency: "USD", availability: "https://schema.org/InStock", url } }
+      ? { offers: { "@type": "Offer", price: "0", priceCurrency: "USD", availability: "https://schema.org/InStock", url } }
       : {}),
   };
   const faqEntries = [
@@ -98,10 +98,10 @@ export default async function ServicePage({ params }: { params: Promise<{ id: st
             : "It depends on your inputs — some configurations of this service are permanent. XRPLHub shows the exact, specific irreversible consequences and requires you to confirm you understand them before it will build the transaction.",
     },
     {
-      q: "What does it cost and how do I pay?",
+      q: "What does it cost?",
       a: price
-        ? `$${price.usd} USD, priced the same on every rail: RLUSD or XRP in the storefront checkout, or RLUSD on the XRP Ledger / USDC on Base via x402. The price is set by the server and verified on-ledger for every payment — it is never taken from anything the caller sends.`
-        : "This service is not sold — see the note above.",
+        ? "Nothing. XRPLHub builds the transaction for free — there is no payment step. You sign it with your own wallet, which pays the XRP Ledger's own network fee (a fraction of a cent)."
+        : "This service is not offered — see the note above.",
     },
     {
       q: "What XRPL transaction does this build?",
@@ -162,7 +162,7 @@ export default async function ServicePage({ params }: { params: Promise<{ id: st
           {price && (
             <div style={{ background: "rgba(16,185,129,.08)", border: "1px solid rgba(16,185,129,.25)", borderRadius: 10, padding: "10px 16px" }}>
               <div style={{ fontSize: 11, color: "rgba(255,255,255,.5)" }}>Price</div>
-              <div style={{ fontSize: 18, fontWeight: 800 }}>${price.usd} <span style={{ fontSize: 12, fontWeight: 500, color: "rgba(255,255,255,.5)" }}>RLUSD / USDC / XRP</span></div>
+              <div style={{ fontSize: 18, fontWeight: 800 }}>Free <span style={{ fontSize: 12, fontWeight: 500, color: "rgba(255,255,255,.5)" }}>you sign in your own wallet</span></div>
             </div>
           )}
           <div style={{ background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.1)", borderRadius: 10, padding: "10px 16px" }}>

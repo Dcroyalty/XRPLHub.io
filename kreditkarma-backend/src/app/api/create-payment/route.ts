@@ -14,22 +14,12 @@ import {
 } from '@/lib/pricing'
 import { prisma } from '@/lib/xrplscore-db'
 import { allocateDestinationTag } from '@/lib/purchaseIntent'
+import { priceUsd as listPriceUsd } from '@/lib/pricing'
 import { SERVICE_REQUIRED_AMENDMENT, serviceAvailability } from '@/lib/serviceAmendments'
 
+// The 35 transaction services are FREE (2026-10-05): there is nothing to pay for, so they have no names here and are refused
+// below. What this route still takes payment for:
 const NAMES: Record<string, string> = {
-  multisig:'Multi-Sig Fortress', regkey:'Regular Key Rotator', depositauth:'Deposit Auth Guard',
-  desttag:'Destination Tag Lock', issuerdecl:'Issuer Trustless Declaration',
-  tokenfee:'Token Transfer Fee', issuercfg:'Full Issuer Config', trustline:'Trust Line Configurator',
-  rippling:'Rippling Controller', dexorder:'DEX Order Builder', ammlaunch:'AMM Pool Launch',
-  ammentry:'AMM Liquidity Entry', smartswap:'Smart Swap Router', paychannel:'Payment Channel',
-  nftmint:'NFT Minter', nftburn:'NFT Burn Certificate', nftoffer:'NFT Offer Creator',
-  identity:'On-Chain Identity', did:'DID Creator', compliance:'Compliance Bundle',
-  escrow:'Escrow Setup',
-  mptissue:'Multi-Purpose Token Issuance', mptsend:'Send MPT', trustsend:'Trust Line + Send Currency',
-  globalfreeze:'Global Freeze', freezeline:'Freeze a Trust Line',
-  checkcreate:'Create a Check', checkcash:'Cash a Check', checkcancel:'Cancel a Check',
-  depositpreauth:'Deposit Preauthorization', ammwithdraw:'AMM Liquidity Exit', tickets:'Ticket Batch Setup',
-  credentialissue:'Issue a Credential', permdomain:'Permissioned Domain', delegate:'Permission Delegation',
   credential:'XRPLScore Verified Credential (90 days)',
   donate:'Community Grant treasury donation',
 }
@@ -49,6 +39,11 @@ export async function POST(req: NextRequest) {
 
     if (!/^[a-z0-9]{2,32}$/.test(product)) {
       return NextResponse.json({ error: 'Invalid product.' }, { status: 400 })
+    }
+
+    // Transaction services are free — never take a payment for one.
+    if (listPriceUsd(product) === 0) {
+      return NextResponse.json({ error: 'This service is free — there is nothing to pay. Build and sign it directly.', code: 'free', build: '/api/execute (storefront) or /api/tx' }, { status: 410 })
     }
 
     // A service that needs an amendment can't be paid for until the ledger says it's active (fail closed).

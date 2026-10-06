@@ -81,22 +81,25 @@ for (const id of adminOnlyIds) {
 const names = read("src/app/api/create-payment/route.ts");
 const nameKeys = [...names.slice(names.indexOf("const NAMES"), names.indexOf("const MAX_DONATION")).matchAll(/([a-z0-9]+):'/g)].map((m) => m[1]).filter((k) => !["credential", "donate"].includes(k));
 
-// ── prices follow the tier (owner decision 2026-10-05): standard build $1, caution-tier build $5, every rail ──
+// ── transaction services are FREE (owner decision 2026-10-05, after Xaman removed the original app for charging for them) ──
 {
   const priceOf = Object.fromEntries([...prices.matchAll(/^  ([a-z0-9]+): ([\d.]+)/gm)].map((m) => [m[1], Number(m[2])]));
-  const cautionIds = entries.filter((e) => /tier: "caution"/.test(e.slice(0, 400))).map((e) => e.slice(0, e.indexOf('"')));
   for (const id of buildable) {
-    const want = cautionIds.includes(id) ? 5 : 1;
-    if (priceOf[id] !== want) fail(`servicePrices.ts: "${id}" is $${priceOf[id]} but a ${cautionIds.includes(id) ? "caution-tier" : "standard"} build costs $${want}`);
+    if (priceOf[id] !== 0) fail(`servicePrices.ts: "${id}" is $${priceOf[id]} — every transaction service must be free ($0)`);
   }
-  if (!/STANDARD_BUILD_USD = 1;/.test(prices) || !/CAUTION_BUILD_USD = 5;/.test(prices)) fail("servicePrices.ts: STANDARD_BUILD_USD must be 1 and CAUTION_BUILD_USD must be 5");
+  if (!/TX_SERVICE_PRICE_USD = 0;/.test(prices)) fail("servicePrices.ts: TX_SERVICE_PRICE_USD must be 0");
 }
 
 const N = buildable.length;
 same("page vs catalog", set(pageIds), set(buildable), "the homepage", "the catalog (buildable)");
 same("price table vs catalog", set(priceKeysPublic), set(buildable), "servicePrices.ts", "the catalog (buildable)");
 same("builders vs catalog", builderKeys, set(catalogAll), "the builders", "the catalog");
-same("payment names vs catalog", set(nameKeys), set(buildable), "create-payment NAMES", "the catalog (buildable)");
+// create-payment sells NO transaction service: none of them may appear in its NAMES, and it must refuse a $0 product.
+{
+  const sold = nameKeys.filter((k) => buildable.includes(k));
+  if (sold.length) fail("create-payment NAMES still lists transaction services (they are free): " + sold.join(", "));
+  if (!/listPriceUsd\(product\) === 0/.test(names)) fail("create-payment must refuse free transaction services (listPriceUsd(product) === 0)");
+}
 same("TOP_ORDER vs page", set([...topOrder, ...featuredIds]), set(pageIds), "TOP_ORDER + featured", "the homepage");
 if (blocked.some((id) => pageIds.includes(id))) fail("a blocked service is on the homepage: " + blocked.filter((id) => pageIds.includes(id)).join(", "));
 
@@ -145,22 +148,25 @@ for (const f of walk("src")) {
   });
 }
 
-// ── no free signable txjson ─────────────────────────────────────────────────────────────────────────────────────────
-// Until 2026-09-25 the MCP build tool and POST /api/execute/preview returned the signable transaction for free, which made the
-// storefront and /api/x402/tx optional. The signable txjson is delivered ONLY after payment. Structural guards:
-//  - the MCP route must not import the transaction builder (it cannot leak what it cannot build);
-//  - the free preview route must not emit txjson;
-//  - /api/x402/tx must be priced from the storefront table (priceUsd), never a flat constant, and must be dual-rail.
+// ── transactions are FREE on every path (owner decision 2026-10-05) ───────────────────────────────────────────────────
+// Structural guards so a payment step can't creep back onto a transaction:
+//  - /api/tx and the historical /api/x402/tx serve the shared free handler and carry no x402 payment wrapper;
+//  - the MCP build tool returns the txjson through the shared free builder;
+//  - the storefront execute route builds free (the paid flow there is reachable only by the admin health check);
+//  - the x402 discovery document does not list a transaction resource.
 {
+  for (const f of ["src/app/api/tx/route.ts", "src/app/api/x402/tx/route.ts"]) {
+    const src = read(f);
+    if (!/handleFreeTxRequest/.test(src)) fail(f + " must serve the free handler (handleFreeTxRequest)");
+    if (/dualX402\(|withX402\(|serveX402Paid\(/.test(src)) fail(f + " must not ask for a payment — transactions are free");
+  }
   const mcp = read("src/app/api/mcp/route.ts");
-  if (/buildServiceTx|execute\/txBuilder/.test(mcp)) fail("src/app/api/mcp/route.ts imports the transaction builder: the MCP surface must never build signable txjson (return the x402 payment resource instead)");
-  const prev = read("src/app/api/execute/preview/route.ts");
-  if (/txjson\s*:\s*(built|s)\.txjson/.test(prev)) fail("src/app/api/execute/preview/route.ts returns txjson: the free preview must describe a transaction, never return it");
-  const tx = read("src/app/api/x402/tx/route.ts");
-  if (!/priceUsd\(/.test(tx)) fail("src/app/api/x402/tx/route.ts must be priced from the storefront table (priceUsd), so no service is sold below its storefront price");
-  if (/PRICE_PER_TX_PRODUCT_RLUSD/.test(tx)) fail("src/app/api/x402/tx/route.ts uses a flat price constant");
-  if (!/dualX402\(/.test(tx)) fail("src/app/api/x402/tx/route.ts must serve both x402 rails (dualX402)");
-  if (!/deliverOnlyIfSettled:\s*true/.test(tx)) fail("src/app/api/x402/tx/route.ts must set deliverOnlyIfSettled: true — a signable transaction is never handed over before the payment settles (owner rule 2026-10-05)");
+  if (!/buildFreeTx\(/.test(mcp)) fail("src/app/api/mcp/route.ts: build_xrpl_transaction must return the txjson via buildFreeTx (free)");
+  if (/paymentResourceUrl\(/.test(mcp)) fail("src/app/api/mcp/route.ts must not hand out a payment resource for a transaction");
+  const ex = read("src/app/api/execute/route.ts");
+  if (!/ADMIN_ONLY_SERVICE_IDS\.has\(productId\)\) \{\n\s*if \(!isAdmin\(req\)\)/.test(ex)) fail("src/app/api/execute/route.ts: the paid flow must be reachable only by admin-only products");
+  const wk = read("src/app/.well-known/x402/route.ts");
+  if (/resource: `\$\{origin\}\/api\/(x402\/)?tx`/.test(wk)) fail("src/app/.well-known/x402/route.ts lists a transaction as a paid x402 resource — transactions are free");
 }
 
 // ── one product, one price, every rail ───────────────────────────────────────────────────────────────────────────────
@@ -185,6 +191,7 @@ for (const f of walk("src")) {
 // the XRPL rail delivers the result even when settlement then fails, and a plan's result is a live API key.
 for (const f of walk("src/app/api/x402")) {
   if (!/route\.ts$/.test(f)) continue;
+  if (/[\\/]x402[\\/]tx[\\/]route\.ts$/.test(f)) continue; // free since 2026-10-05 (checked above)
   const src = read(f);
   if (!/dualX402\(|walletGetDual\(/.test(src)) fail(`${f}: paid x402 route is not dual-rail (use dualX402 / walletGetDual)`);
 }
@@ -195,4 +202,4 @@ if (problems.length) {
   console.error("\nThe homepage, catalog, price table, builders and docs must describe the same services. Fix the mismatch above.\n");
   process.exit(1);
 }
-console.log(`✔ service parity OK — ${N} services; page, catalog, prices, builders, names and TOP_ORDER agree; no stale counts; no AI claims.`);
+console.log(`✔ service parity OK — ${N} services, all free; page, catalog, prices, builders and TOP_ORDER agree; no stale counts; no AI claims.`);

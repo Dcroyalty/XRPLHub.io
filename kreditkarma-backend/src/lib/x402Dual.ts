@@ -14,7 +14,7 @@
 // The handler is SHARED: the XRPL rail calls the very same function the Base rail does and adapts its JSON response, so
 // the two rails cannot drift apart. The XRPL rail wraps the result as { data, x402 } (same envelope as /api/x402/score).
 //
-// PRICING may be per request (a function of the request): /api/x402/tx charges the storefront price of whichever service
+// PRICING may be per request (a function of the request) — /api/x402/tx used this until it became free on 2026-10-05 — of whichever service
 // was asked for. The two rails must agree on every request; if they ever do not, the request FAILS CLOSED (HTTP 500 and an
 // alert) rather than quoting different prices on different rails.
 

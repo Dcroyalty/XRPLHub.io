@@ -36,7 +36,9 @@ const params = pkg.agentConfig?.pluginParameters ?? {};
 if (Object.keys(params).length) fail("package.json agentConfig.pluginParameters must be empty (no settings)");
 if (pkg.dependencies && Object.keys(pkg.dependencies).length) fail("package.json must have no runtime dependencies");
 
-// 3. Shipped JS: no key/signing/submission vocabulary, no env access, and only node:crypto imported.
+// 3. Shipped JS: no key/signing/submission vocabulary, no env access, and only node:crypto imported. (Since 2026-10-05 the
+//    plugin passes on the UNSIGNED transaction for free — but only through checkTransactions(), which requires every step's
+//    Account to be the agent's own wallet; asserted in section 4.)
 const FORBIDDEN = [
   [/privateKey|private_key|secretKey|mnemonic|passphrase/i, "key material vocabulary"],
   [/\bseed\b/i, "seed"],
@@ -45,7 +47,6 @@ const FORBIDDEN = [
   [/submitAndWait|\bsubmit\(|"submit"|'submit'|submit_multisigned|sendTransaction/, "submission call"],
   [/from\s+["'](?!node:crypto["'])(?!\.\/)[^"']+["']/, "runtime import other than node:crypto"],
   [/require\(/, "require()"],
-  [/\.(transactions?|txjson)\b/, "reads a transaction/txjson field from a server response (this plugin must never pass a signable transaction on)"],
   [/child_process|node:fs|node:net|node:http/, "process/file/network module"],
 ];
 function walk(dir) {
@@ -62,6 +63,12 @@ for (const file of walk(dist).filter((f) => f.endsWith(".js"))) {
 // 4. The endpoint is fixed to XRPLHub (no operator-supplied URL reaches the plugin).
 const client = fs.readFileSync(path.join(dist, "client.js"), "utf8");
 if (!client.includes("https://www.xrplhub.io")) fail("client must pin https://www.xrplhub.io");
+
+// 4. A transaction is only ever passed on after checkTransactions() (Account must be the agent's wallet, unsigned).
+{
+  const actions = fs.readFileSync(path.join(root, "src", "actions.ts"), "utf8");
+  if (!/checkTransactions\(d, wallet\.value\)/.test(actions)) fail("src/actions.ts: the build action must pass its result through checkTransactions(d, wallet.value)");
+}
 
 if (problems.length) {
   console.error("check-surface FAILED:\n - " + problems.join("\n - "));

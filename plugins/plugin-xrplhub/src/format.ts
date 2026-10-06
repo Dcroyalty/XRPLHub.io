@@ -132,12 +132,12 @@ export function formatServices(services: ServiceSummary[]): string {
   if (services.length === 0) return "XRPLHub returned no services.";
   const lines = services.map((s) => {
     const ps = s.params.map((p) => `${p.name}${p.required ? "*" : ""}`).join(", ");
-    return `- ${s.id} — ${s.label} [${s.tier}]${s.priceUsd != null ? ` $${s.priceUsd}` : ""}${ps ? ` (params: ${ps})` : ""}`;
+    return `- ${s.id} — ${s.label} [${s.tier}]${ps ? ` (params: ${ps})` : ""}`;
   });
   return [
-    `${services.length} XRPL services XRPLHub sells an UNSIGNED transaction for (params marked * are required; prices in USD = RLUSD = USDC):`,
+    `${services.length} XRPL services XRPLHub builds an UNSIGNED transaction for — all FREE (params marked * are required):`,
     ...lines,
-    "Describe one for free with XRPLHUB_PREVIEW_TRANSACTION; buy it with XRPLHUB_BUILD_TRANSACTION (returns the x402 payment resource: the signable transaction is delivered only after payment).",
+    "Describe one with XRPLHUB_PREVIEW_TRANSACTION; get the unsigned transaction (free) with XRPLHUB_BUILD_TRANSACTION.",
     UNSIGNED_NOTE,
   ].join("\n");
 }
@@ -148,9 +148,7 @@ export function formatPreview(d: Record<string, unknown>): string {
   const tier = str(d.safetyTier, 20) ?? "unknown";
   lines.push(`${str(d.label, 120) ?? str(d.productId, 60) ?? "Service"} [${tier}] — FREE description (no signable transaction is included).`);
   if (str(d.whatItDoes, 900)) lines.push(`What it does: ${str(d.whatItDoes, 900)}`);
-  if (isRecord(d.price) && num(d.price.usd) != null) {
-    lines.push(`Price: $${num(d.price.usd)} (USD = RLUSD = USDC), payable in USDC on Base or RLUSD on the XRP Ledger via x402. Charged only if the transaction builds.`);
-  }
+  lines.push("Price: free — XRPLHub charges nothing for transactions.");
   const req = arr(d.requiredParams).filter(isRecord).map((p) => `${str(p.name, 40) ?? "?"}${str(p.example, 60) ? ` (e.g. ${str(p.example, 60)})` : ""}`);
   const opt = arr(d.optionalParams).filter(isRecord).map((p) => str(p.name, 40) ?? "?");
   if (req.length) lines.push(`Required params: ${req.join("; ")}.`);
@@ -162,13 +160,13 @@ export function formatPreview(d: Record<string, unknown>): string {
     else if (str(irr.note, 300)) lines.push(`Irreversibility: ${str(irr.note, 300)}`);
   }
   if (d.mptPermanence !== undefined) lines.push(`MPT permanence (read live from the ledger): ${JSON.stringify(cleanDeep(d.mptPermanence)).slice(0, 700)}`);
-  lines.push("To buy it: XRPLHUB_BUILD_TRANSACTION (returns the x402 payment resource; the transaction is delivered only after payment).", UNSIGNED_NOTE);
+  lines.push("To get it (free): XRPLHUB_BUILD_TRANSACTION returns the unsigned transaction.", UNSIGNED_NOTE);
   return lines.join("\n");
 }
 
 /** The confirmation copy for a caution-tier service, from whitelisted fields. */
 export function confirmationLines(c: Record<string, unknown>): string[] {
-  const lines: string[] = ["CAUTION — this can be hard or impossible to undo. Show this to the wallet owner before buying."];
+  const lines: string[] = ["CAUTION — this can be hard or impossible to undo. Show this to the wallet owner before signing."];
   if (str(c.heading, 200)) lines.push(str(c.heading, 200)!);
   if (str(c.warning, 700)) lines.push(str(c.warning, 700)!);
   const points = arr(c.irreversible).map((x) => str(x, 400)).filter((x): x is string => !!x).slice(0, 8);
@@ -178,23 +176,32 @@ export function confirmationLines(c: Record<string, unknown>): string[] {
 }
 
 /**
- * The payment resource is the ONLY place money is sent, so it is checked before an agent is told to pay it: it must be
- * XRPLHub's own https://www.xrplhub.io/api/x402/tx URL for exactly the service and wallet that were asked for.
- * Returns the parsed URL, or a reason it was refused.
+ * Only ever pass on an UNSIGNED transaction for exactly the wallet the agent asked about: every step's Account must equal
+ * `wallet`, every step must have a TransactionType, and none may already carry a signature. Returns the steps, in order.
  */
-export function checkPaymentResource(resource: unknown, productId: string, wallet: string): { ok: true; url: string } | { ok: false; reason: string } {
-  if (typeof resource !== "string") return { ok: false, reason: "no payment resource was returned" };
-  let u: URL;
-  try {
-    u = new URL(resource);
-  } catch {
-    return { ok: false, reason: "the payment resource is not a URL" };
+function plainTx(v: unknown, depth = 0): boolean {
+  if (depth > 6) return false;
+  if (typeof v === "string") return /^[ -~]*$/.test(v) && v.length <= 8192;
+  if (typeof v === "number") return Number.isFinite(v);
+  if (typeof v === "boolean") return true;
+  if (Array.isArray(v)) return v.length <= 64 && v.every((x) => plainTx(x, depth + 1));
+  if (isRecord(v)) return Object.keys(v).length <= 64 && Object.entries(v).every(([k, x]) => /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(k) && plainTx(x, depth + 1));
+  return false;
+}
+
+export function checkTransactions(d: Record<string, unknown>, wallet: string): { ok: true; steps: Record<string, unknown>[] } | { ok: false; reason: string } {
+  const list = d["transactions"];
+  const raw = Array.isArray(list) ? list.map((t) => (isRecord(t) ? t["txjson"] : undefined)) : [d["txjson"]];
+  if (!raw.length || raw.length > 5) return { ok: false, reason: "no transaction in the response" };
+  const steps: Record<string, unknown>[] = [];
+  for (const t of raw) {
+    if (!isRecord(t)) return { ok: false, reason: "a step is not a transaction object" };
+    if (typeof t["TransactionType"] !== "string") return { ok: false, reason: "a step has no transaction type" };
+    if (t["Account"] !== wallet) return { ok: false, reason: `a step is for ${String(t["Account"]).slice(0, 40)}, not ${wallet}` };
+    if (t["TxnSignature"] !== undefined || t["Signers"] !== undefined) return { ok: false, reason: "a step is already signed" };
+    // Never alter a transaction (trimming a hex field would corrupt it): refuse anything that isn't plain printable ASCII instead.
+    if (!plainTx(t)) return { ok: false, reason: "a step contains unexpected characters or structure" };
+    steps.push(t);
   }
-  if (u.protocol !== "https:" || u.host !== "www.xrplhub.io" || u.pathname !== "/api/x402/tx" || u.username || u.password) {
-    return { ok: false, reason: "the payment resource does not point at https://www.xrplhub.io/api/x402/tx" };
-  }
-  if ((u.searchParams.get("productId") ?? "").toLowerCase() !== productId.toLowerCase() || u.searchParams.get("account") !== wallet) {
-    return { ok: false, reason: "the payment resource is for a different service or wallet than requested" };
-  }
-  return { ok: true, url: u.toString() };
+  return { ok: true, steps };
 }

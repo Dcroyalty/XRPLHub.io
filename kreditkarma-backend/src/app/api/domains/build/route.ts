@@ -8,9 +8,8 @@
 //   domainId   64-hex DomainID of a domain you own, to UPDATE it; omit to create   optional
 //
 // FREE: validates the choice and returns the PLAN — exactly which (issuer, CredentialType) pairs the domain will accept, what it
-// costs to create, what members must do — and the paid resource that delivers the transaction. The signable PermissionedDomainSet
-// itself is the storefront service `permdomain` and is sold, never given away: it is delivered by /api/x402/tx at the storefront
-// price (USDC on Base or RLUSD on XRPL, one price for every rail) or by the storefront checkout. Unsigned only: XRPLHub builds the
+// costs to create, what members must do — and where to get the transaction. The signable PermissionedDomainSet is the
+// storefront service `permdomain`, FREE since 2026-10-05: GET /api/tx or the storefront. Unsigned only: XRPLHub builds the
 // transaction, the institution signs it with its own wallet; we never sign, submit or hold keys.
 
 import { NextResponse } from "next/server";
@@ -69,8 +68,8 @@ function respond(input: { account?: unknown; minTier?: unknown; alsoAccept?: unk
       getTheTransaction: {
         service: "permdomain",
         price: priceInfo("permdomain"),
-        paidResource: paymentResourceUrl(ORIGIN, "permdomain", plan.owner, params),
-        how: "GET the paidResource with an x402 client (USDC on Base or RLUSD on XRPL): you are charged only if the transaction builds. The response holds the unsigned PermissionedDomainSet. Or buy it in the storefront at xrplhub.io. Check that its Account equals your owner account, then sign with your own wallet.",
+        freeResource: paymentResourceUrl(ORIGIN, "permdomain", plan.owner, params),
+        how: "GET freeResource — free, no payment. The response holds the unsigned PermissionedDomainSet. Or use the storefront at xrplhub.io. Check that its Account equals your owner account, then sign with your own wallet.",
       },
       guide: `${ORIGIN}/api/domains/guide`,
       notes: DOMAIN_KIT_NOTES,

@@ -1,12 +1,11 @@
 // src/app/api/execute/preview/route.ts
 // POST /api/execute/preview  { productId, account, params }
 //
-// FREE, and it NEVER returns signable txjson. It validates the request by really building the transaction, then returns a
-// DESCRIPTION: what the transaction is, its price, what is irreversible, and — for an MPT issuance — the full manifest of
+// FREE. It validates the request by really building the transaction, then returns a DESCRIPTION: what the transaction is,
+// what is irreversible, and — for an MPT issuance — the full manifest of
 // what is permanent, the plain-English flag guide, the backing declaration echoed back, and the hard line that we publish
-// the declaration but never verify it. The exact transaction object (txjson) is delivered only after payment: the
-// storefront flow (/api/create-payment -> /api/execute) or x402 (/api/x402/tx, USDC on Base or RLUSD on XRPL).
-// (Until 2026-09-25 this route returned the txjson for free, which made every paid path optional.)
+// the declaration but never verify it. The transaction itself is FREE too (since 2026-10-05): GET /api/tx, the storefront
+// (/api/execute) or MCP build_xrpl_transaction.
 
 import { NextResponse } from "next/server";
 import { buildServiceTx } from "../txBuilder";
@@ -73,15 +72,15 @@ export async function POST(req: Request) {
     totalSteps: built.steps?.length ?? 1,
     steps: (built.steps ?? []).map((s) => ({ id: s.id, label: s.label, transactionType: String(s.txjson.TransactionType) })),
     priceUsd: priceUsd(productId),
-    // Services with specific, serious consequences show them here — free, before you pay.
+    // Services with specific, serious consequences show them here, before you build and sign.
     confirmation: cautionCopyFor(productId, (body.params ?? {}) as Record<string, unknown>),
-    signableTransaction: "withheld — delivered only after payment",
-    howToBuy: {
-      x402: `/api/x402/tx?productId=${productId}&account=${account} (pay USDC on Base or RLUSD on XRPL; add confirmCaution=true for caution-tier services)`,
-      storefront: "/api/create-payment then /api/execute",
-      mcp: "build_xrpl_transaction (returns the x402 resource)",
+    signableTransaction: "free — get it from GET /api/tx (below)",
+    howToGet: {
+      rest: `/api/tx?productId=${productId}&account=${account} (free; add confirmCaution=true for caution-tier services)`,
+      storefront: "/api/execute (free, returns a Xaman sign request)",
+      mcp: "build_xrpl_transaction (free, returns the txjson)",
     },
-    priced: "Free description. The signable transaction is delivered only after payment. The price is set by the server, not the client.",
+    priced: "Free. XRPLHub charges nothing for transactions.",
   };
 
   if (productId === "mptissue" && view) {

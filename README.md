@@ -2,7 +2,7 @@
 
 **On-chain creditworthiness for the XRP Ledger.** XRPLHub gives any XRPL wallet a
 300–850 credit-style score (**XRPLScore**) computed from 8 public-ledger signals,
-sells ready-to-sign prebuilt XRPL transactions for 35 actions, issues signed
+builds ready-to-sign XRPL transactions for 35 actions for free, issues signed
 score certificates (XRPLHub's own attestation), and runs a community micro-grant fund
 (human-reviewed; applications currently paused).
 
@@ -65,8 +65,8 @@ own wallet; XRPLHub never signs for anyone.
 |---|---|---|
 | `check_xrpl_score` | 300–850 score, grade, percentile, 8-signal breakdown, tips. Param: `wallet_address`. | free |
 | `list_xrpl_services` | All 35 `build_xrpl_transaction` actions, each with params + examples. Call this first. No params. | free |
-| `preview_xrpl_transaction` | Describe one action before buying it: what it does, what's irreversible, the price, every field it needs. No signable txjson. Params: `product_id`, `params` (optional). | free |
-| `build_xrpl_transaction` | Buy the unsigned, ready-to-sign txjson for one of 35 actions — the storefront price ($1 standard, $5 caution-tier), paid via x402 (USDC on Base or RLUSD on XRPL). Params: `product_id`, `wallet_address`, `params`, `confirm_caution` (caution-tier only). | storefront price |
+| `preview_xrpl_transaction` | Describe one action first: what it does, what's irreversible, every field it needs. No signable txjson. Params: `product_id`, `params` (optional). | free |
+| `build_xrpl_transaction` | The unsigned, ready-to-sign txjson for one of 35 actions — FREE, no payment. Caution-tier actions return what is irreversible until `confirm_caution` is true. Params: `product_id`, `wallet_address`, `params`, `confirm_caution`. | free |
 | `issue_score_credential` | Score certificate signed by XRPLHub (score computed fresh at issuance), with a URL where XRPLHub confirms it — XRPLHub's own attestation, not independently verifiable. 90 days. Params: `wallet_address`, `currency`, `uuid`. | 1 XRP / 1 RLUSD |
 | `check_service_health` | Is the money path working right now — database, Xaman, both x402 facilitators, the anchor config, alerting — before you pay. No params. | free |
 
@@ -115,13 +115,17 @@ own wallet; XRPLHub never signs for anyone.
 | `submit_grant_application` | Apply for a community micro-grant. **Currently paused** — returns an error until applications reopen. Params: `wallet_address`, `category`, `amount`, `description`. | free |
 | `donate_to_community_fund` | Donate XRP or RLUSD to the grant treasury; returns a ready-to-sign Payment if you pass `donor_wallet`. Params: `amount`, `currency`, `donor_wallet`, `message`. | free |
 
-### x402 (pay-per-call, RLUSD, no signup)
+### Free transactions (35 actions, no payment)
+
+- `GET /api/tx?productId=<id>&account=r...[&<params>][&confirmCaution=true]` — the unsigned txjson (also POST; `/api/x402/tx` serves the same free handler)
+- MCP `build_xrpl_transaction` and the storefront do the same. You sign in your own wallet; XRPLHub never signs.
+
+### x402 (pay-per-call data: RLUSD on XRPL or USDC on Base, no signup)
 
 - Discovery: https://www.xrplhub.io/.well-known/x402
 - OpenAPI 3.1: https://www.xrplhub.io/openapi.json
 - `GET /api/x402/score?wallet=r...` — 300–850 score + 8 signals
 - `GET /api/x402/report?wallet=r...` — score + risk flags + recommendations + on-chain snapshot
-- `GET /api/x402/tx?productId=<id>&account=r...` — one prebuilt XRPL transaction (35 actions)
 
 ### llms.txt
 

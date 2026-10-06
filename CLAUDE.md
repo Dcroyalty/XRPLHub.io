@@ -25,14 +25,16 @@ The live production app is a single Next.js project in **`kreditkarma-backend/`*
 ## Products
 
 - **XRPLScore** — a 300–850 credit-style score for an XRPL wallet.
-- **35 paid XRPL transaction services** — on-chain actions (trustlines, escrows, AMM, NFT,
-  etc.) we BUILD the exact transaction for; the customer signs it. `BUILDABLE_SERVICE_IDS`
-  in `src/app/api/execute/serviceCatalog.ts` is the ONE source of that count (a build-time
-  check, `scripts/check-service-parity.mjs`, fails if the page, catalog, prices or builders
-  disagree). Prices live ONLY in `src/lib/servicePrices.ts` (USD = RLUSD; XRP is derived
-  from the live rate). Every payment is verified on the ledger against that table and is
-  single-use in the database (`src/lib/paymentGate.ts`) — never trust a client amount.
-  Buyers sign twice: the payment, then the service transaction.
+- **35 FREE XRPL transaction services** — on-chain actions (trustlines, escrows, AMM, NFT, etc.) we BUILD the
+  exact unsigned transaction for; the customer signs it. FREE on every path since 2026-10-05 (Xaman removed our original
+  app for charging for transactions Xaman offers free): storefront (`/api/execute`), `GET /api/tx` (and the old
+  `/api/x402/tx` URL), MCP `build_xrpl_transaction`, the ElizaOS plugin. One shared builder: `src/lib/freeTx.ts`.
+  Caution-tier confirmations, amendment gates and per-client rate limits are KEPT. `BUILDABLE_SERVICE_IDS` in
+  `src/app/api/execute/serviceCatalog.ts` is the ONE source of the count; `scripts/check-service-parity.mjs` fails the
+  build if any transaction service price is not $0 or a payment step creeps back onto a transaction path.
+- **Still PAID** (prices in `src/lib/servicePrices.ts` / `src/lib/paycall.ts`, ledger-verified, single-use): score
+  reports + score API, screening + receipts, monitoring, MPT data + issuer risk, credentials, lending/underwriting data,
+  API plans, the admin health check, Spend Controls plans ($5/month — pending Xaman's confirmation that a plan fee is OK).
 - **Community grants** — a person reviews every application; nothing is automated. The
   application form is gated by `GRANT_APPLICATIONS_OPEN` in `src/lib/grantsStatus.ts`
   (currently `false`: approved grants are waiting to be paid). Donations stay open.

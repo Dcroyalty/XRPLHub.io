@@ -104,7 +104,7 @@ const tickerLines = (): string[] => [
   'Donate to the public grants treasury — every payment in and out is visible on-chain',
   'Check any XRPL wallet\'s XRPLScore™ free — read from mainnet, refreshed every 15 minutes',
   'Found an XRPL tutorial but don\'t code? Skip it — pay here, we build the exact transaction and you sign it',
-  `${PRODUCTS.length} XRPL services done for you · Pay, then sign your transaction · Live on mainnet in ~4 seconds`,
+  `${PRODUCTS.length} XRPL services done for you · Free — just sign your transaction · Live on mainnet in ~4 seconds`,
   'XRPLHub.io — XRPL Services · Community Grants · XRPLScore™',
 ];
 
@@ -794,6 +794,8 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
   // multi-transaction services are signed one step at a time
   const [exPlan, setExPlan] = useState<{ step:number; total:number; label:string; list:{ id:string; label:string }[] }|null>(null);
   const [exNextStep, setExNextStep] = useState<number|null>(null);
+  // Free flow: the step plan returned at step 1, sent back with every later step (no payment record holds it any more).
+  const [exPlanFull, setExPlanFull] = useState<{ id:string; type:string }[]|null>(null);
   const [exUuid, setExUuid]     = useState('');
   const [exTxjson, setExTxjson] = useState<Record<string,unknown>|null>(null); // for the manual-sign fallback when Xaman is down
   const [manualExHashInput, setManualExHashInput] = useState('');
@@ -938,7 +940,7 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
     let stop = false;
     const poll = async () => {
       try {
-        const params = new URLSearchParams({ hash: exHash, account: connectedWallet, productId: product.id, payTxHash: verifiedTx });
+        const params = new URLSearchParams({ hash: exHash, account: connectedWallet, productId: product.id, step: String(exPlan?.step ?? 1), plan: JSON.stringify(exPlanFull ?? []) });
         const res = await fetch(`${API_URL}/api/execute/verify?${params}`);
         const data = await res.json();
         if (stop) return;
@@ -989,7 +991,7 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
     onClose();
     setTimeout(() => { setStep('info'); setEmail(''); setPayStatus('idle'); setUuid(''); setQrUrl(''); setDeepLnk(''); setCountdown(900); setVerifiedTx(''); setPayError(''); cancelRef.current = false;
       setExForm({}); setExStatus('form'); setExUuid(''); setExQr(''); setExLink(''); setExTx(''); setExTxjson(null); setExError(''); setExLabel(''); setCautionOk(false); setExManifest(null); setExPlan(null); setExNextStep(null);
-      setPayHash(''); setExHash(''); setWalletSel('xaman'); setManualHashInput(''); setManualHashErr(''); setManualExHashInput(''); setManualExHashErr(''); }, 300);
+      setPayHash(''); setExHash(''); setWalletSel('xaman'); setManualHashInput(''); setManualHashErr(''); setManualExHashInput(''); setManualExHashErr(''); setExPlanFull(null); }, 300);
   };
 
   const handleBuyNow = async () => {
@@ -1025,7 +1027,7 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
     try {
       const res = await fetch(`${API_URL}/api/execute`, {
         method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ productId:product.id, account:connectedWallet, params:exForm, payTxHash:verifiedTx, confirmedCaution:confirmCaution, ...(stepNo ? { step:stepNo } : {}) }),
+        body: JSON.stringify({ productId:product.id, account:connectedWallet, params:exForm, confirmedCaution:confirmCaution, ...(stepNo ? { step:stepNo, plan:exPlanFull } : {}) }),
       });
       const data = await res.json();
       if (res.status === 409 && data.requiresConfirmation) {
@@ -1037,6 +1039,7 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
       if (!res.ok || (!data.uuid && !data.txjson)) throw new Error(data.error || 'Could not build your service transaction');
       setExLabel(data.label||'');
       setExPlan({ step:data.step??1, total:data.totalSteps??1, label:data.stepLabel??'', list:Array.isArray(data.steps)?data.steps:[] });
+      if (Array.isArray(data.plan)) setExPlanFull(data.plan);
 
       if (walletSel !== 'xaman' && data.txjson) {
         // injected wallet signs + submits the service tx itself
@@ -1074,14 +1077,14 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
     });
     return (
       <Overlay show={show} onClose={handleClose} wide>
-        <div style={{ fontSize:10,fontWeight:700,color:product.color,letterSpacing:'.12em',textTransform:'uppercase',marginBottom:5,fontFamily:"'IBM Plex Mono',monospace" }}>Step 2 · Execute Service</div>
+        <div style={{ fontSize:10,fontWeight:700,color:product.color,letterSpacing:'.12em',textTransform:'uppercase',marginBottom:5,fontFamily:"'IBM Plex Mono',monospace" }}>Free · Build &amp; sign</div>
         <h3 style={{ fontSize:20,fontWeight:900,marginBottom:4 }}>{product.name}</h3>
-        <p style={{ fontSize:12,color:'rgba(255,255,255,.4)',marginBottom:16 }}>Paid ✓ — now we build your exact transaction and you sign it in your wallet.</p>
+        <p style={{ fontSize:12,color:'rgba(255,255,255,.4)',marginBottom:16 }}>Free — we build your exact transaction and you sign it in your own wallet. No payment, no checkout.</p>
 
         {exStatus === 'form' && !connectedWallet && (
           <div style={{ background:'rgba(245,158,11,.1)',border:'1px solid rgba(245,158,11,.35)',borderRadius:12,padding:'14px 18px',marginBottom:16 }}>
             <p style={{ fontSize:13,color:'#f59e0b',fontWeight:700,marginBottom:6 }}>Connect your wallet to finish</p>
-            <p style={{ fontSize:12,color:'rgba(255,255,255,.55)',lineHeight:1.6 }}>Your service transaction is signed from your own Xaman wallet. Close this, tap <strong style={{ color:'#fff' }}>Connect Wallet</strong> at the top, then reopen your purchase to finish — your payment is safe and waiting.</p>
+            <p style={{ fontSize:12,color:'rgba(255,255,255,.55)',lineHeight:1.6 }}>Your service transaction is signed from your own Xaman wallet. Close this, tap <strong style={{ color:'#fff' }}>Connect Wallet</strong> at the top, then reopen this service to finish.</p>
           </div>
         )}
         {exStatus === 'form' && connectedWallet && (
@@ -1411,22 +1414,22 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
       </div>
       <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',background:`${product.color}08`,border:`1px solid ${product.color}22`,borderRadius:14,padding:'16px 20px',marginBottom:20,flexWrap:'wrap',gap:12 }}>
         <div>
-          <div style={{ fontSize:11,color:'rgba(255,255,255,.38)',marginBottom:4 }}>One-time</div>
+          <div style={{ fontSize:11,color:'rgba(255,255,255,.38)',marginBottom:4 }}>Price</div>
           <div style={{ display:'flex',gap:12,alignItems:'baseline',flexWrap:'wrap' }}>
-            <span style={{ fontSize:28,fontWeight:900,color:product.color }}>{product.priceRLUSD} RLUSD</span>
-            <span style={{ fontSize:13,color:'rgba(255,255,255,.3)' }}>{xrpLabel(pricing, product.id) ? `or ${xrpLabel(pricing, product.id)}` : 'XRP price unavailable — pay in RLUSD'}</span>
+            <span style={{ fontSize:28,fontWeight:900,color:product.color }}>Free</span>
+            <span style={{ fontSize:13,color:'rgba(255,255,255,.3)' }}>no payment, no checkout</span>
           </div>
         </div>
         <div style={{ textAlign:'right' }}>
-          <div style={{ fontSize:11,color:'rgba(255,255,255,.38)',marginBottom:4 }}>Xaman checkout</div>
-          <div style={{ fontSize:15,fontWeight:700,color:'#10b981' }}>One swipe ⚡</div>
+          <div style={{ fontSize:11,color:'rgba(255,255,255,.38)',marginBottom:4 }}>You sign in</div>
+          <div style={{ fontSize:15,fontWeight:700,color:'#10b981' }}>Your own wallet ⚡</div>
         </div>
       </div>
       <div style={{ background:'rgba(255,255,255,.03)',borderRadius:11,padding:'11px 15px',marginBottom:20 }}>
         <p style={{ fontSize:11,color:'rgba(255,255,255,.3)',lineHeight:1.7 }}><strong style={{ color:'rgba(255,255,255,.45)' }}>Disclosure: </strong>On-chain operational service. You sign every transaction yourself in Xaman; we never hold your keys or funds. Not insurance, securities, or financial advice. All XRPL transactions are irrevocable.</p>
       </div>
       {product.id === 'delegate' && <DelegationPanel account={connectedWallet} avail={delegAvail} walletSel={walletSel} />}
-      <button disabled={buyBlocked} onClick={()=>{ if (!buyBlocked) setStep('checkout'); }} style={{ ...Btn('color',product.color,{width:'100%',padding:'15px',fontSize:16,opacity:buyBlocked?.4:1,cursor:buyBlocked?'not-allowed':'pointer'}) }}>{buyBlocked ? (delegAvail ? 'Not available yet — switches on by itself' : 'Checking availability…') : <>Buy Now — {product.priceRLUSD} RLUSD →</>}</button>
+      <button disabled={buyBlocked} onClick={()=>{ if (!buyBlocked) setStep('execute'); }} style={{ ...Btn('color',product.color,{width:'100%',padding:'15px',fontSize:16,opacity:buyBlocked?.4:1,cursor:buyBlocked?'not-allowed':'pointer'}) }}>{buyBlocked ? (delegAvail ? 'Not available yet — switches on by itself' : 'Checking availability…') : <>Build &amp; sign — free →</>}</button>
     </Overlay>
   );
 }
@@ -1758,7 +1761,7 @@ function AboutModal({ show, onClose }: { show:boolean; onClose:()=>void }) {
         <p>XRPLHub was built for the people legacy finance was designed to exclude. No bank account. No credit history. No gatekeepers. Just an XRPL wallet and access to real services.</p>
         <p>We build entirely on the <strong style={{ color:'#fff' }}>XRP Ledger</strong> — fast, low-cost, and energy-efficient. Three pillars power the platform: XRPL Services, Community Grants, and XRPLScore.</p>
         <p><strong style={{ color:'#10b981' }}>XRPLScore™</strong> is our proprietary on-chain rating, 300–850, computed from your wallet’s public on-chain history (cached for up to 15 minutes). No FICO. No bureau. No SSN. It is derived only from public on-chain history.</p>
-        <p>Our <strong style={{ color:'#fff' }}>XRPL Services</strong> are on-chain tools covering major XRPL transaction types — you pay, we check the payment on the XRP Ledger, then we build the exact transaction and you sign it in your wallet.</p>
+        <p>Our <strong style={{ color:'#fff' }}>XRPL Services</strong> are on-chain tools covering major XRPL transaction types — free: we build the exact transaction and you sign it in your own wallet.</p>
         <p><strong style={{ color:'#10b981' }}>Community Grants</strong>: donors fund a public XRPL treasury. A person reviews every application and makes every decision. Approved grants go wallet-to-wallet. No NGO. No middlemen. Every payment is verifiable on-chain. (Applications are paused until the treasury is funded.)</p>
         <p style={{ fontSize:12,color:'rgba(255,255,255,.4)',fontStyle:'italic' }}>XRPLScore™ methodology is proprietary and licensable to financial institutions, DeFi platforms, and on-chain data partners. Partnership inquiries: <a href="mailto:partners@xrplhub.io" style={{ color:'#10b981' }}>partners@xrplhub.io</a></p>
       </div>
@@ -1772,9 +1775,9 @@ function FAQModal({ show, onClose }: { show:boolean; onClose:()=>void }) {
   const [open, setOpen] = useState<number|null>(0);
   const faqs:[string,string][] = [
     ['What is XRPLScore™?',"XRPLScore™ is XRPLHub's proprietary on-chain rating — 300 to 850, computed from your wallet’s public on-chain history (cached for up to 15 minutes). No SSN, no credit bureau, no FICO affiliation. It's your verifiable on-chain reputation."],
-    ['How do the XRPL Services work?','You pay the listed price in XRP or RLUSD and get a TX hash. Our server checks that payment on the XRP Ledger — that it succeeded, went to the treasury, is in the right currency and covers the price — then builds the exact transaction for your wallet. You sign it yourself; some services are several transactions signed one after another. A signed transaction settles in about 4 seconds.'],
+    ['How do the XRPL Services work?','They are free. Pick a service, fill in the details, and we build the exact transaction for your wallet. You check it and sign it yourself; some services are several transactions signed one after another. A signed transaction settles in about 4 seconds. Services that can be hard or impossible to undo show you exactly what is irreversible and ask you to confirm first.'],
     ['How does the grant system work?',"Donate XRP/RLUSD to the public treasury (viewable on XRPScan). Applications are currently paused until the treasury is funded. When they reopen, anyone in need can apply for $25–$100; a person reviews every application and makes every decision, and approved funds go directly to the recipient's XRPL wallet."],
-    ['Do I need a wallet?','You need an XRPL wallet. Xaman (free on iOS and Android at xaman.app) is how you connect on this site and the wallet we recommend. When you pay for a service you can also use Crossmark or GemWallet on desktop — just make sure it is the same XRPL account you connected, because the transaction we build is for that account.'],
+    ['Do I need a wallet?','You need an XRPL wallet. Xaman (free on iOS and Android at xaman.app) is how you connect on this site and the wallet we recommend. To sign a service you can also use Crossmark or GemWallet on desktop — just make sure it is the same XRPL account you connected, because the transaction we build is for that account.'],
     ['Is XRPLHub a bank?','No. Not a bank, broker, insurer, or FDIC institution. XRPLHub is a financial technology platform on the XRP Ledger. All services are on-chain operational tools.'],
   ];
   return (
@@ -1811,7 +1814,7 @@ function TermsModal({ show, onClose }: { show:boolean; onClose:()=>void }) {
         <span style={H}>2. Eligibility</span>
         <p style={P}>You must be 18+ and legally able to enter contracts in your jurisdiction. Service unavailable where prohibited by law, including OFAC-sanctioned regions.</p>
         <span style={H}>3. XRPL Services & Payment Verification</span>
-        <p style={P}>Services are on-chain operational tools. You pay the listed price in XRP or RLUSD to the XRPLHub treasury. Our server checks that payment on the XRP Ledger against the price on file — it must be validated, successful, sent to the treasury, in XRP or RLUSD from the official issuer, and cover the price — and each payment can be used for one service only. We then build the exact transaction for your wallet and you sign and submit it yourself; some services are several transactions signed in order. XRPLHub never holds your keys and cannot sign for you. <strong style={{ color:'rgba(255,255,255,.8)' }}>All XRPL transactions are final and irrevocable</strong>, and if the ledger rejects a transaction you may need to correct your details and try again. Services are not insurance contracts, securities, or financial instruments.</p>
+        <p style={P}>Services are on-chain operational tools, and they are free: XRPLHub charges nothing for transactions. We build the exact transaction for your wallet and you sign and submit it yourself; some services are several transactions signed in order. XRPLHub never holds your keys and cannot sign for you. <strong style={{ color:'rgba(255,255,255,.8)' }}>All XRPL transactions are final and irrevocable</strong>, and if the ledger rejects a transaction you may need to correct your details and try again. Services are not insurance contracts, securities, or financial instruments.</p>
         <span style={H}>4. XRPLScore™</span>
         <p style={P}>XRPLScore™ is our proprietary on-chain assessment derived from public XRPL wallet data. It is not a FICO score, consumer credit report, or NRSRO rating, and has no affiliation with any credit bureau. The XRPLScore™ name, methodology, signal weighting, and underlying framework are intellectual property of XRPLHub and are available for commercial licensing.</p>
 
@@ -2355,7 +2358,7 @@ export default function XRPLHubHome() {
             </div>
             <h2 style={{ fontSize:'clamp(24px,4vw,42px)',fontWeight:900,letterSpacing:'-2px',marginBottom:12 }}>You sign. We build. The ledger settles.</h2>
             <p style={{ fontSize:14,color:'rgba(255,255,255,.44)',maxWidth:560,margin:'0 auto' }}>Pay in Xaman → we verify the payment on XRPL mainnet → we build your exact transaction → you sign it. Two signatures: the payment, then the service.</p>
-            <p style={{ fontSize:12,color:'rgba(255,255,255,.4)',maxWidth:540,margin:'10px auto 0',lineHeight:1.6 }}>Prices are set in RLUSD (USD). XRP amounts are approximate — quoted at the live XRP/USD rate when you pay.{pricing && pricing.xrpUsd == null ? ' No live XRP rate is available right now, so only RLUSD prices are shown.' : ''}</p>
+            <p style={{ fontSize:12,color:'rgba(255,255,255,.4)',maxWidth:540,margin:'10px auto 0',lineHeight:1.6 }}>Every transaction service is free. You sign in your own wallet; XRPLHub never holds your keys or funds. (The network itself charges a tiny fee per transaction, a fraction of a cent, paid by your wallet.)</p>
             <p style={{ fontSize:12,color:'rgba(255,255,255,.32)',maxWidth:540,margin:'10px auto 0',lineHeight:1.6 }}>Every one of these is a documented XRPL operation. You can code it yourself from the developer tutorials — or pay here and we build the exact transaction for you to sign in your wallet. No coding, no copy-paste errors.</p>
           </div>
           <div style={{ display:'grid',gridTemplateColumns:'1fr',gap:18,marginBottom:18 }}>
@@ -2375,9 +2378,9 @@ export default function XRPLHubHome() {
                     <p style={{ fontSize:14,color:'rgba(255,255,255,.55)',lineHeight:1.7,marginBottom:0,maxWidth:540 }}>{p.tagline}</p>
                   </div>
                   <div style={{ textAlign:'right',flexShrink:0 }}>
-                    <div style={{ fontSize:'clamp(22px,2.4vw,28px)',fontWeight:900,color:p.color,whiteSpace:'nowrap' }}>{p.priceRLUSD} RLUSD{xrpLabel(pricing,p.id) ? <span style={{ fontSize:13,fontWeight:700,color:'rgba(255,255,255,.55)' }}> · {xrpLabel(pricing,p.id)}</span> : null}</div>
-                    <div style={{ fontSize:11,color:'rgba(255,255,255,.32)',marginBottom:12,whiteSpace:'nowrap' }}>{xrpLabel(pricing,p.id) ? 'XRP at the live rate' : 'pay in RLUSD (no live XRP rate)'}</div>
-                    <button style={{ padding:'12px 22px',borderRadius:99,background:p.color,color:'#000',border:'none',fontWeight:800,fontSize:13,cursor:'pointer',fontFamily:'inherit',whiteSpace:'nowrap' }}>Buy Now →</button>
+                    <div style={{ fontSize:'clamp(22px,2.4vw,28px)',fontWeight:900,color:p.color,whiteSpace:'nowrap' }}>Free</div>
+                    <div style={{ fontSize:11,color:'rgba(255,255,255,.32)',marginBottom:12,whiteSpace:'nowrap' }}>you sign in your own wallet</div>
+                    <button style={{ padding:'12px 22px',borderRadius:99,background:p.color,color:'#000',border:'none',fontWeight:800,fontSize:13,cursor:'pointer',fontFamily:'inherit',whiteSpace:'nowrap' }}>Build &amp; sign →</button>
                   </div>
                 </div>
               </div>
@@ -2392,8 +2395,8 @@ export default function XRPLHubHome() {
                 <h3 style={{ fontSize:14,fontWeight:800,marginBottom:5,lineHeight:1.25 }}>{p.name}</h3>
                 <p style={{ fontSize:11,color:'rgba(255,255,255,.42)',lineHeight:1.55,marginBottom:12,flex:1 }}>{p.tagline}</p>
                 <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',paddingTop:10,borderTop:`1px solid ${p.color}15`,gap:6,marginTop:'auto' }}>
-                  <span style={{ fontSize:13,fontWeight:900,color:p.color,lineHeight:1.3 }}>{p.priceRLUSD} RLUSD{xrpLabel(pricing,p.id) ? <span style={{ fontWeight:700,opacity:.75 }}> · {xrpLabel(pricing,p.id)}</span> : null}</span>
-                  <button style={{ padding:'6px 12px',borderRadius:99,background:`${p.color}18`,border:`1px solid ${p.color}32`,color:p.color,fontWeight:700,fontSize:10,cursor:'pointer',fontFamily:'inherit',whiteSpace:'nowrap' }}>Buy →</button>
+                  <span style={{ fontSize:13,fontWeight:900,color:p.color,lineHeight:1.3 }}>Free</span>
+                  <button style={{ padding:'6px 12px',borderRadius:99,background:`${p.color}18`,border:`1px solid ${p.color}32`,color:p.color,fontWeight:700,fontSize:10,cursor:'pointer',fontFamily:'inherit',whiteSpace:'nowrap' }}>Build →</button>
                 </div>
               </div>
             ))}

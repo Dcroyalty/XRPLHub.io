@@ -1,16 +1,15 @@
-// The six actions. Every one is READ-ONLY, DESCRIBE-ONLY or PAYMENT-INFO-ONLY:
-//   - it calls XRPLHub's public MCP tools and returns text + data;
-//   - none of them ever returns a signable transaction. The transaction (txjson) is sold: XRPLHub delivers it only after an
-//     x402 payment (USDC on Base or RLUSD on XRPL). XRPLHUB_BUILD_TRANSACTION returns the PAYMENT RESOURCE for the agent's
-//     own x402 client/wallet to pay; XRPLHUB_PREVIEW_TRANSACTION describes a transaction for free.
-//   - there is no signing, no key handling, no submission and no setting anywhere in this package.
+// The six actions. Every one calls XRPLHub's public MCP tools and returns text + data:
+//   - XRPLHUB_BUILD_TRANSACTION returns the UNSIGNED transaction (txjson), FREE — XRPLHub stopped charging for transactions on
+//     2026-10-05. It is only passed on after checking that every step's Account is the wallet the agent asked about.
+//   - XRPLHUB_PREVIEW_TRANSACTION describes a transaction (what it does, what is irreversible) first.
+//   - there is no signing, no key handling, no submission and no setting anywhere in this package. The wallet owner signs.
 
 import type { Action, ActionResult, HandlerCallback, HandlerOptions, IAgentRuntime, Memory, State } from "@elizaos/core";
 import { scanAddresses, scanMptIds } from "./address.ts";
 import { messageText, readBuildArgs, resolveAddress, resolveMptId, structuredParams, type BuildArgs } from "./args.ts";
 import type { XrplhubClient } from "./client.ts";
 import {
-  checkPaymentResource,
+  checkTransactions,
   clean,
   confirmationLines,
   formatMpt,
@@ -164,7 +163,7 @@ export function createActions(client: XrplhubClient): Action[] {
     name: ACTION_NAMES.list,
     similes: ["LIST_XRPL_SERVICES", "XRPL_SERVICE_CATALOG", "WHAT_CAN_XRPLHUB_BUILD"],
     description:
-      "List every XRPL transaction XRPLHub sells (trustlines, escrows, AMM, NFTs, multisig, MPT issuance and more) with each one's price and parameters. Call this first so you pass the right product_id and params to XRPLHUB_PREVIEW_TRANSACTION or XRPLHUB_BUILD_TRANSACTION. Read-only, free.",
+      "List every XRPL transaction XRPLHub builds for free (trustlines, escrows, AMM, NFTs, multisig, MPT issuance and more) with each one's parameters. Call this first so you pass the right product_id and params to XRPLHUB_PREVIEW_TRANSACTION or XRPLHUB_BUILD_TRANSACTION. Read-only, free.",
     validate: async (_runtime, message) => /xrplhub|xrpl.{0,40}(service|transaction|build)|(build|create|set up|buy).{0,30}(trustline|escrow|nft|amm|multisig|check)/i.test(messageText(message)),
     handler: async (runtime, message, state, options, callback) => {
       const c: Ctx = { runtime, message, state, options, callback };
@@ -176,7 +175,7 @@ export function createActions(client: XrplhubClient): Action[] {
         data: { count: s.services.length, services: s.services },
       });
     },
-    examples: [example("What XRPL transactions can XRPLHub build for me?", "Here is the list of services and prices.", ACTION_NAMES.list)],
+    examples: [example("What XRPL transactions can XRPLHub build for me?", "Here is the list of services (all free).", ACTION_NAMES.list)],
   };
 
   // ── 5. preview (FREE description, no transaction) ───────────────────────────
@@ -217,16 +216,16 @@ export function createActions(client: XrplhubClient): Action[] {
     ],
   };
 
-  // ── 6. build = BUY: returns the x402 payment resource, never the transaction ─
+  // ── 6. build: the UNSIGNED transaction, free ──────────────────────────────────
   const build: Action = {
     name: ACTION_NAMES.build,
-    similes: ["BUY_XRPL_TRANSACTION", "BUILD_XRPL_TRANSACTION", "GET_XRPL_TXJSON_PAYMENT", "PREPARE_XRPL_TRANSACTION"],
+    similes: ["BUILD_XRPL_TRANSACTION", "GET_XRPL_TXJSON", "PREPARE_XRPL_TRANSACTION", "CREATE_XRPL_TRANSACTION"],
     description:
-      "BUY the unsigned transaction for one XRPL service. This action returns the x402 PAYMENT RESOURCE (an https://www.xrplhub.io/api/x402/tx URL) and the price; it does not return the transaction. Pay the resource with your own x402 client (USDC on Base or RLUSD on XRPL) and that response is the txjson to sign with your own wallet. XRPLHub never signs and never holds keys. Parameters: product_id, wallet_address, params (object), confirm_caution (caution-tier only, after the wallet owner has read the preview).",
+      "FREE: the unsigned transaction (txjson) for one XRPL service, ready for the wallet owner to sign with their own wallet. No payment. XRPLHub never signs and never holds keys. Caution-tier services (irreversible) are refused until confirm_caution is true, after the wallet owner has read what cannot be undone. Parameters: product_id, wallet_address, params (object), confirm_caution.",
     validate: async (_runtime, message) => {
       const text = messageText(message);
       const s = scanAddresses(text);
-      return (s.valid.length > 0 || s.malformed.length > 0) && (/build|buy|purchase|create|prepare|txjson|transaction/i.test(text) || SERVICE_WORDS.test(text));
+      return (s.valid.length > 0 || s.malformed.length > 0) && (/build|create|prepare|txjson|transaction/i.test(text) || SERVICE_WORDS.test(text));
     },
     handler: async (runtime, message, state, options, callback) => {
       const c: Ctx = { runtime, message, state, options, callback };
@@ -237,7 +236,7 @@ export function createActions(client: XrplhubClient): Action[] {
       if (!wallet.ok) return refusal(ACTION_NAMES.build, c, "bad_address", wallet.message);
 
       const args = readBuildArgs(text, sp);
-      const p = await resolveProduct(ACTION_NAMES.build, c, text, args, "buy");
+      const p = await resolveProduct(ACTION_NAMES.build, c, text, args, "build");
       if (!p.ok) return p.result;
       const productId = p.productId;
 
@@ -246,50 +245,50 @@ export function createActions(client: XrplhubClient): Action[] {
       const res = await client.callTool("build_xrpl_transaction", payload);
       if (!res.ok) {
         const missing = Array.isArray(res.data?.missingParams) ? (res.data!.missingParams as unknown[]).map((m) => clean(m, 60)).filter(Boolean) : [];
-        const hint = missing.length ? ` Missing parameters: ${missing.join(", ")}. Provide them in params and call again. Nothing was charged.` : "";
-        return refusal(ACTION_NAMES.build, c, res.retryable ? "unavailable" : "build_failed", `Could not prepare "${clean(productId, 60)}": ${clean(res.error, 300)}${hint}`);
+        const hint = missing.length ? ` Missing parameters: ${missing.join(", ")}. Provide them in params and call again.` : "";
+        return refusal(ACTION_NAMES.build, c, res.retryable ? "unavailable" : "build_failed", `Could not build "${clean(productId, 60)}": ${clean(res.error, 300)}${hint}`);
       }
       const d = res.data;
 
-      // Caution-tier and not yet confirmed: the server withholds the payment resource. Pass the warning on; buy nothing.
-      if (d.requiresConfirmation === true) {
-        const conf = isRecord(d.irreversible) ? confirmationLines(d.irreversible) : ["CAUTION — this can be hard or impossible to undo. Show the preview to the wallet owner before buying."];
+      // Caution tier, not yet confirmed: no transaction is returned. Pass the irreversibility copy on.
+      if (d.requiresConfirmation === true || d.error === "confirmation_required") {
         return done(ACTION_NAMES.build, message, callback, {
           success: false,
           error: "confirmation_required",
           text: [
-            `CONFIRMATION REQUIRED before buying "${clean(productId, 60)}". Nothing was charged and no payment resource was issued.`,
-            ...conf,
+            `CONFIRMATION REQUIRED before building "${clean(productId, 60)}". No transaction was returned.`,
+            ...confirmationLines(d),
             "When the wallet owner has confirmed, call XRPLHUB_BUILD_TRANSACTION again with confirm_caution: true.",
           ].join("\n"),
           data: { productId, wallet: wallet.value, requiresConfirmation: true, transactionIncluded: false },
         });
       }
-
-      // The payment resource is where money goes: only ever surface XRPLHub's own URL for exactly this service and wallet.
-      const checked = checkPaymentResource(d.resource, productId, wallet.value);
-      if (!checked.ok) {
-        return refusal(ACTION_NAMES.build, c, "bad_payment_resource", `Refusing to give you a payment URL: ${checked.reason}. Nothing was charged.`);
+      if (typeof d.error === "string") {
+        return refusal(ACTION_NAMES.build, c, "build_failed", `Could not build "${clean(productId, 60)}": ${clean(d.message ?? d.error, 300)}`);
       }
-      const usd = isRecord(d.price) && typeof d.price.usd === "number" ? d.price.usd : null;
+
+      // Only pass on transactions that are for exactly this wallet.
+      const checked = checkTransactions(d, wallet.value);
+      if (!checked.ok) {
+        return refusal(ACTION_NAMES.build, c, "bad_transaction", `Refusing to pass this on: ${checked.reason}.`);
+      }
       const label = typeof d.label === "string" ? clean(d.label, 120) : clean(productId, 60);
+      const steps = checked.steps;
       return done(ACTION_NAMES.build, message, callback, {
         success: true,
         text: [
-          `${label} for ${wallet.value}: the signable transaction is delivered after payment.`,
-          `Payment resource: GET ${checked.url}`,
-          usd != null ? `Price: $${usd} (USD = RLUSD = USDC). Pay in USDC on Base or RLUSD on the XRP Ledger with your own x402 client; you are charged only if the transaction builds.` : "Pay with your own x402 client (USDC on Base or RLUSD on XRPL); you are charged only if the transaction builds.",
-          `After payment: check every returned transaction's Account equals ${wallet.value}, then sign with your own wallet and submit it (multi-step services: in order). ${UNSIGNED_NOTE}`,
+          `${label} for ${wallet.value} — free. ${steps.length > 1 ? `${steps.length} transactions, sign them in order:` : "Unsigned transaction:"}`,
+          ...steps.map((s, i) => `${steps.length > 1 ? `${i + 1}. ` : ""}${JSON.stringify(s)}`),
+          `Check that Account is ${wallet.value}, then sign with your own wallet and submit${steps.length > 1 ? " (each validated before the next)" : ""}. ${UNSIGNED_NOTE}`,
         ].join("\n"),
-        values: { xrplhubPaymentResource: checked.url },
-        // Whitelisted fields only. No transaction is ever in here.
-        data: { productId, wallet: wallet.value, resource: checked.url, priceUsd: usd, payWith: ["USDC on Base (x402 v1)", "RLUSD on XRPL (x402 v2 via t54)"], transactionIncluded: false },
+        // Whitelisted fields only.
+        data: { productId, wallet: wallet.value, free: true, transactions: steps, transactionIncluded: true },
       });
     },
     examples: [
       example(
-        "Buy me a trustline transaction for rs59g3amo5iT6T64Cg96XXMAWuw3WPQcLF (RLUSD, limit 100).",
-        "Here is the payment resource and price; pay it with your x402 wallet and you get the unsigned transaction to sign.",
+        "Build me a trustline transaction for rs59g3amo5iT6T64Cg96XXMAWuw3WPQcLF (RLUSD, limit 100).",
+        "Here is the unsigned trust line transaction (free) — sign it with your own wallet.",
         ACTION_NAMES.build,
       ),
     ],

@@ -2,7 +2,6 @@
 // https://llmstxt.org — a concise, LLM-friendly map of XRPLHub for agents and
 // AI crawlers. Plain text, stable URL: https://www.xrplhub.io/llms.txt
 
-import { STANDARD_BUILD_USD, CAUTION_BUILD_USD } from "@/lib/servicePrices";
 import { PLAN_ORDER, PLANS } from "@/lib/plans";
 import { SERVICE_CATALOG, SERVICE_COUNT } from "@/app/api/execute/serviceCatalog";
 import { priceUsd } from "@/lib/pricing";
@@ -154,8 +153,8 @@ MCP server (Streamable HTTP, JSON-RPC 2.0, no auth):
 - Tools:
   - check_xrpl_score — free 300-850 wallet score + 8-signal breakdown + tips. Param: wallet_address.
   - list_xrpl_services — the ${SERVICE_COUNT} build_xrpl_transaction actions, each with its params + examples. No params.
-  - preview_xrpl_transaction — FREE. What one XRPL transaction does, what is irreversible, the price and every field it needs. Returns NO signable txjson. Params: product_id, params (optional).
-  - build_xrpl_transaction — PAID (x402). Returns the payment resource (GET /api/x402/tx?...) that delivers the unsigned txjson for one of ${SERVICE_COUNT} XRPL actions, at the storefront price, payable in USDC on Base or RLUSD on XRPL. No payment, no txjson. Params: product_id, wallet_address, params, confirm_caution (caution-tier only). NOTE: mptissue (MPT issuance) has a full form — name, ticker, supply cap, decimals, 6 capability flags (canTransfer/canTrade/canEscrow/canLock/requireAuth/canClawback — clawback = you can take the token back from any holder), an optional transfer fee, and a backing declaration (backingType, backingStatement, verifiedBy, redeemable). Free description (preview_xrpl_transaction, or POST /api/execute/preview — neither returns the signable txjson) shows what is permanent vs changeable RIGHT NOW (read live from the DynamicMPT amendment state; hedged if unreadable) + the flag guide + the backing hard line (XRPLHub publishes the declaration, never verifies it).
+  - preview_xrpl_transaction — FREE. What one XRPL transaction does, what is irreversible and every field it needs. Returns NO signable txjson. Params: product_id, params (optional).
+  - build_xrpl_transaction — FREE. Returns the unsigned txjson for one of ${SERVICE_COUNT} XRPL actions, directly (no payment). Caution-tier actions return confirmation_required with what is irreversible until confirm_caution is true. Params: product_id, wallet_address, params, confirm_caution. NOTE: mptissue (MPT issuance) has a full form — name, ticker, supply cap, decimals, 6 capability flags (canTransfer/canTrade/canEscrow/canLock/requireAuth/canClawback — clawback = you can take the token back from any holder), an optional transfer fee, and a backing declaration (backingType, backingStatement, verifiedBy, redeemable). Free description (preview_xrpl_transaction, or POST /api/execute/preview — neither returns the signable txjson) shows what is permanent vs changeable RIGHT NOW (read live from the DynamicMPT amendment state; hedged if unreadable) + the flag guide + the backing hard line (XRPLHub publishes the declaration, never verifies it).
   - issue_score_credential — paid (1 XRP or 1 RLUSD) signed, verifiable score certificate, 90 days. Params: wallet_address, currency, uuid (2nd call).
   - submit_grant_application — apply for a $25-$100 community micro-grant (a person reviews every application). Params: wallet_address, category, amount, description.
   - donate_to_community_fund — donate XRP or RLUSD to the grant treasury. Params: amount, currency, donor_wallet, message.
@@ -174,19 +173,27 @@ MCP server (Streamable HTTP, JSON-RPC 2.0, no auth):
 
 Health: GET ${origin}/api/health  (503 when a money-path component is down; ?deep=1 for live facilitator probes)
 
-x402 pay-per-call — EVERY paid route below takes RLUSD on the XRP Ledger (t54) OR USDC on Base (CDP), same price, no signup:
+## Free transactions — all ${SERVICE_COUNT} XRPL actions
+
+XRPLHub charges nothing for transactions. It builds the exact unsigned transaction; you sign it in your own wallet
+(Xaman, Crossmark, GemWallet or any XRPL wallet). XRPLHub never signs and never holds keys or funds.
+- GET ${origin}/api/tx?productId=<id>&account=r...[&<params>][&confirmCaution=true] — the unsigned txjson (every step, in
+  order, for multi-step actions). Also POST {productId, account, params, confirmCaution}. /api/x402/tx serves the same free handler.
+- Caution-tier actions (multisig lockdown, regular key, No Freeze, MPT issuance, permission delegation) return 409
+  confirmation_required with what is irreversible; repeat with confirmCaution=true once the wallet owner has read it.
+- MCP: build_xrpl_transaction (same thing). Storefront: ${origin} — pick an action, fill the form, sign. No payment step.
+- Rate-limited per client.
+
+x402 pay-per-call (data, not transactions) — EVERY paid route below takes RLUSD on the XRP Ledger (t54) OR USDC on Base (CDP), same price, no signup:
 - Discovery: ${origin}/.well-known/x402  (carries per-resource inputSchema + outputSchema, the errorCodes map, and the settlement/idempotency guarantees)
 - OpenAPI 3.1: ${origin}/openapi.json
 - GET ${origin}/api/x402/score?wallet=r... — 300-850 score + 8 signals, $0.02
 - GET ${origin}/api/x402/report?wallet=r... — score + risk flags + recommendations + on-chain snapshot, $0.08
-- GET ${origin}/api/x402/tx?productId=<id>&account=r...[&<params>][&confirmCaution=true] — the unsigned txjson for one of ${SERVICE_COUNT} actions, at the STOREFRONT price of that action ($${STANDARD_BUILD_USD} per standard build, $${CAUTION_BUILD_USD} per caution-tier build; see ${origin}/api/pricing). Payable on either rail (RLUSD on XRPL, or USDC on Base). Caution-tier actions are refused unpaid until confirmCaution=true.
-- /api/x402/tx hands over the transaction ONLY after your payment has settled (a failed settle returns 402
-  settlement_failed_not_delivered and no transaction).
 - The 402 challenge embeds the full schema. Settlement fires ONLY after the paid
   work succeeds — a handler failure returns error:"handler_failed" and does NOT
   charge you (retry with the same PAYMENT-SIGNATURE). Send an Idempotency-Key
   header (or rely on the invoiceId) — a retry replays the original response.
-- RETIRED (410, use the x402 route above): /api/x402-tx, /api/v1/wallet-report,
+- RETIRED (410): /api/x402-tx (use /api/tx), /api/v1/wallet-report,
   /api/v1/pay-per-score.
 
 More x402 pay-per-call routes (both rails, same price):
@@ -227,9 +234,8 @@ ${plans}
 
 ## The ${SERVICE_COUNT} prebuilt XRPL transaction actions
 
-The unsigned txjson is delivered only after payment (/api/x402/tx, or the storefront flow); build_xrpl_transaction returns
-the payment resource and preview_xrpl_transaction describes an action for free. The wallet owner signs in their own wallet.
-This never signs for anyone.
+All of them are FREE: GET /api/tx, MCP build_xrpl_transaction, or the storefront return the unsigned txjson with no payment.
+The wallet owner signs in their own wallet. This never signs for anyone.
 
 ${services}
 

@@ -12,7 +12,7 @@ export const dynamic = "force-static";
 const ORIGIN = "https://www.xrplhub.io";
 const TITLE = `${SERVICE_COUNT} done-for-you XRPL transaction services | XRPLHub`;
 const DESCRIPTION =
-  `Escrows, checks, trust lines, multi-sig, delegation, AMM pools, NFTs, credentials and more — XRPLHub builds the exact unsigned XRPL transaction for ${SERVICE_COUNT} services. You review it and sign with your own wallet; XRPLHub never holds your keys.`;
+  `Escrows, checks, trust lines, multi-sig, delegation, AMM pools, NFTs, credentials and more — XRPLHub builds the exact unsigned XRPL transaction for ${SERVICE_COUNT} services — free. You review it and sign with your own wallet; XRPLHub never holds your keys.`;
 
 export const metadata: Metadata = {
   title: TITLE,
@@ -74,7 +74,7 @@ export default function ServicesIndex() {
                       <span aria-hidden="true">{p.emoji} </span>{p.name}
                     </div>
                     <div style={{ fontSize: 12.5, color: "rgba(255,255,255,.5)", marginBottom: 8, lineHeight: 1.5 }}>{p.tagline}</div>
-                    {price && <div style={{ fontSize: 12, fontWeight: 700, color: p.color }}>${price.usd}</div>}
+                    {price && <div style={{ fontSize: 12, fontWeight: 700, color: p.color }}>Free</div>}
                   </Link>
                 );
               })}

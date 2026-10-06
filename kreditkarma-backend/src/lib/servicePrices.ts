@@ -5,52 +5,53 @@
 // an XRP price is never stored — it is derived from a live rate at request time.
 
 /**
- * Service build prices (owner decision 2026-10-05): every standard build is $1 and every caution-tier build is $5, on every
- * rail (storefront XRP/RLUSD, x402 RLUSD, x402 USDC). Tier comes from serviceCatalog.ts; check-service-parity.mjs fails the
- * build if any price here disagrees with its tier. Was $15–$80 per service before 2026-10-05.
+ * The 35 transaction services are FREE on every path (owner decision 2026-10-05, after Xaman removed XRPLHub's original
+ * app for charging for transactions Xaman offers free). Every entry for a catalog service below must be 0 —
+ * check-service-parity.mjs fails the build otherwise. History: $15–$80 until 2026-10-05, then $1 / $5 for a few hours.
+ * Still paid (NOT in this table's service rows): score reports + score API, screening, monitoring, MPT data, credentials
+ * (`credential` below), lending/underwriting, API plans, the admin health check (ADMIN_ONLY_PRICE_USD), Spend Controls.
  */
-export const STANDARD_BUILD_USD = 1;
-export const CAUTION_BUILD_USD = 5;
+export const TX_SERVICE_PRICE_USD = 0;
 /** Spend Controls: one plan, per month, prepaid in RLUSD (owner decision 2026-10-05). Merchants cash free. */
 export const SPEND_PLAN_MONTHLY_USD = 5;
 
 /** USD (= RLUSD) list price of each storefront service. */
 export const SERVICE_PRICE_USD: Readonly<Record<string, number>> = Object.freeze({
-  multisig: 5,
-  regkey: 5,
-  depositauth: 1,
-  desttag: 1,
-  issuerdecl: 5,
-  tokenfee: 1,
-  issuercfg: 1,
-  trustline: 1,
-  rippling: 1,
-  dexorder: 1,
-  ammlaunch: 1,
-  ammentry: 1,
-  smartswap: 1,
-  paychannel: 1,
-  nftmint: 1,
-  nftburn: 1,
-  nftoffer: 1,
-  identity: 1,
-  did: 1,
-  compliance: 1,
-  escrow: 1,
-  mptissue: 5,
-  mptsend: 1,
-  trustsend: 1,
-  globalfreeze: 1,
-  freezeline: 1,
-  checkcreate: 1,
-  checkcash: 1,
-  checkcancel: 1,
-  depositpreauth: 1, // replaced the duplicate desttagreq (same price point)
-  ammwithdraw: 1, // replaced the duplicate dextrade (same price point)
-  tickets: 1,
-  credentialissue: 1,
-  permdomain: 1,
-  delegate: 5,
+  multisig: 0,
+  regkey: 0,
+  depositauth: 0,
+  desttag: 0,
+  issuerdecl: 0,
+  tokenfee: 0,
+  issuercfg: 0,
+  trustline: 0,
+  rippling: 0,
+  dexorder: 0,
+  ammlaunch: 0,
+  ammentry: 0,
+  smartswap: 0,
+  paychannel: 0,
+  nftmint: 0,
+  nftburn: 0,
+  nftoffer: 0,
+  identity: 0,
+  did: 0,
+  compliance: 0,
+  escrow: 0,
+  mptissue: 0,
+  mptsend: 0,
+  trustsend: 0,
+  globalfreeze: 0,
+  freezeline: 0,
+  checkcreate: 0,
+  checkcash: 0,
+  checkcancel: 0,
+  depositpreauth: 0,
+  ammwithdraw: 0,
+  tickets: 0,
+  credentialissue: 0,
+  permdomain: 0,
+  delegate: 0,
   // Not a builder service: the paid XRPLScore credential (/api/credential).
   credential: 1,
 });

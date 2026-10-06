@@ -4,7 +4,8 @@
 // xrpl-ai.org / x402scan auto-discovery finds and lists all of them — each with
 // an inputSchema (every query param, its values, an example) and an
 // outputSchema + outputExample so a crawler knows exactly what it gets back.
-// Since 2026-10-05 every PER-CALL resource is payable on BOTH rails (src/lib/x402Dual.ts): score, report, tx, usdc/score,
+// The 35 transaction services are FREE since 2026-10-05 and are not listed here (see freeTransactions). Every PER-CALL paid
+// resource is payable on BOTH rails (src/lib/x402Dual.ts): score, report, usdc/score,
 // mpt, screen/ofac, lending/exposure, lending/underwrite. Each appears twice: once as the Base/USDC entry and once as the
 // XRPL/RLUSD entry, for the SAME URL, at the same price. One product, one price, every rail: POST usdc/score and
 // GET /api/x402/score are the same $0.02 score. The plan purchases (checkout/usdc/*) stay Base-only BY DESIGN: the XRPL
@@ -30,7 +31,7 @@ import {
   PRICE_PER_UNDERWRITE_RLUSD,
   TREASURY_ADDRESS,
 } from "@/lib/paycall";
-import { BUILDABLE_SERVICE_IDS, SERVICE_COUNT } from "@/app/api/execute/serviceCatalog";
+import { SERVICE_COUNT } from "@/app/api/execute/serviceCatalog";
 import { BASE_PAY_TO, BASE_NETWORK, USDC_BASE_ASSET, CDP_FACILITATOR_URL, PRICE_PER_SCORE_USDC, PRICE_PER_MPT_USDC, PRICE_PER_SCREEN_USDC, PRICE_PER_EXPOSURE_USDC, PRICE_PER_UNDERWRITE_USDC, PRICE_PER_REPORT_USDC } from "@/lib/x402Base";
 import { UNDERWRITE_DISCLAIMER } from "@/lib/underwriteCanon";
 import {
@@ -45,11 +46,9 @@ import {
   LENDING_EXPOSURE_OUTPUT_SCHEMA,
 } from "@/lib/lendingExposure";
 import { PLANS, type PlanId } from "@/lib/plans";
-import { priceUsd } from "@/lib/pricing";
-import { SERVICE_PRICE_USD, STANDARD_BUILD_USD } from "@/lib/servicePrices";
 import { USDC_PLAN_OUTPUT_SCHEMA, usdcPlanOutputExample } from "@/lib/checkoutUsdc";
 import { walletProp, SCORE_OUTPUT_SCHEMA as scoreOutputSchema, SCORE_OUTPUT_EXAMPLE as scoreOutputExample } from "@/lib/scoreSchema";
-import { SCORE_SCHEMA, REPORT_SCHEMA, TX_SCHEMA } from "@/lib/x402Schemas";
+import { SCORE_SCHEMA, REPORT_SCHEMA } from "@/lib/x402Schemas";
 import { X402_ERROR_CODES } from "@/lib/x402";
 
 export const runtime = "nodejs";
@@ -301,45 +300,6 @@ function usdcUnderwriteResource(origin: string) {
   };
 }
 
-// /api/x402/tx is priced PER ACTION at the storefront price (src/lib/servicePrices.ts) on BOTH rails. A discovery entry has one
-// `amount`, so it shows the default action (checkcreate, what a bare probe is quoted); `pricing` carries the real range.
-function txPricing(origin: string) {
-  const prices = BUILDABLE_SERVICE_IDS.map((id) => SERVICE_PRICE_USD[id]).filter((n): n is number => typeof n === "number");
-  return {
-    pricing: {
-      model: "per-action storefront price (USD = RLUSD = USDC)",
-      amountShownIsFor: "productId=checkcreate",
-      minUsd: Math.min(...prices),
-      maxUsd: Math.max(...prices),
-      table: `${origin}/api/pricing`,
-    },
-    cautionTier: "Irreversible actions are refused unpaid (HTTP 409 confirmation_required, not charged) until confirmCaution=true.",
-    freePreview: "MCP tool preview_xrpl_transaction (no signable txjson)",
-  };
-}
-
-function txBaseResource(origin: string) {
-  return {
-    resource: `${origin}/api/x402/tx`,
-    method: "GET",
-    name: "Signable XRPL transaction (" + SERVICE_COUNT + " actions) — pay in USDC on Base",
-    description: TX_SCHEMA.description,
-    x402Version: 1,
-    scheme: "exact",
-    network: BASE_NETWORK,
-    asset: USDC_BASE_ASSET,
-    assetSymbol: "USDC",
-    payTo: BASE_PAY_TO,
-    maxTimeoutSeconds: 300,
-    facilitator: CDP_FACILITATOR_URL,
-    noSignup: true,
-    amount: (priceUsd("checkcreate") ?? STANDARD_BUILD_USD).toFixed(6),
-    ...txPricing(origin),
-    inputSchema: TX_SCHEMA.input,
-    outputSchema: TX_SCHEMA.output,
-  };
-}
-
 const MPT_XRPL_DESCRIPTION =
   "Full risk view of one XLS-33 Multi-Purpose Token issuance: issuer powers (clawback, freeze, " +
   "require-auth, non-transferable) plus the issuer's XRPLScore, account age, xrp-ledger.toml-verified " +
@@ -388,8 +348,9 @@ export async function GET(req: Request) {
       name: "XRPLHub — XRPLScore",
       description:
         "On-chain creditworthiness scoring for the XRP Ledger. A 300–850 score from 8 signals, " +
-        "full risk reports, and ready-to-sign prebuilt XRPL transactions for " + SERVICE_COUNT + " actions. " +
-        "Pay per call in RLUSD on the XRP Ledger or USDC on Base, same price — no account, no API key, no signup.",
+        "full risk reports, screening and lending data, paid per call in RLUSD on the XRP Ledger or USDC on Base (same price) — " +
+        "no account, no API key, no signup. Prebuilt XRPL transactions for " + SERVICE_COUNT + " actions are FREE and not x402 " +
+        "resources: GET /api/tx (see freeTransactions below).",
       provider: { name: "XRPLHub.io", url: origin, contact: "support@xrplhub.io" },
       facilitator: FACILITATOR_URL,
       network: XRPL_NETWORK,
@@ -422,19 +383,6 @@ export async function GET(req: Request) {
           outputSchema: REPORT_SCHEMA.output,
           outputExample: REPORT_SCHEMA.outputExample,
         },
-        {
-          resource: `${origin}/api/x402/tx`,
-          method: "GET",
-          name: "Prebuilt XRPL transaction (" + SERVICE_COUNT + " actions)",
-          description: TX_SCHEMA.description,
-          ...common,
-          amount: (priceUsd("checkcreate") ?? STANDARD_BUILD_USD).toFixed(6),
-          ...txPricing(origin),
-          inputSchema: TX_SCHEMA.input,
-          outputSchema: TX_SCHEMA.output,
-          outputExample: TX_SCHEMA.outputExample,
-        },
-        txBaseResource(origin),
         // XRPL twins of the four dual-rail resources (same URL as the Base entries further down; same face value).
         {
           resource: `${origin}/api/x402/usdc/mpt/{mptokenIssuanceID}`,
@@ -556,8 +504,17 @@ export async function GET(req: Request) {
       // Stable machine-readable error codes returned by the RLUSD/t54 paid
       // routes. `error` is always one of these keys; the value describes it.
       errorCodes: X402_ERROR_CODES,
+      // Not x402: the 35 transaction services are free (owner decision 2026-10-05).
+      freeTransactions: {
+        endpoint: `${origin}/api/tx?productId={id}&account={r-address}[&<params>][&confirmCaution=true]`,
+        alsoAt: `${origin}/api/x402/tx (historical URL, same free handler)`,
+        mcpTool: "build_xrpl_transaction",
+        price: "free",
+        actions: SERVICE_COUNT,
+        cautionTier: "Irreversible actions return 409 confirmation_required with what is irreversible, until confirmCaution=true.",
+        signing: "You sign with your own wallet. XRPLHub never signs and never holds keys or funds.",
+      },
       guarantees: {
-        deliveryOrder: "/api/x402/tx (a signable transaction): built first (a request that can't be built is never charged), then the payment settles, and ONLY THEN is the transaction delivered — on a settle failure you get 402 error:settlement_failed_not_delivered and nothing. Data resources keep deliver-then-settle (below).",
         settlement: "On every resource, on both rails: the payment settles ONLY after the paid work returns success (XRPL: t54 settles after the handler; Base: withX402 settles only on a <400 response). A handler failure returns error:handler_failed and does NOT charge you — retry with the same PAYMENT-SIGNATURE within maxTimeoutSeconds.",
         idempotency: "Send an Idempotency-Key header (or rely on the payment's invoiceId). A retried request replays the original response — you can never pay twice.",
       },

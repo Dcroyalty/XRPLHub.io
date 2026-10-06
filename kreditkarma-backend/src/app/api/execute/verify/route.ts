@@ -1,6 +1,10 @@
 // src/app/api/execute/verify/route.ts
 // Polled by the frontend after the execution QR is shown (Xaman: ?uuid=) or after an injected
-// wallet broadcasts the service transaction (?hash=&payTxHash=).
+// wallet broadcasts the service transaction (free services: ?hash=&account=&productId=&step=&plan=;
+// the admin health check: ?hash=&payTxHash=).
+//
+// FREE services (since 2026-10-05): each signed step is confirmed on the LEDGER — validated, tesSUCCESS, signed by the
+// account the transaction was built for, of the type the plan expects for this step. Nothing to record against a payment.
 // Returns: pending | step_delivered | delivered | expired | rejected | failed
 //   step_delivered  one step of a multi-step service is confirmed; `nextStep` says what to sign next
 //   delivered       the LAST step is confirmed — the payment is now fully used
@@ -18,11 +22,37 @@ import { registerNewMptIssuance } from '@/lib/mptRegister';
 import { queueMptDeclaredCredential } from '@/lib/mptCredential';
 import { fetchLedgerTx, recordStepDelivered, type DeliveryResult } from '@/lib/paymentGate';
 import { prismaPurchaseStore } from '@/lib/paymentStore';
+import { parsePlan } from '@/lib/freeTx';
+import type { PlanStep } from '@/lib/paymentGate';
 
 const XUMM_STATUS = 'https://xumm.app/api/v1/platform/payload';
 const HASH_RE = /^[0-9A-Fa-f]{64}$/;
 
-/** Confirm `serviceTxHash` on the ledger and record it against `payTxHash`. */
+/** FREE services: confirm one signed step on the ledger and say what comes next. */
+async function confirmFreeStep(serviceTxHash: string, f: { productId: string; account: string; step: number; plan: PlanStep[] }) {
+  const svc = await fetchLedgerTx(serviceTxHash);
+  if (!svc.ok) return NextResponse.json({ status: 'pending', txHash: serviceTxHash });
+  const meta = (svc.tx.meta ?? svc.tx.metaData) as Record<string, unknown> | undefined;
+  const result = meta?.TransactionResult as string | undefined;
+  if (svc.tx.validated !== true || !result) return NextResponse.json({ status: 'pending', txHash: serviceTxHash });
+  if (result !== 'tesSUCCESS') return NextResponse.json({ status: 'failed', txHash: serviceTxHash, result });
+  const expected = f.plan[f.step - 1];
+  if (!expected || svc.tx.Account !== f.account || svc.tx.TransactionType !== expected.type) {
+    return NextResponse.json({ status: 'failed', txHash: serviceTxHash, result: 'not_this_step', reason: 'That transaction is not the step that was built for this account.' });
+  }
+  const base = { txHash: serviceTxHash, step: f.step, totalSteps: f.plan.length, free: true };
+  if (f.step < f.plan.length) {
+    return NextResponse.json({ status: 'step_delivered', ...base, nextStep: { step: f.step + 1, id: f.plan[f.step].id } });
+  }
+  let mpt: Awaited<ReturnType<typeof registerNewMptIssuance>> | undefined;
+  if (f.productId === 'mptissue') {
+    mpt = await registerNewMptIssuance(prisma, f.account, svc.tx).catch(() => undefined);
+    void queueMptDeclaredCredential(prisma, f.account, mpt?.issuanceId ?? null).catch(() => {});
+  }
+  return NextResponse.json({ status: 'delivered', ...base, mptIssuanceId: mpt?.issuanceId ?? null, registry: mpt });
+}
+
+/** Confirm `serviceTxHash` on the ledger and record it against `payTxHash` (admin health check only). */
 async function confirmDelivery(serviceTxHash: string, payTxHash: string) {
   const svc = await fetchLedgerTx(serviceTxHash);
   if (!svc.ok) return NextResponse.json({ status: 'pending', txHash: serviceTxHash });
@@ -66,6 +96,13 @@ export async function GET(req: NextRequest) {
     // ---- injected wallet: confirm the service tx it broadcast, on-ledger ----
     if (hashParam) {
       if (!HASH_RE.test(hashParam)) return NextResponse.json({ status: 'error', reason: 'bad hash' }, { status: 400 });
+      if (!payTxHashParam) {
+        const plan = parsePlan(req.nextUrl.searchParams.get('plan'));
+        const account = req.nextUrl.searchParams.get('account') ?? '';
+        const step = Number(req.nextUrl.searchParams.get('step') ?? 1);
+        if (!plan || !account || !Number.isInteger(step) || step < 1) return NextResponse.json({ status: 'error', reason: 'account, step and plan required' }, { status: 400 });
+        return confirmFreeStep(hashParam, { productId: req.nextUrl.searchParams.get('productId') ?? '', account, step, plan });
+      }
       if (!HASH_RE.test(payTxHashParam)) return NextResponse.json({ status: 'error', reason: 'payTxHash required' }, { status: 400 });
       return confirmDelivery(hashParam, payTxHashParam);
     }
@@ -91,8 +128,13 @@ export async function GET(req: NextRequest) {
     // Signed — the payload is ONE WE created, so its blob names the payment it belongs to.
     const txHash = data?.response?.txid;
     if (!txHash) return NextResponse.json({ status: 'pending' });
-    let blob: { payTxHash?: string } = {};
+    let blob: { payTxHash?: string; free?: boolean; productId?: string; account?: string; step?: number; plan?: unknown } = {};
     try { blob = data?.custom_meta?.blob ? JSON.parse(data.custom_meta.blob) : {}; } catch { /* leave empty */ }
+    if (blob.free) {
+      const plan = parsePlan(blob.plan);
+      if (!plan || !blob.account) return NextResponse.json({ status: 'failed', txHash, result: 'bad_request_blob' });
+      return confirmFreeStep(txHash, { productId: String(blob.productId ?? ''), account: blob.account, step: Number(blob.step ?? 1), plan });
+    }
     if (!blob.payTxHash || !HASH_RE.test(blob.payTxHash)) return NextResponse.json({ status: 'failed', txHash, result: 'no_payment_record' });
     return confirmDelivery(txHash, blob.payTxHash);
   } catch (err) {

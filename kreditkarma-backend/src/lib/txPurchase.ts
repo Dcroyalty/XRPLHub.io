@@ -14,7 +14,7 @@ import { describeMptIssuanceCreate } from "@/lib/mptMeta";
 import { BACKING_HARD_LINE } from "@/lib/mptBacking";
 import { confirmCopy, mptRegimeFor, permanenceNotice, type MptRegimeView } from "@/lib/mptPermanence";
 
-export const TX_RESOURCE_PATH = "/api/x402/tx";
+export const TX_RESOURCE_PATH = "/api/tx"; // free since 2026-10-05 (was the paid /api/x402/tx)
 /** Query keys on the paid resource that are NOT service params. */
 export const TX_RESERVED_QUERY_KEYS: ReadonlySet<string> = new Set(["productid", "account", "confirmcaution"]);
 
@@ -50,6 +50,7 @@ export function paymentResourceUrl(origin: string, productId: string, account: s
 
 export interface PriceInfo {
   usd: number;
+  free?: boolean;
   /** USD = RLUSD = USDC at face value; the XRP amount (storefront checkout only) is derived from a live rate. */
   note: string;
   payWith: string[];
@@ -58,6 +59,8 @@ export interface PriceInfo {
 export function priceInfo(productId: string): PriceInfo | null {
   const usd = priceUsd(productId);
   if (usd == null) return null;
+  // The 35 transaction services are free (owner decision 2026-10-05) — say so instead of describing payment rails.
+  if (usd === 0) return { usd: 0, free: true, note: "Free. You sign it with your own wallet; XRPLHub charges nothing for transactions.", payWith: [] };
   return {
     usd,
     note: "Storefront list price. Face value is the same on both x402 rails (1 USDC = 1 RLUSD = $1). The price is set by the server and verified on every payment.",

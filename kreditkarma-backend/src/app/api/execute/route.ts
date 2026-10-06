@@ -1,8 +1,13 @@
 // src/app/api/execute/route.ts
-// AUTONOMOUS EXECUTION ENGINE — step 2 of every purchase.
-// After the customer's PAYMENT to treasury is verified, this builds the actual
-// service transaction (on the CUSTOMER'S own wallet) and returns a Xaman sign
-// request. The customer signs; /api/execute/verify confirms on-chain.
+// THE STOREFRONT'S TRANSACTION BUILDER — FREE since 2026-10-05 (owner decision, after Xaman removed XRPLHub's original app for
+// charging for transactions Xaman offers free). POST { productId, account, params, confirmedCaution?, step?, plan? } builds
+// the exact transaction for the CUSTOMER'S own wallet and returns a Xaman sign request (+ the txjson for any other wallet).
+// No payment step. KEPT: the caution-tier confirmation (with the MPT permanence manifest), amendment gating, every
+// builder's validation, a per-client rate limit. Multi-step services: the plan comes back at step 1 and the client sends it
+// with each later step; /api/execute/verify confirms each signed step on the ledger.
+//
+// The PAID flow below (payment verified on the ledger, single-use, see paymentGate) now serves ONLY the admin health check
+// (ADMIN_ONLY_SERVICE_IDS) — the one product that exercises the real paid path end to end.
 //
 // THE PAYMENT GATE (see src/lib/paymentGate.ts):
 //   - the payment is re-verified on the ledger against the SERVER's price table — right
@@ -26,6 +31,10 @@ import { priceUsd } from '@/lib/pricing';
 import { ADMIN_ONLY_SERVICE_IDS } from '@/lib/servicePrices';
 import { safeIdentifier } from '@/lib/xumm';
 import { isAdmin, adminUnauthorized } from '@/lib/adminAuth';
+import { rateLimit, rateLimited } from '@/lib/rateLimit';
+import { createPayload, xummConfigured } from '@/lib/xumm';
+import { parsePlan, sanitizeParams } from '@/lib/freeTx';
+import type { Params } from './buildKit';
 import { SERVICE_REQUIRED_AMENDMENT, serviceAvailability } from '@/lib/serviceAmendments';
 import { prisma } from '@/lib/xrplscore-db';
 
@@ -41,9 +50,11 @@ function gateStatus(code: GateCode): number {
   return 402; // failed / underpaid / wrong_destination / bad_currency / unknown_product / …
 }
 
-export async function POST(req: NextRequest) {
+async function paidExecute(req: NextRequest, body: Record<string, unknown>) {
   try {
-    const { productId, account, params, payTxHash, confirmedCaution, step: stepRaw } = await req.json();
+    const { productId, account, params, payTxHash, confirmedCaution, step: stepRaw } = body as {
+      productId: string; account: string; params?: Params; payTxHash?: string; confirmedCaution?: boolean; step?: unknown;
+    };
 
     const apiKey = process.env.XUMM_API_KEY;
     const apiSecret = process.env.XUMM_API_SECRET;
@@ -101,7 +112,7 @@ export async function POST(req: NextRequest) {
     // ── 3. build (MPT issuance reads the LIVE DynamicMPT state on every call) ──
     const view = await mptRegimeFor(productId);
     const ctx = { ...(view ? buildContextFromView(view) : {}), ...(storedPlan ? { planIds: storedPlan.map((s) => s.id) } : {}), step };
-    const built = await buildServiceTx(productId, account, params || {}, ctx);
+    const built = await buildServiceTx(productId, account, (params || {}) as Params, ctx);
     if (!built.ok || !built.steps) {
       if (built.tier === 'blocked') return NextResponse.json({ error: built.error, tier: 'blocked' }, { status: 403 });
       if (built.needsParams?.length) return NextResponse.json({ error: built.error, needsParams: built.needsParams }, { status: 422 });
@@ -206,6 +217,87 @@ export async function POST(req: NextRequest) {
       totalSteps: plan.length,
       stepLabel: stepObj.label,
       steps: built.steps.map((s) => ({ id: s.id, label: s.label })),
+      expires_in: 900,
+    });
+  } catch (err) {
+    console.error('[execute]', err);
+    return NextResponse.json({ error: 'Execution failed. Please try again or contact support@xrplhub.io' }, { status: 500 });
+  }
+}
+
+// ── FREE path: every customer-facing transaction service ─────────────────────────────────────────────────────────
+export async function POST(req: NextRequest) {
+  const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+  const productId = String(body.productId ?? '').trim().toLowerCase();
+  if (ADMIN_ONLY_SERVICE_IDS.has(productId)) {
+    if (!isAdmin(req)) return adminUnauthorized();
+    return paidExecute(req, body);
+  }
+  const rl = rateLimit(req, 'execute-free', 20, 60_000);
+  if (!rl.ok) return rateLimited(rl);
+  try {
+    const account = String(body.account ?? '').trim();
+    if (!productId || !account) return NextResponse.json({ error: 'productId and account are required' }, { status: 400 });
+    if (priceUsd(productId) == null || productId === 'credential') return NextResponse.json({ error: `Unknown product "${productId}".` }, { status: 404 });
+    if (SERVICE_REQUIRED_AMENDMENT[productId]) {
+      const avail = await serviceAvailability(productId);
+      if (!avail.available) return NextResponse.json({ error: avail.message, code: 'not_available', retry: true }, { status: 409 });
+    }
+    const params = sanitizeParams(body.params);
+    const step = Number.isInteger(Number(body.step)) && Number(body.step) >= 1 ? Number(body.step) : 1;
+    const givenPlan = step > 1 ? parsePlan(body.plan) : null;
+    if (step > 1 && !givenPlan) return NextResponse.json({ error: 'Send the plan returned at step 1 with each later step.', code: 'wrong_step' }, { status: 409 });
+
+    const view = await mptRegimeFor(productId);
+    const ctx = { ...(view ? buildContextFromView(view) : {}), ...(givenPlan ? { planIds: givenPlan.map((s) => s.id) } : {}), step };
+    const built = await buildServiceTx(productId, account, params, ctx);
+    if (!built.ok || !built.steps) {
+      if (built.tier === 'blocked') return NextResponse.json({ error: built.error, tier: 'blocked' }, { status: 403 });
+      if (built.needsParams?.length) return NextResponse.json({ error: built.error, needsParams: built.needsParams }, { status: 422 });
+      return NextResponse.json({ error: built.error }, { status: 400 });
+    }
+    const plan: PlanStep[] = givenPlan ?? built.steps.map((s) => ({ id: s.id, type: String(s.txjson.TransactionType) }));
+    const target = plan[step - 1];
+    const stepObj = target ? built.steps.find((s) => s.id === target.id) : undefined;
+    if (!target || !stepObj) return NextResponse.json({ error: 'That step is not part of this service.', code: 'wrong_step' }, { status: 409 });
+
+    // KEPT: confirmation BEFORE any sign request. Only the first step asks.
+    if (built.tier === 'caution' && body.confirmedCaution !== true && step === 1) {
+      if (productId === 'mptissue' && view) {
+        const manifest = describeMptIssuanceCreate(built.txjson as Record<string, unknown>, view);
+        const copy = confirmCopy(view, manifest.permanence.lockedByThisTransaction);
+        return NextResponse.json({
+          tier: 'caution', requiresConfirmation: true, label: built.label, permanence: manifest.permanence, heading: copy.heading,
+          listTitle: copy.listTitle, warning: copy.warning, manifest, irreversible: manifest.irreversible, backingNotice: BACKING_HARD_LINE,
+          confirmPrompt: copy.confirmPrompt,
+        }, { status: 409 });
+      }
+      const specific = cautionCopyFor(productId, params as Record<string, unknown>);
+      return NextResponse.json({
+        tier: 'caution', requiresConfirmation: true, label: built.label, totalSteps: plan.length,
+        ...(specific ?? { warning: 'This operation changes how your wallet is controlled and may be difficult or impossible to reverse. You must confirm you understand before signing.' }),
+      }, { status: 409 });
+    }
+
+    // Xaman sign request — its blob carries what /api/execute/verify needs to confirm this step on the ledger.
+    let xaman: { uuid: string; qr_png: string | null; deep_link: string | null } | null = null;
+    if (xummConfigured()) {
+      try {
+        const p = await createPayload({
+          txjson: stepObj.txjson,
+          identifier: safeIdentifier('xrplhub_free_', productId, `_${Date.now()}`),
+          blob: { free: true, productId, account, step, totalSteps: plan.length, plan },
+          instruction: `XRPLHub — ${stepObj.label}${plan.length > 1 ? ` (step ${step} of ${plan.length})` : ''}\nFree. Sign to execute on XRPL mainnet.`,
+        });
+        xaman = { uuid: p.uuid, qr_png: p.qrPng, deep_link: p.deepLink };
+      } catch { /* Xaman unavailable: the txjson below still works in any wallet */ }
+    }
+    return NextResponse.json({
+      free: true,
+      uuid: xaman?.uuid ?? null, qr_png: xaman?.qr_png ?? null, deep_link: xaman?.deep_link ?? null,
+      txjson: stepObj.txjson,
+      label: built.label, tier: built.tier, step, totalSteps: plan.length, stepLabel: stepObj.label,
+      steps: built.steps.map((s) => ({ id: s.id, label: s.label })), plan,
       expires_in: 900,
     });
   } catch (err) {

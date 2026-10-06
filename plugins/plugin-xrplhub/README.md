@@ -1,19 +1,18 @@
 # plugin-xrplhub
 
 **XRPLHub for ElizaOS agents.** Score an XRPL wallet, screen an address against OFAC SDN, look up an MPT issuer,
-**describe any of 34 XRPL transactions for free**, and **buy the unsigned, ready-to-sign transaction** through x402
-(USDC on Base or RLUSD on the XRP Ledger) — trustlines, escrows, AMM, NFTs, multisig, MPT issuance and more.
+**describe any of 35 XRPL transactions**, and **get the unsigned, ready-to-sign transaction for free** — trustlines,
+escrows, AMM, NFTs, multisig, MPT issuance, permission delegation and more.
 
 > **Unsigned only. No custody.** This plugin never signs, never submits, and never touches a key. The transaction it
-> leads you to is a JSON object for **your agent's own wallet** to sign and submit. For agent wallet creation, signing
+> returns is a JSON object for **your agent's own wallet** to sign and submit. For agent wallet creation, signing
 > and payments, use Ripple's [XRPL AI Starter Kit](https://ripple.com/insights/xrpl-ai-starter-kit/) (Agent Wallet and
-> Payment skills). XRPLHub is the complement: it describes, prices and sells built transactions and scores wallets;
-> something else signs.
+> Payment skills). XRPLHub is the complement: it builds transactions (free) and scores wallets; something else signs.
 
-> **The transaction itself is sold, not given away.** Nothing in this plugin returns a signable transaction.
-> `XRPLHUB_PREVIEW_TRANSACTION` describes one for free (what it does, what is irreversible, the price, the fields it
-> needs). `XRPLHUB_BUILD_TRANSACTION` returns the **x402 payment resource** and its price; your own x402 client pays it
-> and that response is the txjson. No payment, no transaction.
+> **Transactions are free** (since 2026-10-05). `XRPLHUB_BUILD_TRANSACTION` returns the unsigned txjson directly — no
+> payment, no x402. It only passes a transaction on after checking that every step's `Account` is the wallet you asked
+> about and that nothing is already signed. `XRPLHUB_PREVIEW_TRANSACTION` describes one first (what it does, what is
+> irreversible, the fields it needs).
 
 ## Install
 
@@ -21,14 +20,14 @@
 npm install plugin-xrplhub
 ```
 
-Add it to your character (alongside a wallet/x402 plugin of your choice):
+Add it to your character (alongside a wallet/signing plugin of your choice):
 
 ```ts
 import xrplhub from "plugin-xrplhub";
 
 export const character = {
   name: "MyAgent",
-  plugins: [xrplhub /* , …your wallet + x402 payment plugin */],
+  plugins: [xrplhub /* , …your wallet / signing plugin */],
 };
 ```
 
@@ -44,38 +43,35 @@ There is nothing to configure: no API key, no environment variable, no setting. 
 | `XRPLHUB_SCORE_WALLET` | XRPLScore (300–850, 8 on-chain signals) for one wallet. Use before paying, lending to, or onboarding a wallet. | free | an XRPL address |
 | `XRPLHUB_SCREEN_ADDRESS` | Compares an address to a pinned OFAC SDN snapshot and returns a verifiable receipt. **Attests to process, not ground truth**: "no match" is not "clean". | free | an XRPL address |
 | `XRPLHUB_MPT_RISK` | What an MPT issuer can do to a holder (clawback, freeze, require-auth, non-transferable) plus the issuer's score. | free | a 48-hex `MPTokenIssuanceID` |
-| `XRPLHUB_LIST_SERVICES` | Every transaction XRPLHub sells, with each one's price and parameters. | free | — |
-| `XRPLHUB_PREVIEW_TRANSACTION` | Describes one transaction: what it does, **what is irreversible**, the price, every field it needs. **No signable transaction.** | free | `product_id` |
-| `XRPLHUB_BUILD_TRANSACTION` | Returns the **x402 payment resource** and price for one transaction + wallet. Pay it with your own x402 client to receive the unsigned txjson. | storefront price ($15–$80, USD = RLUSD = USDC), charged only if the transaction builds | `product_id`, a wallet address, `params`, `confirm_caution` (caution-tier only) |
+| `XRPLHUB_LIST_SERVICES` | Every transaction XRPLHub builds, with each one's parameters. | free | — |
+| `XRPLHUB_PREVIEW_TRANSACTION` | Describes one transaction: what it does, **what is irreversible**, every field it needs. **No signable transaction.** | free | `product_id` |
+| `XRPLHUB_BUILD_TRANSACTION` | Returns the **unsigned txjson** for one transaction + wallet (every step, in order, for multi-step services), after checking every step's `Account` is that wallet. | free | `product_id`, a wallet address, `params`, `confirm_caution` (caution-tier only) |
 
 Arguments come from `options.parameters` when your runtime provides structured action parameters
 (`wallet_address`, `issuance_id`, `product_id`, `params`, `confirm_caution`), otherwise from the message text (an address,
 a 48-hex id, and optionally a JSON object such as `{"product_id":"trustline","params":{"currency":"RLUSD","value":"100"}}`).
 
-### Buying a transaction
+### Building a transaction
 
 ```
 User:   set up a trustline for RLUSD on rs59g3amo5iT6T64Cg96XXMAWuw3WPQcLF
-Agent:  XRPLHUB_PREVIEW_TRANSACTION → what it does, what is irreversible, $20, the fields  (free)
-Agent:  XRPLHUB_BUILD_TRANSACTION   → GET https://www.xrplhub.io/api/x402/tx?productId=trustline&account=…&…
-Agent:  (your x402 client)          → pays $20 in USDC on Base or RLUSD on XRPL, receives the unsigned txjson
+Agent:  XRPLHUB_PREVIEW_TRANSACTION → what it does, what is irreversible, the fields      (free)
+Agent:  XRPLHUB_BUILD_TRANSACTION   → the unsigned TrustSet txjson for that wallet         (free)
 Agent:  (your signing plugin)       → checks Account == your wallet, signs, submits
 ```
 
-- **Price** is the storefront price of the service (`GET https://www.xrplhub.io/api/pricing`), identical on both rails.
-- You are **charged only if the transaction builds**; a failed build (missing params, unknown service) costs nothing.
-- **Caution-tier services** (multisig lockdown, No Freeze, MPT issuance…) can be hard or impossible to undo.
-  `XRPLHUB_BUILD_TRANSACTION` withholds the payment resource until you pass `confirm_caution: true`, which you should do
-  **only after the wallet owner has read the preview's `irreversible` block**.
-- Multi-step services return several transactions after payment: sign them **in order**.
+- **Free.** XRPLHub charges nothing for transactions; your wallet pays only the XRP Ledger's own network fee.
+- **Caution-tier services** (multisig lockdown, regular key, No Freeze, MPT issuance, permission delegation) can be hard or
+  impossible to undo. `XRPLHUB_BUILD_TRANSACTION` withholds the transaction and returns what is irreversible until you
+  pass `confirm_caution: true`, which you should do **only after the wallet owner has read it**.
+- Multi-step services return several transactions: sign them **in order**, each validated before the next.
 
 ## Safety rules the plugin enforces
 
-- **Never a free transaction.** No action reads a transaction out of a server response, and a test feeds the plugin a
-  server that (wrongly) returns one and asserts it never reaches the agent. The build check fails if the shipped code
-  ever reads a `transaction`/`txjson` field.
-- **The payment URL is checked before an agent is told to pay it.** It must be `https://www.xrplhub.io/api/x402/tx`
-  (no other host, scheme, path or credentials) for exactly the service and wallet you asked for; anything else is refused.
+- **Only a transaction for your wallet, never altered.** The build action passes a transaction on only through
+  `checkTransactions()`: every step's `Account` must equal the wallet you asked about, nothing may already be signed, and
+  any non-printable content is refused rather than trimmed. The read/describe actions never pass a transaction on, even
+  from a server that (wrongly) returns one — a test asserts it.
 - **Checksums, not just regexes.** Addresses are verified with the XRPL base58 checksum. A mistyped address is refused
   before any network call.
 - **No guessing.** An invalid explicit parameter is refused (never swapped for another address found in the chat text).
@@ -109,7 +105,7 @@ not pin a core version. Verified against `@elizaos/core` 1.7.2 (npm `latest`) an
 ```bash
 npm install
 npm run verify                # typecheck + tests (offline) + build + surface check
-node scripts/live-check.mjs   # manual: exercises every action against production, previews and prices all 34 services
+node scripts/live-check.mjs   # manual: exercises every action against production, previews all 35 services
 ```
 
 ## Links
