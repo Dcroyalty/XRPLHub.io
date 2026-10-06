@@ -2408,7 +2408,7 @@ export default function XRPLHubHome() {
               <h3 style={{ fontSize:22,fontWeight:900,marginBottom:10 }}>Spend Controls</h3>
               <p style={{ fontSize:13,color:'rgba(255,255,255,.55)',lineHeight:1.7,marginBottom:14 }}>Give a merchant, a family member or a service a budget they can only spend with the payees you approve. Each payment is an RLUSD check you sign; the payee cashes it, up to the amount you set, and nothing else can move.</p>
               <div style={{ display:'flex',flexDirection:'column',gap:6,marginBottom:18,fontSize:12,color:'rgba(255,255,255,.55)' }}>
-                {['Approved payees only, a budget per period','The payee cashes up to the amount you set, never more','Cancel any unspent check, any time'].map(f=><div key={f}><span style={{ color:'#38bdf8' }}>✓</span> {f}</div>)}
+                {['Approved payees only, a budget per period','Subscriptions: one check per period, never ahead','Cancel any unspent check, any time'].map(f=><div key={f}><span style={{ color:'#38bdf8' }}>✓</span> {f}</div>)}
               </div>
               <div style={{ marginTop:'auto' }}>
                 <a href="/spend" style={{ display:'inline-block',padding:'11px 18px',borderRadius:99,background:'#38bdf8',color:'#000',fontWeight:800,fontSize:13,textDecoration:'none' }}>Create a plan →</a>

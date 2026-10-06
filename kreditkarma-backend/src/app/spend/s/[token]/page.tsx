@@ -7,7 +7,12 @@ import { useParams } from "next/navigation";
 import { API, Disclosure, fmtDate, s } from "../../ui";
 
 type Place = { label: string; category: string; availableNow: string; checks: { amount: string; expires: string; cashLink: string | null }[] };
-type View = { plan: string; currency: string; places: Place[]; fundsWarning: string | null; howToSpend: string; disclosure: string[] };
+type ThisPeriod = { periodStart: string; periodEnd: string; amount: string | null; state: string; cashLink: string | null };
+const PERIOD_STATE: Record<string, string> = {
+  not_signed_yet: "Not paid yet — the payer hasn't signed this period's check", ready_to_cash: "Paid — ready to cash",
+  cashed: "Paid and cashed", expired: "Expired before it was cashed", cancelled_by_payer: "Cancelled by the payer", closed: "Closed",
+};
+type View = { plan: string; kind?: string; thisPeriod?: ThisPeriod; currency: string; places: Place[]; fundsWarning: string | null; howToSpend: string; disclosure: string[] };
 
 export default function SharePage() {
   const { token } = useParams<{ token: string }>();
@@ -23,6 +28,13 @@ export default function SharePage() {
       <main style={s.page}>
         <h1 style={s.h1}>{v.plan}</h1>
         <p style={s.sub}>{v.howToSpend}</p>
+        {v.thisPeriod && (
+          <div style={{ ...s.card, borderColor: v.thisPeriod.state === "ready_to_cash" || v.thisPeriod.state === "cashed" ? "#99d5cc" : "#f0e3a8" }}>
+            <p style={s.h2}>This period: {fmtDate(v.thisPeriod.periodStart)} → {fmtDate(v.thisPeriod.periodEnd)}</p>
+            <p style={{ fontSize: 15, margin: "0 0 6px" }}><strong>{PERIOD_STATE[v.thisPeriod.state] ?? v.thisPeriod.state}</strong>{v.thisPeriod.amount ? ` · ${v.thisPeriod.amount} ${v.currency}` : ""}</p>
+            {v.thisPeriod.cashLink && <a href={v.thisPeriod.cashLink}>Cash this period&apos;s check →</a>}
+          </div>
+        )}
         {v.fundsWarning && <p style={s.err}>{v.fundsWarning}</p>}
         {v.places.map((p) => (
           <div key={p.label} style={s.card}>

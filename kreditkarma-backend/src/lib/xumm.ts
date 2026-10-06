@@ -120,6 +120,10 @@ export interface CreatedPayload {
   qrPng: string | null;
   deepLink: string | null;
   expiresIn: number; // seconds
+  /** Only when created with a userToken: Xaman confirmed it pushed the request to the user's app. */
+  pushed?: boolean;
+  /** The payload's status websocket (refs.websocket_status). */
+  websocket?: string | null;
 }
 
 /**
@@ -134,11 +138,15 @@ export async function createPayload(body: {
   blob?: Record<string, unknown>;
   expireMinutes?: number;
   submit?: boolean;
+  /** Xaman push: a user token (application.issued_user_token from an earlier signed payload) sends this request
+   *  straight to that user's Xaman app (docs.xaman.dev, "Push"). Valid 30 days after the user's last signature. */
+  userToken?: string;
 }): Promise<CreatedPayload> {
   const res = await xummFetch(XUMM_PAYLOAD, {
     method: "POST",
     body: JSON.stringify({
       txjson: body.txjson,
+      ...(body.userToken ? { user_token: body.userToken } : {}),
       options: { submit: body.submit ?? true, expire: body.expireMinutes ?? 15 },
       custom_meta: {
         ...(body.identifier ? { identifier: body.identifier } : {}),
@@ -166,6 +174,8 @@ export async function createPayload(body: {
     qrPng: data.refs?.qr_png ?? null,
     deepLink: data.next?.always ?? null,
     expiresIn: 900,
+    ...(body.userToken ? { pushed: data.pushed === true } : {}),
+    websocket: data.refs?.websocket_status ?? null,
   };
 }
 
@@ -176,6 +186,8 @@ export interface PayloadStatus {
   txid: string | null;
   signer: string | null;     // the account that signed (for SignIn: the connected wallet)
   identifier: string | null; // custom_meta.identifier we set at create time
+  /** application.issued_user_token — present once signed; lets us push later requests to this user. */
+  userToken?: string | null;
 }
 
 export async function getPayloadStatus(uuid: string): Promise<PayloadStatus> {
@@ -203,5 +215,7 @@ export async function getPayloadStatus(uuid: string): Promise<PayloadStatus> {
     (data?.payload?.response?.account as string | undefined) ??
     null;
 
-  return { state: "signed", txid, signer, identifier };
+  const userToken =
+    (data?.application?.issued_user_token as string | undefined) ?? null;
+  return { state: "signed", txid, signer, identifier, userToken };
 }

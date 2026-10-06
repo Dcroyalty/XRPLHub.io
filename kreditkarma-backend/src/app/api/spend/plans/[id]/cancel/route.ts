@@ -24,6 +24,6 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   if (row.status !== "open" && row.status !== "expired") return spendErr(409, "not_open", `That check is ${row.status}${row.closedHow ? ` (${row.closedHow})` : ""}.`);
   const b = buildCheckCancel({ account: plan.funder, checkId });
   if (!b.ok) return spendErr(400, "build_failed", b.error);
-  const xaman = await signRequest(b.txjson, `cancel the check to ${row.payee.label} (${row.amount} RLUSD)`, plan.id);
+  const xaman = await signRequest(b.txjson, `cancel the check to ${row.payee.label} (${row.amount} ${plan.currency})`, plan.id);
   return spendJson({ checkId, txjson: b.txjson, ...(xaman ?? { uuid: null, qr_png: null, deep_link: null }) });
 }

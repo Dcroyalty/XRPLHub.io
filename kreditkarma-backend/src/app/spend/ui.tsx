@@ -1,7 +1,8 @@
 "use client";
 // src/app/spend/ui.tsx — shared bits for the Spend Controls pages (light pages, like /checkout).
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
+import { watchXaman } from "@/lib/wallet/xamanWatch";
 
 export const API = (typeof process !== "undefined" && process.env?.NEXT_PUBLIC_API_URL) || "";
 
@@ -37,11 +38,24 @@ export function Disclosure({ lines }: { lines?: string[] }) {
   );
 }
 
-export type SignData = { uuid?: string | null; qr_png?: string | null; deep_link?: string | null; txjson?: Record<string, unknown> };
+export type SignData = { uuid?: string | null; qr_png?: string | null; deep_link?: string | null; websocket?: string | null; txjson?: Record<string, unknown> };
 
 /** Shows how to sign: Xaman QR / deep link, or the raw transaction for any other wallet. XRPLHub never signs. */
-export function SignPanel({ data, title, onDone }: { data: SignData; title: string; onDone?: () => void }) {
+export function SignPanel({ data, title, onDone, onSigned }: { data: SignData; title: string; onDone?: () => void; onSigned?: (uuid: string) => void }) {
   const [showJson, setShowJson] = useState(!data.qr_png && !data.deep_link);
+  const [state, setState] = useState<"waiting" | "signed" | "rejected" | "expired">("waiting");
+  // Xaman pushes the result over its status websocket (no polling). On a signature, tell the caller (which records the
+  // push token for subscriptions) and refresh from the ledger.
+  useEffect(() => {
+    if (!data.uuid) return;
+    const uuid = data.uuid;
+    const w = watchXaman(uuid, (r) => {
+      if (r.signed) { setState("signed"); onSigned?.(uuid); setTimeout(() => onDone?.(), 4000); }
+      else if (r.expired) setState("expired");
+      else setState("rejected");
+    }, data.websocket);
+    return () => w.stop();
+  }, [data.uuid, data.websocket]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <div style={{ ...s.card, borderColor: "#99d5cc" }}>
       <p style={s.h2}>{title}</p>
@@ -49,6 +63,9 @@ export function SignPanel({ data, title, onDone }: { data: SignData; title: stri
       {data.deep_link && <p style={{ textAlign: "center", margin: "4px 0 10px" }}><a href={data.deep_link} target="_blank" rel="noreferrer">Open in Xaman →</a></p>}
       <button type="button" style={s.btnGhost} onClick={() => setShowJson((v) => !v)}>{showJson ? "Hide" : "Show"} the transaction (to sign in another wallet)</button>
       {showJson && data.txjson && <pre style={{ ...s.mono, background: "#f4f4f2", padding: 10, borderRadius: 8, marginTop: 8, whiteSpace: "pre-wrap" }}>{JSON.stringify(data.txjson, null, 2)}</pre>}
+      {state === "signed" && <p style={s.ok}>Signed in Xaman — updating from the ledger…</p>}
+      {state === "rejected" && <p style={s.err}>Rejected in Xaman. Nothing was sent.</p>}
+      {state === "expired" && <p style={s.err}>This sign request expired. Start again.</p>}
       <p style={{ ...s.small, marginTop: 8 }}>You sign in your own wallet. XRPLHub never holds keys or funds.</p>
       {onDone && <button type="button" style={{ ...s.btn, marginTop: 6 }} onClick={onDone}>I signed it — refresh</button>}
     </div>

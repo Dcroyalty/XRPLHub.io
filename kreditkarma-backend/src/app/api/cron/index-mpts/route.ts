@@ -15,6 +15,8 @@ import { healthProbe } from "@/lib/health";
 import { notifyError, pingHealthcheck } from "@/lib/notify";
 import { recordHeartbeat, runWatchdog, pingHealthcheckForRun } from "@/lib/watchdog";
 import { forceFlushXrplCounters } from "@/lib/xrplCounters";
+import { promptSubscriptions } from "@/lib/spendControls";
+import { pushSignRequest } from "@/lib/spendApi";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -36,11 +38,18 @@ export async function GET(req: Request) {
     // (32s -> 24s: the watchdog below needs a few seconds; the indexer is resumable, so nothing is lost.)
     // The indexer must never take the anchor down with it (Oct 3: a markerDoesNotExist escaped the walk,
     // crashed this route, and that day's anchor never published). It's resumable; the anchor isn't.
-    const progress = await runMptIndexerPass(prisma, { budgetMs: 24_000 }).catch(async (e) => {
+    const progress = await runMptIndexerPass(prisma, { budgetMs: 20_000 }).catch(async (e) => {
       await notifyError("cron/index-mpts indexer", e);
       return { indexerError: e instanceof Error ? e.message : String(e) };
     });
     const anchor = await maybeAnchor(prisma);
+
+    // Spend Controls subscriptions: push THIS period's unsigned check to each payer's Xaman app (never a future period —
+    // a check is cashable the moment it exists). Bounded at 6 s; the indexer gave up 4 s for it (it is resumable).
+    const subscriptions = await promptSubscriptions(prisma, pushSignRequest, { budgetMs: 6_000 }).catch(async (e) => {
+      await notifyError("cron/index-mpts subscriptions", e);
+      return null;
+    });
 
     // Daily "is the money path working" sweep — alert on anything red.
     const health = await healthProbe({ deep: true });
@@ -65,7 +74,7 @@ export async function GET(req: Request) {
     // healthchecks.io is the alert channel: /fail on any open RED (watchdog or money-path health), else success.
     await pingHealthcheckForRun(prisma, "cron/index-mpts", watchdog, health.reds.map((r) => `health ${r.name} DOWN: ${r.detail}`));
 
-    return NextResponse.json({ ...progress, anchor, health: { overall: health.overall, reds: health.reds, ambers: health.ambers }, watchdog: watchdog ? { alerted: watchdog.alerted, recovered: watchdog.recovered, weeklySent: watchdog.weeklySent, open: watchdog.findings.filter((f) => f.level !== "ok").map((f) => ({ key: f.key, level: f.level, message: f.message })) } : null });
+    return NextResponse.json({ ...progress, anchor, subscriptions, health: { overall: health.overall, reds: health.reds, ambers: health.ambers }, watchdog: watchdog ? { alerted: watchdog.alerted, recovered: watchdog.recovered, weeklySent: watchdog.weeklySent, open: watchdog.findings.filter((f) => f.level !== "ok").map((f) => ({ key: f.key, level: f.level, message: f.message })) } : null });
   } catch (err) {
     await notifyError("cron/index-mpts", err);
     await pingHealthcheck("/fail", `XRPLHub cron/index-mpts CRASHED: ${err instanceof Error ? err.message : String(err)}`);

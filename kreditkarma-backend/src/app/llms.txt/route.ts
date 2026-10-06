@@ -216,8 +216,15 @@ size; each payee's budget is split into RLUSD checks of that size. XRPLHub build
 signs each one; the merchant cashes with their own wallet (free); the funder cancels from the dashboard. FREE — no plan fee,
 no prepay. Each open check holds 0.2 XRP of the funder's reserve until cashed or cancelled.
 Not a bank, not a money transmitter; XRPLHub never holds funds or keys. Checks don't lock funds.
-- POST ${origin}/api/spend/plans?dryRun=1 — preview a plan (check split, reserve locked up front, funder RLUSD balance)
-- GET  ${origin}/api/spend/s/<shareToken> — the beneficiary view (available checks per place)
+SUBSCRIPTIONS (kind "subscription"): one payee, one fixed amount per week or month, RLUSD or XRP — recurring payments without
+the XLS-78 amendment. ONE check per period, created only when that period starts (never ahead: a check is cashable the moment
+it exists); after the payer's first Xaman signature, each new period's check is pushed to their Xaman app to sign. Unsigned =
+unpaid. The payer stops by not signing or cancelling an open check before it is cashed. Checks, not escrow, even for XRP: an
+escrow locks the funds and can't be cancelled before its CancelAfter, so a prepaid, uncancellable subscription is avoided.
+- POST ${origin}/api/spend/plans?dryRun=1 — preview a plan (check split, reserve locked up front, funder balance). Subscription:
+  { kind:"subscription", currency:"RLUSD"|"XRP", funder, period, payees:[{ address, label, category, budget:<amount per period> }] }
+- GET  ${origin}/api/spend/s/<shareToken> — the beneficiary / payee view (available checks; for a subscription, thisPeriod.state:
+  not_signed_yet | ready_to_cash | cashed | expired | cancelled_by_payer)
 - GET  ${origin}/api/spend/check/<CheckID> — a check as a merchant sees it; POST {amount} for the unsigned CheckCash
 
 ## B2B API (prepaid key, 30-day term)

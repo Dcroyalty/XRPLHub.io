@@ -14,6 +14,19 @@
 //     is the truth for state; SpendCheck rows are refreshed from it (syncPlanChecks).
 //   - One signature per check — until BatchV1_1 is active on mainnet AND a human has confirmed Xaman signs it
 //     (SPEND_BATCH_XAMAN_VERIFIED=true, set only after that test). Then up to 8 checks per Batch signature.
+//
+// SUBSCRIPTIONS (kind "subscription", 2026-10-06) — the XLS-78 demand (recurring payments; still a Draft amendment):
+//   one payee, one fixed amount per period, RLUSD or XRP. A check can be cashed the moment it exists, so a future
+//   period's check is NEVER created ahead: only the CURRENT period's check exists (ensurePeriodChecks), and a daily
+//   job (promptSubscriptions) pushes that one sign request to the funder's Xaman app using the push token Xaman
+//   issued on their last signed Spend payload. Unsigned = unpaid; the merchant sees it on the share link.
+//   WHY CHECKS, NOT ESCROW, EVEN FOR XRP: an escrow's FinishAfter ("not before") would let the payer sign future
+//   periods ahead without the merchant taking them early — but an escrow LOCKS the XRP when it is created and the
+//   payer CANNOT cancel it before CancelAfter. A subscription you can't cancel and must prepay is the opposite of
+//   what direct-debit users asked for. A check moves nothing until it is cashed and the payer can cancel it any time
+//   before that, so checks win on control; escrow only wins on "the merchant is guaranteed the money", which a
+//   one-check-per-period subscription doesn't need. (RLUSD escrow isn't possible anyway: its issuer hasn't enabled
+//   token escrow.)
 
 import { createHash, randomBytes } from "crypto";
 import type { PrismaClient } from "@prisma/client";
@@ -28,6 +41,12 @@ export const MAX_CHECKS_PER_PERIOD = 50;
 export const BATCH_MAX_INNER = 8; // BatchV1_1 limit
 export const CATEGORIES = ["food", "groceries", "clothing", "school", "transport", "health", "housing", "utilities", "entertainment", "other"] as const;
 export type Period = "weekly" | "monthly";
+export type PlanKind = "budget" | "subscription";
+export type PlanCurrency = "RLUSD" | "XRP";
+/** A subscription check stays cashable this long past its period's end, so a payment signed late still lands. */
+export const SUBSCRIPTION_GRACE_S = 3 * 86_400;
+/** Re-push an unsigned subscription check this often until it is signed or its period ends. */
+export const SUBSCRIPTION_REPROMPT_MS = 3 * 86_400_000;
 
 const LSF_REQUIRE_DEST_TAG = 0x00020000;
 const LSF_DISALLOW_INCOMING_CHECK = 0x08000000;
@@ -92,6 +111,22 @@ export async function checkPayeeAccount(address: string, destinationTag: number 
   return { ok: true };
 }
 
+/** Spendable XRP (balance minus the account's current reserve), or null if unreadable. */
+export async function xrpSpendable(account: string): Promise<number | null> {
+  const [r, st] = await Promise.all([rpc("account_info", { account }), rpc("server_state", {})]);
+  if (!r) return null;
+  if (r.error === "actNotFound") return 0;
+  const d = r.account_data as { Balance?: string; OwnerCount?: number } | undefined;
+  const vl = (st?.state as { validated_ledger?: { reserve_base?: number; reserve_inc?: number } } | undefined)?.validated_ledger;
+  const reserve = ((vl?.reserve_base ?? 1_000_000) + (vl?.reserve_inc ?? 200_000) * Number(d?.OwnerCount ?? 0)) / 1e6;
+  return Math.max(0, Number(d?.Balance ?? 0) / 1e6 - reserve);
+}
+
+/** The funder's balance in the plan currency (XRP = spendable above reserve). */
+export async function funderBalance(account: string, currency: PlanCurrency): Promise<number | null> {
+  return currency === "XRP" ? xrpSpendable(account) : rlusdBalance(account);
+}
+
 export async function rlusdBalance(account: string): Promise<number | null> {
   const r = await rpc("account_lines", { account, peer: RLUSD_ISSUER });
   if (!r) return null;
@@ -102,11 +137,11 @@ export async function rlusdBalance(account: string): Promise<number | null> {
 
 // ── plan creation input ─────────────────────────────────────────────────────────────────────────────────────────
 export interface PayeeInput { address: string; label: string; category: string; budget: string; destinationTag?: number | null }
-export interface PlanInput { funder: string; name?: string; period: string; checkSize: string; payees: PayeeInput[] }
+export interface PlanInput { funder: string; name?: string; period: string; checkSize?: string; payees: PayeeInput[]; kind?: string; currency?: string }
 
 export type ValidatedPlan = {
   ok: true;
-  funder: string; name: string | null; period: Period; checkSizeCents: number;
+  funder: string; name: string | null; period: Period; checkSizeCents: number; kind: PlanKind; currency: PlanCurrency;
   payees: (PayeeInput & { budgetCents: number; checks: number[] })[];
   totalChecks: number; totalBudgetCents: number;
 } | { ok: false; error: string; field?: string };
@@ -115,10 +150,21 @@ export function validatePlanInput(i: PlanInput): ValidatedPlan {
   if (!isValidXrplAddress(i.funder ?? "")) return { ok: false, field: "funder", error: "the funder must be a valid XRPL address" };
   const period = i.period === "weekly" || i.period === "monthly" ? i.period : null;
   if (!period) return { ok: false, field: "period", error: "period must be weekly or monthly" };
-  const size = toCents(i.checkSize);
-  if (!size) return { ok: false, field: "checkSize", error: "check size must be an amount like 10 or 12.50" };
+  const kindRaw = String(i.kind ?? "budget") || "budget";
+  if (kindRaw !== "budget" && kindRaw !== "subscription") return { ok: false, field: "kind", error: "kind must be budget or subscription" };
+  const kind = kindRaw as PlanKind;
+  const cur = String(i.currency ?? "RLUSD").toUpperCase();
+  if (cur !== "RLUSD" && cur !== "XRP") return { ok: false, field: "currency", error: "currency must be RLUSD or XRP" };
+  if (kind === "budget" && cur !== "RLUSD") return { ok: false, field: "currency", error: "budget plans are RLUSD only — use a subscription for XRP" };
+  const currency = cur as PlanCurrency;
   const payees = Array.isArray(i.payees) ? i.payees : [];
-  if (!payees.length) return { ok: false, field: "payees", error: "add at least one approved payee" };
+  if (!payees.length) return { ok: false, field: "payees", error: kind === "subscription" ? "add the payee you subscribe to" : "add at least one approved payee" };
+  if (kind === "subscription" && payees.length !== 1) return { ok: false, field: "payees", error: "a subscription pays exactly one payee" };
+  // A subscription is one check per period for the whole amount, so its check size IS the payee's amount.
+  const size = kind === "subscription" ? toCents(payees[0]?.budget) : toCents(i.checkSize);
+  if (!size) return kind === "subscription"
+    ? { ok: false, field: "payees.0.budget", error: "the subscription amount must be like 10 or 12.50" }
+    : { ok: false, field: "checkSize", error: "check size must be an amount like 10 or 12.50" };
   if (payees.length > MAX_PAYEES) return { ok: false, field: "payees", error: `a plan has at most ${MAX_PAYEES} payees` };
   const seen = new Set<string>();
   const out = [];
@@ -143,17 +189,18 @@ export function validatePlanInput(i: PlanInput): ValidatedPlan {
   if (totalChecks > MAX_CHECKS_PER_PERIOD) {
     return { ok: false, field: "checkSize", error: `that makes ${totalChecks} checks a period — the limit is ${MAX_CHECKS_PER_PERIOD}. Use a bigger check size.` };
   }
-  return { ok: true, funder: i.funder, name: i.name ? String(i.name).slice(0, 60) : null, period, checkSizeCents: size, payees: out, totalChecks, totalBudgetCents: out.reduce((a, p) => a + p.budgetCents, 0) };
+  return { ok: true, funder: i.funder, name: i.name ? String(i.name).slice(0, 60) : null, period, checkSizeCents: size, kind, currency, payees: out, totalChecks, totalBudgetCents: out.reduce((a, p) => a + p.budgetCents, 0) };
 }
 
 // ── building the period's checks ────────────────────────────────────────────────────────────────────────────────
-type PlanWithPayees = { id: string; funder: string; period: string; payees: { id: string; address: string; budget: string; destinationTag: number | null; position: number }[]; checkSize: string };
+type PlanWithPayees = { id: string; funder: string; period: string; kind?: string; payees: { id: string; address: string; budget: string; destinationTag: number | null; position: number }[]; checkSize: string };
 
-/** Create the SpendCheck rows for the CURRENT period (idempotent) and return every check row of the period. */
+/** Create the SpendCheck rows for the CURRENT period ONLY (idempotent) and return every check row of the period.
+ *  Never a future period: a check is cashable the moment it exists. */
 export async function ensurePeriodChecks(prisma: PrismaClient, plan: PlanWithPayees, now = new Date()) {
   const { start, end } = periodWindow(plan.period as Period, now);
   const size = toCents(plan.checkSize)!;
-  const expiration = toRipple(end);
+  const expiration = toRipple(end) + (plan.kind === "subscription" ? SUBSCRIPTION_GRACE_S : 0);
   for (const payee of [...plan.payees].sort((a, b) => a.position - b.position)) {
     const amounts = splitBudget(toCents(payee.budget)!, size);
     for (const [k, cents] of amounts.entries()) {
@@ -168,12 +215,12 @@ export async function ensurePeriodChecks(prisma: PrismaClient, plan: PlanWithPay
   return prisma.spendCheck.findMany({ where: { planId: plan.id, periodStart: start }, include: { payee: true }, orderBy: [{ payee: { position: "asc" } }, { seq: "asc" }] });
 }
 
-/** The unsigned CheckCreate for one SpendCheck row. */
-export function checkCreateFor(funder: string, row: { amount: string; expiration: number; invoiceId: string; payee: { address: string; destinationTag: number | null } }) {
+/** The unsigned CheckCreate for one SpendCheck row (RLUSD unless the plan is an XRP subscription). */
+export function checkCreateFor(funder: string, row: { amount: string; expiration: number; invoiceId: string; payee: { address: string; destinationTag: number | null } }, currency: string = "RLUSD") {
   return buildCheckCreate({
     account: funder,
     destination: row.payee.address,
-    currency: "RLUSD",
+    currency: currency === "XRP" ? "XRP" : "RLUSD",
     amount: row.amount,
     expiration: row.expiration,
     invoiceId: row.invoiceId,
@@ -269,4 +316,46 @@ export async function buildChecksBatch(funder: string, inner: Record<string, unk
     return { ok: false, error: `batch failed validation: ${e instanceof Error ? e.message : String(e)}` };
   }
   return { ok: true, txjson };
+}
+
+// ── subscriptions: push this period's check to the payer ───────────────────────────────────────────────────────
+/**
+ * Daily (cron): for every active subscription with a Xaman push token, make sure the CURRENT period's check row exists
+ * and, if it is still unsigned, push its sign request to the funder's Xaman app — at most once every 3 days until it
+ * is signed or the period ends. Never creates a future period's check. Bounded; never throws.
+ */
+export async function promptSubscriptions(
+  prisma: PrismaClient,
+  push: (txjson: Record<string, unknown>, label: string, planId: string, userToken: string) => Promise<{ uuid: string; pushed: boolean } | null>,
+  opts: { max?: number; budgetMs?: number } = {}
+): Promise<{ plans: number; pushed: number; alreadySigned: number; skipped: number; failed: number }> {
+  const max = opts.max ?? 40, budgetMs = opts.budgetMs ?? 15_000, started = Date.now();
+  const out = { plans: 0, pushed: 0, alreadySigned: 0, skipped: 0, failed: 0 };
+  try {
+    const plans = await prisma.spendPlan.findMany({
+      where: { kind: "subscription", status: "active", xamanUserToken: { not: null } },
+      include: { payees: true }, orderBy: { updatedAt: "asc" }, take: max,
+    });
+    for (const plan of plans) {
+      if (Date.now() - started > budgetMs) break;
+      out.plans++;
+      await syncPlanChecks(prisma, plan.id, plan.funder).catch(() => null);
+      const rows = await ensurePeriodChecks(prisma, plan);
+      for (const row of rows) {
+        if (row.status !== "unsigned") { out.alreadySigned++; continue; }
+        if (row.promptedAt && Date.now() - row.promptedAt.getTime() < SUBSCRIPTION_REPROMPT_MS) { out.skipped++; continue; }
+        const b = checkCreateFor(plan.funder, row, plan.currency);
+        if (!b.ok) { out.failed++; continue; }
+        const label = `${plan.name ?? "subscription"}: ${row.amount} ${plan.currency} to ${row.payee.label}`;
+        const r = await push(b.txjson, label, plan.id, plan.xamanUserToken!).catch(() => null);
+        if (!r) { out.failed++; continue; }
+        await prisma.spendCheck.update({ where: { id: row.id }, data: { promptedAt: new Date(), promptUuid: r.uuid } });
+        if (r.pushed) out.pushed++; else out.failed++;
+      }
+      await prisma.spendPlan.update({ where: { id: plan.id }, data: { updatedAt: new Date() } }); // round-robin
+    }
+  } catch {
+    // best-effort: tomorrow's run tries again
+  }
+  return out;
 }

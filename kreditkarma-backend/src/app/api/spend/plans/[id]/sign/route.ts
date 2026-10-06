@@ -30,7 +30,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     if (!pick.length) return spendErr(409, "nothing_to_sign", "Every check for this period is already created.");
     const inner = [];
     for (const r of pick) {
-      const b = checkCreateFor(plan.funder, r);
+      const b = checkCreateFor(plan.funder, r, plan.currency);
       if (!b.ok) return spendErr(400, "build_failed", `${r.payee.label} #${r.seq}: ${b.error}`);
       inner.push(b.txjson);
     }
@@ -43,8 +43,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   const invoiceId = String(body.invoiceId ?? "").toUpperCase();
   const row = rows.find((r) => r.invoiceId === invoiceId);
   if (!row) return spendErr(404, "not_found", "That check isn't an unsigned check of this period (it may already be created — refresh the dashboard).");
-  const b = checkCreateFor(plan.funder, row);
+  const b = checkCreateFor(plan.funder, row, plan.currency);
   if (!b.ok) return spendErr(400, "build_failed", b.error);
-  const xaman = await signRequest(b.txjson, `check to ${row.payee.label}, up to ${row.amount} RLUSD`, plan.id);
+  const xaman = await signRequest(b.txjson, `check to ${row.payee.label}, up to ${row.amount} ${plan.currency}`, plan.id);
   return spendJson({ mode: "single", invoiceId: row.invoiceId, txjson: b.txjson, ...(xaman ?? { uuid: null, qr_png: null, deep_link: null }) });
 }

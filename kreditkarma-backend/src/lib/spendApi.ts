@@ -19,7 +19,18 @@ export async function signRequest(txjson: Record<string, unknown>, label: string
   if (!xummConfigured()) return null;
   try {
     const p = await createPayload({ txjson, identifier: safeIdentifier("xrplhub_spend_", tag.slice(0, 16), `_${Date.now()}`), instruction: `XRPLHub Spend Controls — ${label}` });
-    return { uuid: p.uuid, qr_png: p.qrPng, deep_link: p.deepLink };
+    return { uuid: p.uuid, qr_png: p.qrPng, deep_link: p.deepLink, websocket: p.websocket ?? null };
+  } catch {
+    return null;
+  }
+}
+
+/** Push a sign request straight to the funder's Xaman app (subscriptions: the daily job). Open for 24 h. */
+export async function pushSignRequest(txjson: Record<string, unknown>, label: string, tag: string, userToken: string) {
+  if (!xummConfigured()) return null;
+  try {
+    const p = await createPayload({ txjson, userToken, expireMinutes: 1440, identifier: safeIdentifier("xrplhub_spend_", tag.slice(0, 16), `_${Date.now()}`), instruction: `XRPLHub Spend Controls — ${label}` });
+    return { uuid: p.uuid, pushed: p.pushed === true };
   } catch {
     return null;
   }
@@ -32,4 +43,5 @@ export const SPEND_DISCLOSURE = [
   "Checks do not lock funds. Keep your allowance in your wallet — a check can only be cashed while the money is there.",
   "Each open check holds 0.2 XRP of the funder's reserve; it comes back when the check is cashed or cancelled.",
   "RLUSD can't be held in escrow yet (its issuer hasn't enabled token escrow), which is why this uses checks.",
+  "Subscriptions are one check per period, created only when that period starts — never ahead, because a check can be cashed as soon as it exists. Unsigned means unpaid.",
 ];
