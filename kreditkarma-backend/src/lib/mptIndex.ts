@@ -172,7 +172,9 @@ export function mptRowFromBithomp(b: BithompMpt): MptRowInput {
     metadata,
     name,
     ticker,
-    holderCount: typeof b.holders === "number" ? b.holders : typeof b.mptokens === "number" ? b.mptokens : null,
+    // Never Bithomp's holder count (free key = non-commercial, 2026-10-06): counts come from the ledger only —
+    // refreshMptHolderCounts() in mptIndexer.ts, via Clio mpt_holders.
+    holderCount: null,
     ledgerIndex: null,
     source: "bithomp",
   };
@@ -235,12 +237,12 @@ export function holderData(
       status: "unverified",
       count: row.holderCount,
       reason: "confidential-state-unverified",
-      note: "ConfidentialTransfer is active (or its state couldn't be read) and this row comes only from Bithomp, whose flags can't tell us whether confidential balances are enabled. The holder count may not reflect encrypted balances.",
+      note: "ConfidentialTransfer is active (or its state couldn't be read) and this row's flags come only from Bithomp's issuance listing, which can't tell us whether confidential balances are enabled. The holder count may not reflect encrypted balances.",
     };
   }
   return row.holderCount == null
     ? { status: "not-indexed", count: null, reason: null, note: "No holder count has been indexed for this issuance." }
-    : { status: "available", count: row.holderCount, reason: null, note: "Holder count as reported by the index source; balances are public." };
+    : { status: "available", count: row.holderCount, reason: null, note: "Accounts holding a non-zero balance, read from the ledger (Clio mpt_holders) when this row was last refreshed; balances are public." };
 }
 
 export function issuanceIdsHash(ids: string[]): string {

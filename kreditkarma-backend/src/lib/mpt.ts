@@ -3,21 +3,21 @@
 // index — every field is read from the validated ledger (or the issuer's
 // live XRPLScore) on each request. Backs GET /api/mpt/:issuanceId.
 //
-// What a buyer wants before touching an MPT and can't get from XRPScan or
-// Bithomp today: what can this issuer DO to a holder (clawback, freeze,
+// What a buyer wants before touching an MPT and can't get from a block
+// explorer today: what can this issuer DO to a holder (clawback, freeze,
 // require-auth, non-transferable), and is the issuer itself trustworthy
 // (XRPLScore, account age, verified domain, credentials).
 //
 // SOURCE HONESTY: `ledger_entry` is authoritative for existence on the
-// current validated ledger. A separate Bithomp lookup adds a second signal.
-// If neither has it we return "unknown" — never "does not exist".
+// current validated ledger; nothing here comes from a third-party index (the
+// Bithomp cross-check was removed 2026-10-06 — its free key is non-commercial).
+// If the ledger doesn't have it we return "unknown" — never "does not exist".
 
 import { convertHexToString } from "xrpl";
 import { connectMainnetOrThrow } from "./credentials";
 import { backingDeclarationView } from "./mptBacking";
 import { listCredentialsHeldBy, type LiveCredential } from "./credentialLookup";
 import { scoreWallet, AccountNotFoundError } from "./xrplscore";
-import { bithompMptLookup, bithompConfigured } from "./bithomp";
 import { reportLink, credentialsAccountLink, mptFullLink, type RelatedLink } from "./related";
 import { MPT_LSF_CAN_HOLD_CONFIDENTIAL } from "./mptFlags";
 import { getMptRegimeView, issuanceMutability } from "./mptPermanence";
@@ -58,7 +58,6 @@ export interface MptRisk {
   disclaimer: string;
   source: {
     ledger: string;
-    bithompIndex: string;
     interpretation: string;
   };
   issuer: string | null;
@@ -131,12 +130,6 @@ export async function getMptRisk(issuanceId: string, opts: { full?: boolean } = 
     }
   }
 
-  // Bithomp cross-check (independent of ledger result)
-  const bithomp = await bithompMptLookup(id);
-  const bithompStr = !bithompConfigured()
-    ? "not checked (BITHOMP_API_KEY unset)"
-    : bithomp ? "listed in Bithomp's index" : "not in Bithomp's index";
-
   if (!node || node.LedgerEntryType !== "MPTokenIssuance") {
     await client.disconnect().catch(() => {});
     return {
@@ -146,12 +139,9 @@ export async function getMptRisk(issuanceId: string, opts: { full?: boolean } = 
       tier: full ? "full" : "basic",
       source: {
         ledger: "not present on the validated ledger",
-        bithompIndex: bithompStr,
-        interpretation: bithomp
-          ? "Bithomp's index has this issuance but it is not on the current validated ledger — it may have been destroyed."
-          : "unknown — not found on the validated ledger and not in Bithomp's index. This does not mean it never existed.",
+        interpretation: "unknown — not found on the current validated ledger. It may never have existed or may have been destroyed; this does not mean it never existed.",
       },
-      issuer: bithomp?.issuer ?? null,
+      issuer: null,
       issuance: null,
       issuerPowers: null,
       issuerRisk: null,
@@ -222,7 +212,7 @@ export async function getMptRisk(issuanceId: string, opts: { full?: boolean } = 
   if (!full) {
     return {
       issuanceId: id, found: true, disclaimer: MPT_DISCLAIMER, tier: "basic",
-      source: { ledger: "MPTokenIssuance present on the validated ledger (live read)", bithompIndex: bithompStr, interpretation: "exists" },
+      source: { ledger: "MPTokenIssuance present on the validated ledger (live read)", interpretation: "exists" },
       issuer, issuance, issuerPowers, backingDeclaration, confidential, mutability,
       issuerRisk: { xrplScore, grade: gradeStr },
       related: [mptFullLink(id)],
@@ -255,7 +245,7 @@ export async function getMptRisk(issuanceId: string, opts: { full?: boolean } = 
 
   return {
     issuanceId: id, found: true, disclaimer: MPT_DISCLAIMER, tier: "full",
-    source: { ledger: "MPTokenIssuance present on the validated ledger (live read)", bithompIndex: bithompStr, interpretation: "exists" },
+    source: { ledger: "MPTokenIssuance present on the validated ledger (live read)", interpretation: "exists" },
     issuer, issuance, issuerPowers, backingDeclaration, confidential, mutability,
     issuerRisk: {
       xrplScore, grade: gradeStr, accountAgeDays, blackholed, domain, domainVerified, domainVerifiedReason,

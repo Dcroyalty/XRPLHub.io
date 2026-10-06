@@ -16,7 +16,7 @@ type Preview = {
   reserve: { perCheckXrp: number; upFrontXrp: number; note: string };
   fundingNote: string; funded: boolean | null;
   payeeProblems: { payee: number; label: string; error: string }[];
-  price: { usdPerMonth: number }; disclosure: string[];
+  disclosure: string[];
 };
 
 export default function SpendPage() {
@@ -63,7 +63,7 @@ export default function SpendPage() {
         <h1 style={s.h1}>Spend Controls</h1>
         <p style={s.sub}>
           A spending plan for someone you support — only at places you approve, up to amounts you set, paid by XRPL checks in RLUSD.
-          You sign every check in your own wallet; the merchant cashes it in theirs. $5/month per plan, prepaid in RLUSD. Merchants cash free.
+          You sign every check in your own wallet; the merchant cashes it in theirs. Free — no plan fee, no prepay; merchants cash free.
         </p>
         <Disclosure lines={preview?.disclosure ?? [
           "XRPLHub is not a bank and not a money transmitter. It never holds your funds or your keys.",
@@ -114,14 +114,14 @@ export default function SpendPage() {
             <p style={{ marginTop: 10, fontSize: 14 }}><strong>{preview.checksPerPeriod} checks, {preview.totalPerPeriod} RLUSD per period.</strong></p>
             <p style={{ fontSize: 14, margin: "6px 0" }}><strong>XRP reserve that locks up front: {preview.reserve.upFrontXrp} XRP</strong> ({preview.reserve.perCheckXrp} XRP per open check). {preview.reserve.note}</p>
             <p style={preview.funded === false ? s.err : s.small}>{preview.fundingNote}</p>
-            <p style={s.small}>Plan price: ${preview.price.usdPerMonth}/month, prepaid in RLUSD from this account. One signature per check (one signature for all of them once the XRPL Batch amendment is live and verified in Xaman).</p>
+            <p style={s.small}>Free — no plan fee. One signature per check (one signature for all of them once the XRPL Batch amendment is live and verified in Xaman).</p>
           </div>
         )}
         {error && <p style={s.err}>{error}</p>}
         <button type="button" style={{ ...s.btn, opacity: busy || !preview || preview.payeeProblems.length ? 0.5 : 1 }} disabled={busy || !preview || !!preview.payeeProblems.length} onClick={create}>
           {busy ? "Creating…" : "Create the plan →"}
         </button>
-        <p style={{ ...s.small, marginTop: 8 }}>Next you prepay ($5/month in RLUSD) from this account, then sign the checks.</p>
+        <p style={{ ...s.small, marginTop: 8 }}>Next you sign the checks from this account — no payment to XRPLHub.</p>
       </main>
     </div>
   );

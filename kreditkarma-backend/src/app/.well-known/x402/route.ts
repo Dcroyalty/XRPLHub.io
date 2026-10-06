@@ -164,7 +164,7 @@ function usdcMptResource(origin: string) {
     description:
       "Full risk view of one XLS-33 Multi-Purpose Token issuance: issuer powers (clawback, freeze, " +
       "require-auth, non-transferable) plus the issuer's XRPLScore, account age, xrp-ledger.toml-verified " +
-      "domain, and credentials held. Live reads, cross-checked against Bithomp. Not found returns " +
+      "domain, and credentials held. Live ledger reads only. Not found returns " +
       "'unknown', never 'does not exist'. $0.01 USDC on Base. Path segment: the 48-hex MPTokenIssuanceID.",
     x402Version: 1,
     scheme: "exact",
@@ -303,7 +303,7 @@ function usdcUnderwriteResource(origin: string) {
 const MPT_XRPL_DESCRIPTION =
   "Full risk view of one XLS-33 Multi-Purpose Token issuance: issuer powers (clawback, freeze, " +
   "require-auth, non-transferable) plus the issuer's XRPLScore, account age, xrp-ledger.toml-verified " +
-  "domain, and credentials held. Live reads, cross-checked against Bithomp. Not found returns " +
+  "domain, and credentials held. Live ledger reads only. Not found returns " +
   "'unknown', never 'does not exist'. Path segment: the 48-hex MPTokenIssuanceID.";
 
 const UNDERWRITE_XRPL_DESCRIPTION =

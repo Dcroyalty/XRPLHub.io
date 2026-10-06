@@ -1,5 +1,6 @@
 'use client';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { watchXaman } from '@/lib/wallet/xamanWatch';
 import WalletPicker from '@/lib/wallet/WalletPicker';
 import XamanPayPrompt from '@/components/XamanPayPrompt';
 import { getProvider, resolveProviderOptions, WalletCancelled, type ProviderOption, type ProveContext } from '@/lib/wallet';
@@ -137,6 +138,7 @@ function GrantActions({ grant, onUpdate }: { grant: Grant; onUpdate: () => void 
 
   useEffect(() => {
     if (!issueUuid) return;
+    const xw = watchXaman(issueUuid, () => { if (pollRef.current) clearTimeout(pollRef.current); poll(); });
     const poll = async () => {
       try {
         const res = await fetch(`${API_URL}/api/admin/pay-link/status?uuid=${encodeURIComponent(issueUuid)}`);
@@ -151,10 +153,10 @@ function GrantActions({ grant, onUpdate }: { grant: Grant; onUpdate: () => void 
         if (data.state === 'rejected') { setIssueMsg('Declined in Xaman.'); setIssueUuid(null); setLoading(''); return; }
         if (data.state === 'expired') { setIssueMsg('Request expired. Tap Issue to try again.'); setIssueUuid(null); setLoading(''); return; }
       } catch { /* keep polling */ }
-      pollRef.current = setTimeout(poll, 3000);
+      pollRef.current = setTimeout(poll, xw.delay());
     };
     poll();
-    return () => { if (pollRef.current) clearTimeout(pollRef.current); };
+    return () => { xw.stop(); if (pollRef.current) clearTimeout(pollRef.current); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [issueUuid]);
 
@@ -286,15 +288,19 @@ function AdminSignIn({ onAuthed }: { onAuthed: (wallet: string) => void }) {
   useEffect(() => {
     if (phase !== 'xaman-wait' || !startData.current?.uuid) return;
     const id = startData.current.uuid;
-    const t = setInterval(async () => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let live = true;
+    const tick = async () => {
       try {
         const res = await fetch(`${API_URL}/api/admin/auth/claim`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ uuid: id }) });
         const data = await res.json();
-        if (data.status === 'pending') return;
-        applyStatus(data.status, data.wallet);
+        if (data.status !== 'pending') { live = false; applyStatus(data.status, data.wallet); return; }
       } catch { /* keep polling */ }
-    }, 3000);
-    return () => clearInterval(t);
+      if (live) timer = setTimeout(tick, xw.delay());
+    };
+    const xw = watchXaman(id, () => { if (timer) clearTimeout(timer); void tick(); });
+    timer = setTimeout(tick, xw.delay());
+    return () => { live = false; xw.stop(); if (timer) clearTimeout(timer); };
   }, [phase, applyStatus]);
 
   return (

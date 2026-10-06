@@ -2,7 +2,7 @@
 // POST { invoiceId }  -> one unsigned RLUSD CheckCreate for this period + a Xaman request (the funder signs; one per check).
 // POST { batch: true } -> up to 8 of this period's unsigned checks in ONE single-account Batch signature — only when
 //                         BatchV1_1 is active on mainnet AND Xaman signing was verified (batchAvailability()).
-// Only for a paid plan. XRPLHub never signs.
+// Free. XRPLHub never signs.
 
 import { prisma } from "@/lib/xrplscore-db";
 import { rateLimit, rateLimited } from "@/lib/rateLimit";
@@ -19,7 +19,6 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   const { id } = await ctx.params;
   const plan = await loadPlan(id);
   if (!plan) return spendErr(404, "not_found", "No plan with that id.");
-  if (!plan.paidThrough || plan.paidThrough <= new Date()) return spendErr(402, "plan_unpaid", "Prepay the plan ($5/month in RLUSD) before its checks can be created.");
   const body = (await req.json().catch(() => ({}))) as { invoiceId?: unknown; batch?: unknown };
 
   const rows = (await ensurePeriodChecks(prisma, plan)).filter((r) => r.status === "unsigned");

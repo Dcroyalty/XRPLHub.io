@@ -73,7 +73,8 @@ issuer can do to a holder (clawback, freeze, require-auth, non-transferable)
 alongside the issuer's own XRPLScore. Per-issuance reads are live from the
 validated ledger; an issuance not found returns "unknown", never "does not
 exist". Search / issuer listings are served from a registry index that is the
-reconciled Bithomp union plus our own ledger_data walk — every indexed
+reconciled Bithomp issuance listing plus our own ledger_data walk (holder counts are read from
+the ledger, Clio mpt_holders, non-zero balances) — every indexed
 response carries coverage ("complete" | "partial") and lastCompletedPassAt,
 and "partial" must be read as a floor, not the whole population.
 
@@ -82,7 +83,7 @@ and "partial" must be read as a floor, not the whole population.
 - GET ${origin}/api/mpt/anchor — free: the latest on-ledger Merkle-root anchor of the registry (BIS WP 1374 pattern) + the canonicalisation scheme, so anyone can check the registry rows we publish against the root we anchored on-ledger (proves published rows match the anchored root at a known time, not immutability — the index is mutable and re-anchored)
 - GET ${origin}/api/mpt/<48-hex MPTokenIssuanceID> — free, live: issuance facts + issuer powers + issuer score/grade + "mutability" (what the issuer can still change, incl. ImmutableFlags locks) + "confidential" (XLS-96: per-holder data reported as unavailable, never zero)
 - GET ${origin}/api/mpt/permanence — free, live: which MPT permanence regime applies right now (DynamicMPT amendment state read from the ledger) and the wording that follows
-- GET ${origin}/api/x402/usdc/mpt/<48-hex id> — $0.01 USDC on Base or RLUSD on XRPL (x402): full issuer risk — account age, xrp-ledger.toml-verified domain, credentials held, Bithomp cross-check
+- GET ${origin}/api/x402/usdc/mpt/<48-hex id> — $0.01 USDC on Base or RLUSD on XRPL (x402): full issuer risk — account age, xrp-ledger.toml-verified domain, credentials held (live ledger reads only)
 
 ## Sanctions screening attestation (OFAC SDN + EU + UK)
 
@@ -212,8 +213,8 @@ charged after the result is produced. One product, one price, every rail: POST /
 
 ${origin}/spend — a funder approves up to 10 payees (XRPL address + label + category + budget per week or month) and a check
 size; each payee's budget is split into RLUSD checks of that size. XRPLHub builds every CheckCreate unsigned — the funder
-signs each one; the merchant cashes with their own wallet (free); the funder cancels from the dashboard. $5/month per plan,
-prepaid in RLUSD from the funder's account. Each open check holds 0.2 XRP of the funder's reserve until cashed or cancelled.
+signs each one; the merchant cashes with their own wallet (free); the funder cancels from the dashboard. FREE — no plan fee,
+no prepay. Each open check holds 0.2 XRP of the funder's reserve until cashed or cancelled.
 Not a bank, not a money transmitter; XRPLHub never holds funds or keys. Checks don't lock funds.
 - POST ${origin}/api/spend/plans?dryRun=1 — preview a plan (check split, reserve locked up front, funder RLUSD balance)
 - GET  ${origin}/api/spend/s/<shareToken> — the beneficiary view (available checks per place)

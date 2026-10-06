@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { watchXaman } from '@/lib/wallet/xamanWatch';
 import { SERVICE_PRICE_USD } from '@/lib/servicePrices';
 import { DELEGABLE_PERMISSIONS, MAX_DELEGATE_PERMISSIONS } from '@/lib/delegationPermissions';
 import { GRANT_APPLICATIONS_OPEN, GRANTS_PAUSED_TITLE, GRANTS_PAUSED_MESSAGE, GRANTS_DONATE_NOTE } from '@/lib/grantsStatus';
@@ -497,6 +498,7 @@ function ConnectWalletModal({ show, onClose, onConnected }: { show:boolean; onCl
   useEffect(() => {
     if (status !== 'waiting' || !uuid) return;
     cancelRef.current = false;
+    const xw = watchXaman(uuid, () => { if (pollRef.current) clearTimeout(pollRef.current); poll(); });
     const poll = async () => {
       if (cancelRef.current) return;
       try {
@@ -508,11 +510,11 @@ function ConnectWalletModal({ show, onClose, onConnected }: { show:boolean; onCl
           setTimeout(() => handleClose(), 1200);
         } else if (data.status === 'expired') { setStatus('idle'); setError('Connection expired. Tap Try Again.'); }
         else if (data.status === 'rejected') { setStatus('idle'); setError('Connection declined in Xaman.'); }
-        else { pollRef.current = setTimeout(poll, 3000); }
-      } catch { if (!cancelRef.current) pollRef.current = setTimeout(poll, 5000); }
+        else { pollRef.current = setTimeout(poll, xw.delay()); }
+      } catch { if (!cancelRef.current) pollRef.current = setTimeout(poll, xw.delay()); }
     };
     poll();
-    return () => { cancelRef.current = true; if (pollRef.current) clearTimeout(pollRef.current); };
+    return () => { cancelRef.current = true; xw.stop(); if (pollRef.current) clearTimeout(pollRef.current); };
   }, [status, uuid]); // eslint-disable-line
 
   const handleClose = () => {
@@ -837,21 +839,23 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
   useEffect(() => {
     if (payStatus !== 'waiting' || !uuid || !product) return;
     cancelRef.current = false;
+    let txid: string | null = null; // set by the socket: from then on, ledger-only checks by hash
+    const xw = watchXaman(uuid, (r) => { if (r.txid) txid = r.txid; if (pollRef.current) clearTimeout(pollRef.current); poll(); });
     const poll = async () => {
       if (cancelRef.current) return;
       try {
-        const params = new URLSearchParams({ uuid, productId:product.id, amount:String(price), currency, email });
+        const params = new URLSearchParams({ ...(txid ? { hash: txid } : { uuid }), productId:product.id, amount:String(price), currency, email });
         const res  = await fetch(`${API_URL}/api/check-payment?${params}`);
         const data = await res.json();
         if (cancelRef.current) return;
         if (data.status === 'verified') { setVerifiedTx(data.txHash || ''); setPayStatus('done'); setStep('success'); }
         else if (data.status === 'expired') { setPayStatus('idle'); setPayError('Payment expired. Tap to try again.'); }
         else if (data.status === 'rejected') { setPayStatus('idle'); setPayError(data.reason || 'Payment declined.'); }
-        else { pollRef.current = setTimeout(poll, 3000); }
-      } catch { if (!cancelRef.current) pollRef.current = setTimeout(poll, 5000); }
+        else { pollRef.current = setTimeout(poll, txid ? 3000 : xw.delay()); }
+      } catch { if (!cancelRef.current) pollRef.current = setTimeout(poll, txid ? 5000 : xw.delay()); }
     };
     poll();
-    return () => { cancelRef.current = true; if (pollRef.current) clearTimeout(pollRef.current); };
+    return () => { cancelRef.current = true; xw.stop(); if (pollRef.current) clearTimeout(pollRef.current); };
   }, [payStatus, uuid]); // eslint-disable-line
 
   useEffect(() => {
@@ -864,6 +868,12 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
   useEffect(() => {
     if (exStatus !== 'signing' || !exUuid) return;
     let stop = false;
+    const xw = watchXaman(exUuid, (r) => {
+      if (stop) return;
+      if (exPollRef.current) clearTimeout(exPollRef.current);
+      if (r.signed && r.txid) { stop = true; setExHash(r.txid); return; } // ledger-only from here (verify ?hash=)
+      poll();
+    });
     const poll = async () => {
       try {
         const res = await fetch(`${API_URL}/api/execute/verify?uuid=${exUuid}`);
@@ -874,11 +884,11 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
         else if (data.status === 'rejected') { setExError('You declined the signature.'); setExStatus('form'); }
         else if (data.status === 'expired') { setExError('Sign request expired. Try again.'); setExStatus('form'); }
         else if (data.status === 'failed') { setExError(`Ledger rejected it: ${data.result||'failed'}`); setExStatus('failed'); }
-        else { exPollRef.current = setTimeout(poll, 3000); }
-      } catch { if (!stop) exPollRef.current = setTimeout(poll, 5000); }
+        else { exPollRef.current = setTimeout(poll, xw.delay()); }
+      } catch { if (!stop) exPollRef.current = setTimeout(poll, xw.delay()); }
     };
     poll();
-    return () => { stop = true; if (exPollRef.current) clearTimeout(exPollRef.current); };
+    return () => { stop = true; xw.stop(); if (exPollRef.current) clearTimeout(exPollRef.current); };
   }, [exStatus, exUuid]); // eslint-disable-line
 
   // detect installed extension wallets when the modal opens (extension globals
@@ -1543,21 +1553,23 @@ function DonateModal({ show, onClose }: { show:boolean; onClose:()=>void }) {
   useEffect(() => {
     if (payStatus !== 'waiting' || !uuid) return;
     cancelRef.current = false;
+    let txid: string | null = null; // set by the socket: from then on, ledger-only checks by hash
+    const xw = watchXaman(uuid, (r) => { if (r.txid) txid = r.txid; if (pollRef.current) clearTimeout(pollRef.current); poll(); });
     const poll = async () => {
       if (cancelRef.current) return;
       try {
-        const params = new URLSearchParams({ uuid, productId:'donate', amount, currency });
+        const params = new URLSearchParams({ ...(txid ? { hash: txid } : { uuid }), productId:'donate', amount, currency });
         const res = await fetch(`${API_URL}/api/check-payment?${params}`);
         const data = await res.json();
         if (cancelRef.current) return;
         if (data.status === 'verified') { setVerifiedTx(data.txHash || ''); setPayStatus('done'); }
         else if (data.status === 'expired') { setPayStatus('idle'); setPayError('Payment expired. Tap to try again.'); }
         else if (data.status === 'rejected') { setPayStatus('idle'); setPayError(data.reason || 'Payment declined.'); }
-        else { pollRef.current = setTimeout(poll, 3000); }
-      } catch { if (!cancelRef.current) pollRef.current = setTimeout(poll, 5000); }
+        else { pollRef.current = setTimeout(poll, txid ? 3000 : xw.delay()); }
+      } catch { if (!cancelRef.current) pollRef.current = setTimeout(poll, txid ? 5000 : xw.delay()); }
     };
     poll();
-    return () => { cancelRef.current = true; if (pollRef.current) clearTimeout(pollRef.current); };
+    return () => { cancelRef.current = true; xw.stop(); if (pollRef.current) clearTimeout(pollRef.current); };
   }, [payStatus, uuid]); // eslint-disable-line
 
   useEffect(() => {

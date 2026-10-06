@@ -78,33 +78,17 @@ async function checkT54(force: boolean): Promise<Check> {
   });
 }
 
-async function checkCdp(force: boolean): Promise<Check> {
+// CONFIG ONLY — no network call to Coinbase. CDP's Developer Platform Terms bar using the CDP Tools "for purposes of
+// monitoring the availability, performance, or functionality of any of Coinbase's products" (platform audit 2026-10-06),
+// so the health check no longer probes the facilitator. A real CDP outage shows up as failed USDC settlements instead.
+async function checkCdp(_force: boolean): Promise<Check> {
+  void _force;
   const idSet = !!process.env.CDP_API_KEY_ID;
   const secretSet = !!process.env.CDP_API_KEY_SECRET;
   if (!idSet || !secretSet) {
     return { name: "x402-cdp", level: "down", detail: "CDP_API_KEY_ID / CDP_API_KEY_SECRET missing — USDC-on-Base checkout + x402 USDC routes can't settle" };
   }
-  // Unauthenticated liveness of the CDP facilitator host. A 400/401/403 all mean "the service is up" (auth happens
-  // per-request inside withX402); only a network failure or 5xx is a real outage. NOTE this proves the host answers,
-  // not that our key is valid — the detail says so.
-  return probed("x402-cdp", force, async () => {
-  try {
-    const res = await timed(() =>
-      fetch("https://api.cdp.coinbase.com/platform/v2/x402/verify", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: "{}",
-        signal: AbortSignal.timeout(7000),
-      })
-    );
-    if (res.status >= 500 || res.status === 0) {
-      return { name: "x402-cdp", level: "down", detail: `CDP facilitator -> HTTP ${res.status}` };
-    }
-    return { name: "x402-cdp", level: "ok", detail: `CDP keys set; facilitator host reachable (HTTP ${res.status}) — key validity is not probed` };
-  } catch (e) {
-    return { name: "x402-cdp", level: "down", detail: `CDP facilitator unreachable: ${e instanceof Error ? e.message : "error"}` };
-  }
-  });
+  return { name: "x402-cdp", level: "ok", detail: "CDP keys set (config check only — Coinbase's terms bar availability monitoring, so the facilitator is not probed)" };
 }
 
 async function checkAnchor(): Promise<Check> {

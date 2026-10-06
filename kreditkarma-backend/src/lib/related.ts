@@ -53,7 +53,7 @@ export function verifyPageLink(subject: string): RelatedLink {
 /** The paid, full-detail version of the MPT risk view. */
 export function mptFullLink(issuanceId: string): RelatedLink {
   return {
-    question: "Full issuer risk — account age, verified domain, credentials, Bithomp cross-check",
+    question: "Full issuer risk — account age, verified domain, credentials (all live ledger reads)",
     url: `${origin()}/api/x402/usdc/mpt/${issuanceId}`,
     price: "0.01 USDC on Base or RLUSD on XRPL (x402)",
   };

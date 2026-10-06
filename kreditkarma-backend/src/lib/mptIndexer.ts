@@ -2,6 +2,7 @@
 // The MPTokenIssuance registry refresh, resumable across bounded invocations.
 // Two sources, unioned into IndexedMPT:
 //
+//   (Holder counts are NOT from Bithomp: phase C reads them from the ledger — Clio mpt_holders.)
 //   A. Bithomp per-issuer (?issuer=, free + uncapped): fast and complete per
 //      issuer, but only covers issuers we already know. Round-robined — the
 //      stalest N issuers are refreshed each call so a daily cron cycles the
@@ -23,6 +24,7 @@ import { validatedLedgerCloseTimeRipple } from "./credentials";
 import { scoreWallet, AccountNotFoundError } from "./xrplscore";
 import { bithompMptsByIssuer, bithompRecentMpts } from "./bithomp";
 import { MPT_LSF_CAN_HOLD_CONFIDENTIAL } from "./mptFlags";
+import { mptHolderCount } from "./mptHolders";
 import {
   MPT_CHECKPOINT_ID,
   MPT_BOOTSTRAP_ISSUERS,
@@ -144,6 +146,7 @@ async function refreshIssuerAggregate(prisma: PrismaClient, issuer: string, forc
 }
 
 export interface MptPassProgress {
+  holders?: { refreshed: number; failed: number; wrapped: boolean };
   bithomp: { issuersRefreshed: string[]; rowsUpserted: number; issuersRescored: string[] };
   walk: {
     status: "idle" | "running";
@@ -214,6 +217,9 @@ export async function runMptIndexerPass(
     issuersRefreshed.push(issuer);
     await sleep(6500); // 10 req/min free-tier ceiling
   }
+
+  // ── Phase C (runs before the walk so the walk keeps the remaining budget) ──
+  const holders = await refreshMptHolderCounts(prisma, { budgetMs: Math.min(8_000, Math.max(0, budgetMs * 0.8 - (Date.now() - startedAt))) });
 
   // ── Phase B: advance the ledger_data walk ─────────────────────────────────
   const isNewPass = checkpoint.status === "idle";
@@ -316,6 +322,7 @@ export async function runMptIndexerPass(
 
     const cpAfter = await prisma.indexerCheckpoint.findUnique({ where: { id: MPT_CHECKPOINT_ID } });
     return {
+      holders,
       bithomp: { issuersRefreshed, rowsUpserted, issuersRescored },
       walk: {
         status: completed ? "idle" : "running",
@@ -331,6 +338,47 @@ export async function runMptIndexerPass(
   } finally {
     await client.disconnect().catch(() => {});
   }
+}
+
+// ── Phase C: holder counts from the ledger ──────────────────────────────────
+const HOLDERS_CHECKPOINT_ID = "mpt-holders"; // marker = last issuanceId refreshed (round-robin cursor)
+
+/**
+ * Refresh holderCount for the next slice of registry rows, round-robin by issuanceId, from Clio's mpt_holders
+ * (non-zero balances). Confidential issuances are skipped (their count stays null). A row whose count can't be
+ * read completely keeps its previous value. Never throws.
+ */
+export async function refreshMptHolderCounts(
+  prisma: PrismaClient,
+  opts: { budgetMs?: number; max?: number } = {}
+): Promise<{ refreshed: number; failed: number; wrapped: boolean }> {
+  const budgetMs = opts.budgetMs ?? 8_000;
+  const max = opts.max ?? 40;
+  const started = Date.now();
+  let refreshed = 0, failed = 0, wrapped = false;
+  try {
+    const cp = await prisma.indexerCheckpoint.upsert({ where: { id: HOLDERS_CHECKPOINT_ID }, create: { id: HOLDERS_CHECKPOINT_ID }, update: {} });
+    let cursor = cp.marker ?? "";
+    let rows = await prisma.indexedMPT.findMany({ where: { issuanceId: { gt: cursor } }, orderBy: { issuanceId: "asc" }, take: max, select: { issuanceId: true, flagsRaw: true } });
+    if (!rows.length) {
+      wrapped = true;
+      cursor = "";
+      rows = await prisma.indexedMPT.findMany({ orderBy: { issuanceId: "asc" }, take: max, select: { issuanceId: true, flagsRaw: true } });
+    }
+    for (const r of rows) {
+      if (Date.now() - started > budgetMs) break;
+      cursor = r.issuanceId;
+      if (isConfidentialFlags(r.flagsRaw)) continue;
+      const hc = await mptHolderCount(r.issuanceId);
+      if (!hc) { failed++; continue; }
+      await prisma.indexedMPT.update({ where: { issuanceId: r.issuanceId }, data: { holderCount: hc.count } });
+      refreshed++;
+    }
+    await prisma.indexerCheckpoint.update({ where: { id: HOLDERS_CHECKPOINT_ID }, data: { marker: cursor || null } });
+  } catch {
+    // best-effort: the next run resumes from the saved cursor
+  }
+  return { refreshed, failed, wrapped };
 }
 
 // ── On-ledger anchoring ──────────────────────────────────────────────────────

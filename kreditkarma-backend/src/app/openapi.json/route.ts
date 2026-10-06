@@ -554,7 +554,7 @@ export async function GET(req: Request) {
             "The risk view of one Multi-Purpose Token (XLS-33) issuance, not a listing. Returns what the " +
             "issuer can do to a holder (clawback, freeze, require-auth, whether it's transferable at all) " +
             "alongside the issuer's own XRPLScore, account age, verified domain and credentials held. Live " +
-            "reads from the validated ledger, cross-checked against Bithomp's index. An issuance not found " +
+            "reads from the validated ledger only. An issuance not found " +
             "returns \"unknown\", never \"does not exist\". Free, no signup.",
           security: [],
           tags: ["Tokens"],
@@ -576,8 +576,7 @@ export async function GET(req: Request) {
                     type: "object",
                     properties: {
                       ledger: { type: "string" },
-                      bithompIndex: { type: "string" },
-                      interpretation: { type: "string", description: "'exists', 'may have been destroyed', or 'unknown'." },
+                      interpretation: { type: "string", description: "'exists' or 'unknown'." },
                     },
                   },
                   issuer: { type: "string", nullable: true },
@@ -622,7 +621,6 @@ export async function GET(req: Request) {
                 found: true,
                 source: {
                   ledger: "MPTokenIssuance present on the validated ledger (live read)",
-                  bithompIndex: "listed in Bithomp's index",
                   interpretation: "exists",
                 },
                 issuer: "rPm6K1fr4MNcv5W8pD4RCawVHjsK1ziCKp",
@@ -877,7 +875,7 @@ export async function GET(req: Request) {
           description:
             "Everything /api/mpt/{issuanceId} returns plus the parts that cost real live work: issuer " +
             "account age, blackhole check, xrp-ledger.toml domain verification, the full credential list, " +
-            "the Bithomp cross-check, and a `related` cross-sell block. x402 exact scheme, USDC on Base " +
+            "and a `related` cross-sell block (all live ledger reads). x402 exact scheme, USDC on Base " +
             "via the CDP facilitator. No signup.",
           tags: ["Tokens"],
           parameters: [{

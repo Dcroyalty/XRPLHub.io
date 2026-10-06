@@ -11,6 +11,7 @@
 //                                      ledger, marks paid, reveals the API key once
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { watchXaman } from "@/lib/wallet/xamanWatch";
 import FreeKeyFlow from "./FreeKeyFlow";
 import UsdcBasePay from "./UsdcBasePay";
 import XamanPayPrompt from "@/components/XamanPayPrompt";
@@ -68,6 +69,7 @@ export default function CheckoutFlow({ plan }: { plan: string }) {
   const [xamanQr, setXamanQr] = useState<string | null>(null);
   const [xamanLink, setXamanLink] = useState<string | null>(null);
   const xamanUuid = useRef<string | null>(null);
+  const xamanSigned = useRef(false); // the websocket said signed: the next status poll may name the uuid (one Xaman call)
 
   // Wallet picker + injected-wallet state
   const [walletOpts, setWalletOpts] = useState<ProviderOption[]>([]);
@@ -131,7 +133,8 @@ export default function CheckoutFlow({ plan }: { plan: string }) {
     try {
       // Pass the Xaman payload uuid when we have one: the server reads the exact tx hash from the payload we created
       // for THIS invoice instead of searching the ledger for it.
-      const uuid = xamanUuid.current;
+      // Only once the websocket says it's signed — otherwise the ledger search alone (no Xaman API call per poll).
+      const uuid = xamanSigned.current ? xamanUuid.current : null;
       const res = await fetch(uuid ? `${invoice.statusUrl}&uuid=${encodeURIComponent(uuid)}` : invoice.statusUrl);
       const data = await res.json();
       if (data.status === "paid") {
@@ -151,29 +154,41 @@ export default function CheckoutFlow({ plan }: { plan: string }) {
     return () => clearInterval(t);
   }, [status, invoice, poll]);
 
-  // Xaman fast-path poll — UX feedback only ("you rejected it" / "expired")
+  // Xaman status over its websocket — UX feedback only ("you rejected it" / "expired"); REST only as a slow fallback
   useEffect(() => {
     if (xaman !== "waiting" || !xamanUuid.current) return;
     const uuid = xamanUuid.current;
-    const t = setInterval(async () => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let live = true;
+    const apply = (state: string) => {
+      if (state === "signed") {
+        xamanSigned.current = true;
+        setXaman("signed");
+        setXamanMsg("Signed. Confirming on the ledger…");
+        void poll();
+      } else if (state === "rejected") {
+        setXaman("rejected");
+        setXamanMsg("You declined the request in Xaman. You can try again or pay manually.");
+      } else if (state === "expired" || state === "not_found") {
+        setXaman("expired");
+        setXamanMsg("The sign request expired. Tap “Pay with Xaman” for a fresh one.");
+      } else return false;
+      live = false;
+      return true;
+    };
+    const xw = watchXaman(uuid, (r) => { if (timer) clearTimeout(timer); apply(r.signed ? "signed" : r.signed === false ? "rejected" : "expired"); });
+    const tick = async () => {
       try {
         const res = await fetch(`/api/checkout/xaman/status?uuid=${encodeURIComponent(uuid)}`);
         const data = await res.json();
-        if (data.state === "signed") {
-          setXaman("signed");
-          setXamanMsg("Signed. Confirming on the ledger…");
-        } else if (data.state === "rejected") {
-          setXaman("rejected");
-          setXamanMsg("You declined the request in Xaman. You can try again or pay manually.");
-        } else if (data.state === "expired" || data.state === "not_found") {
-          setXaman("expired");
-          setXamanMsg("The sign request expired. Tap “Pay with Xaman” for a fresh one.");
-        }
+        if (apply(String(data.state))) return;
       } catch {
         /* on error stay in waiting — the on-ledger poll is the source of truth */
       }
-    }, 3000);
-    return () => clearInterval(t);
+      if (live) timer = setTimeout(tick, xw.delay());
+    };
+    timer = setTimeout(tick, xw.delay());
+    return () => { live = false; xw.stop(); if (timer) clearTimeout(timer); };
   }, [xaman]);
 
   const openXaman = useCallback(async () => {

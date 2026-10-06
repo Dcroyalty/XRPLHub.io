@@ -9,11 +9,10 @@
  * app for charging for transactions Xaman offers free). Every entry for a catalog service below must be 0 —
  * check-service-parity.mjs fails the build otherwise. History: $15–$80 until 2026-10-05, then $1 / $5 for a few hours.
  * Still paid (NOT in this table's service rows): score reports + score API, screening, monitoring, MPT data, credentials
- * (`credential` below), lending/underwriting, API plans, the admin health check (ADMIN_ONLY_PRICE_USD), Spend Controls.
+ * (`credential` below), lending/underwriting, API plans, the admin health check (ADMIN_ONLY_PRICE_USD). Spend Controls
+ * plans are free too (2026-10-06, same reasoning: checks are transactions Xaman offers free).
  */
 export const TX_SERVICE_PRICE_USD = 0;
-/** Spend Controls: one plan, per month, prepaid in RLUSD (owner decision 2026-10-05). Merchants cash free. */
-export const SPEND_PLAN_MONTHLY_USD = 5;
 
 /** USD (= RLUSD) list price of each storefront service. */
 export const SERVICE_PRICE_USD: Readonly<Record<string, number>> = Object.freeze({

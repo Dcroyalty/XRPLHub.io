@@ -1,5 +1,5 @@
 "use client";
-// src/app/spend/plan/[id]/page.tsx — the funder dashboard: prepay, share the beneficiary link, sign this period's checks
+// src/app/spend/plan/[id]/page.tsx — the funder dashboard (Spend Controls is free): share the beneficiary link, sign this period's checks
 // (one signature each, or one for all when Batch is available), and cancel open or expired checks. Live from the ledger.
 
 import React, { useCallback, useEffect, useState } from "react";
@@ -9,7 +9,7 @@ import { API, Disclosure, SignPanel, fmtDate, s, type SignData } from "../../ui"
 type Check = { invoiceId: string; checkId: string | null; payee: string; category: string; seq: number; amount: string; currency: string; expires: string; status: string; closedHow: string | null };
 type Dash = {
   plan: { id: string; name: string | null; funder: string; period: string; checkSize: string; status: string; paidThrough: string | null; shareLink: string };
-  paid: boolean; price: { usdPerMonth: number };
+  paid: boolean;
   period: { start: string; end: string };
   current: Check[]; history: Check[];
   reserve: { perCheckXrp: number; heldNowXrp: number; openChecks: number; note: string };
@@ -25,9 +25,6 @@ export default function PlanDashboard() {
   const [d, setD] = useState<Dash | null>(null);
   const [err, setErr] = useState("");
   const [sign, setSign] = useState<{ title: string; data: SignData } | null>(null);
-  const [months, setMonths] = useState(1);
-  const [payUuid, setPayUuid] = useState("");
-  const [payHash, setPayHash] = useState("");
 
   const load = useCallback(async () => {
     try {
@@ -46,18 +43,6 @@ export default function PlanDashboard() {
     return () => { dead = true; };
   }, [id]);
 
-  // While a payment request is out, poll for its signature and verification on the ledger.
-  useEffect(() => {
-    if (!payUuid) return;
-    const iv = setInterval(async () => {
-      const r = await fetch(`${API}/api/spend/plans/${id}/pay`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ months, uuid: payUuid }) });
-      const j = await r.json().catch(() => ({}));
-      if (r.status === 200 && j.status === "paid") { setPayUuid(""); setSign(null); void load(); }
-      else if (r.status >= 400) { setPayUuid(""); setErr(j.message ?? "Payment failed"); }
-    }, 4000);
-    return () => clearInterval(iv);
-  }, [payUuid, months, id, load]);
-
   const post = async (path: string, body: unknown) => {
     setErr("");
     const r = await fetch(`${API}/api/spend/plans/${id}/${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -65,8 +50,6 @@ export default function PlanDashboard() {
     if (!r.ok) { setErr(j.message ?? "Something went wrong"); return null; }
     return j;
   };
-  const startPay = async () => { const j = await post("pay", { months }); if (j) { setSign({ title: `Prepay ${months} month${months === 1 ? "" : "s"} — ${j.amount} RLUSD`, data: j }); setPayUuid(j.uuid ?? ""); } };
-  const confirmHash = async () => { const j = await post("pay", { months, txHash: payHash.trim() }); if (j?.status === "paid") { setSign(null); setPayHash(""); void load(); } };
   const signOne = async (c: Check) => { const j = await post("sign", { invoiceId: c.invoiceId }); if (j) setSign({ title: `Sign: check to ${c.payee}, up to ${c.amount} RLUSD`, data: j }); };
   const signBatch = async () => { const j = await post("sign", { batch: true }); if (j) setSign({ title: `Sign once: ${j.count} checks`, data: j }); };
   const cancel = async (c: Check) => { const j = await post("cancel", { checkId: c.checkId }); if (j) setSign({ title: `Cancel the check to ${c.payee} (${c.amount} RLUSD)`, data: j }); };
@@ -82,20 +65,6 @@ export default function PlanDashboard() {
         <h1 style={s.h1}>{d.plan.name ?? "Spending plan"}</h1>
         <p style={s.sub}>Funder <span style={s.mono}>{d.plan.funder}</span> · {d.plan.period} · checks of {d.plan.checkSize} RLUSD</p>
         <p style={{ ...s.small, marginTop: -10 }}>Bookmark this page — its address is your dashboard.</p>
-
-        {!d.paid && (
-          <div style={s.card}>
-            <p style={s.h2}>Prepay to start — ${d.price.usdPerMonth}/month in RLUSD</p>
-            <p style={s.small}>Pay from the funder account above. That payment is what ties this plan to your account.</p>
-            <div style={{ display: "flex", gap: 8, alignItems: "center", margin: "8px 0", flexWrap: "wrap" }}>
-              <select style={{ ...s.input, width: 140 }} value={months} onChange={(e) => setMonths(Number(e.target.value))}>{[1, 2, 3, 6, 12].map((m) => <option key={m} value={m}>{m} month{m === 1 ? "" : "s"} — {m * d.price.usdPerMonth} RLUSD</option>)}</select>
-              <button style={s.btn} onClick={startPay}>Pay in RLUSD</button>
-            </div>
-            <label style={s.label}>Paid from another wallet? Paste the transaction hash</label>
-            <div style={{ display: "flex", gap: 8 }}><input style={{ ...s.input, ...s.mono }} value={payHash} onChange={(e) => setPayHash(e.target.value)} /><button style={s.btnGhost} onClick={confirmHash}>Verify</button></div>
-          </div>
-        )}
-        {d.paid && <p style={s.ok}>Prepaid through {fmtDate(d.plan.paidThrough)}.</p>}
 
         {sign && <SignPanel data={sign.data} title={sign.title} onDone={() => { setSign(null); void load(); }} />}
         {err && <p style={s.err}>{err}</p>}
@@ -130,7 +99,7 @@ export default function PlanDashboard() {
                   </td>
                 </tr>
               ))}
-              {!d.current.length && <tr><td style={s.td} colSpan={5}>{d.paid ? "No checks this period." : "Checks appear once the plan is prepaid."}</td></tr>}
+              {!d.current.length && <tr><td style={s.td} colSpan={5}>No checks this period.</td></tr>}
             </tbody>
           </table>
         </div>

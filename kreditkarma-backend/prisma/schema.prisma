@@ -872,7 +872,7 @@ model SpendPlan {
   currency    String    @default("RLUSD")
   checkSize   String    // face value of each check (decimal string)
   shareToken  String    @unique // the beneficiary link
-  paidThrough DateTime? // prepaid ($5/month) until; null = not paid yet
+  paidThrough DateTime? // legacy: the $5/month prepay ended 2026-10-06 (Spend Controls is free); ignored
   status      String    @default("draft") // draft | active | ended
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt

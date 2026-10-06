@@ -1,13 +1,12 @@
 // src/app/api/spend/plans/[id]/route.ts
 // GET /api/spend/plans/:id — the funder dashboard. Refreshes every check from the ledger first (unsigned / open /
 // expired / closed-as-cashed-or-cancelled), then returns this period's checks — each unsigned one with its ready-to-sign
-// CheckCreate — the reserve currently held, prepayment status and whether one-signature Batch is available.
+// CheckCreate — the reserve currently held and whether one-signature Batch is available. Plans are free (2026-10-06).
 // Read-only. The plan id is the dashboard's secret; every action it offers builds a transaction only the funder can sign.
 
 import { prisma } from "@/lib/xrplscore-db";
 import { rateLimit, rateLimited } from "@/lib/rateLimit";
 import { batchAvailability, checkCreateFor, ensurePeriodChecks, fromRipple, ownerReserveXrp, periodWindow, rlusdBalance, syncPlanChecks, type Period } from "@/lib/spendControls";
-import { SPEND_PLAN_MONTHLY_USD } from "@/lib/servicePrices";
 import { SPEND_DISCLOSURE, loadPlan, spendErr, spendJson } from "@/lib/spendApi";
 
 export const runtime = "nodejs";
@@ -21,8 +20,9 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
   const plan = await loadPlan(id);
   if (!plan) return spendErr(404, "not_found", "No plan with that id.");
 
-  const paid = !!plan.paidThrough && plan.paidThrough > new Date();
-  if (paid) await ensurePeriodChecks(prisma, plan);
+  // Free: every plan is live. (Plans created before 2026-10-06 may still carry an old paidThrough; it no longer matters.)
+  const paid = true;
+  await ensurePeriodChecks(prisma, plan);
   const sync = await syncPlanChecks(prisma, plan.id, plan.funder);
 
   const { start, end } = periodWindow(plan.period as Period);
@@ -47,7 +47,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
     plan: { id: plan.id, name: plan.name, funder: plan.funder, period: plan.period, checkSize: plan.checkSize, currency: plan.currency, status: plan.status, paidThrough: plan.paidThrough, shareLink: `/spend/s/${plan.shareToken}` },
     payees: plan.payees.map((p) => ({ label: p.label, category: p.category, address: p.address, budget: p.budget, destinationTag: p.destinationTag })),
     paid,
-    price: { usdPerMonth: SPEND_PLAN_MONTHLY_USD, currency: "RLUSD" },
+    price: { free: true },
     period: { start, end },
     current: current.map(view),
     history: rows.filter((r) => r.periodStart.getTime() !== start.getTime()).slice(0, 100).map(view),

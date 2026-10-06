@@ -34,7 +34,7 @@ The live production app is a single Next.js project in **`kreditkarma-backend/`*
   build if any transaction service price is not $0 or a payment step creeps back onto a transaction path.
 - **Still PAID** (prices in `src/lib/servicePrices.ts` / `src/lib/paycall.ts`, ledger-verified, single-use): score
   reports + score API, screening + receipts, monitoring, MPT data + issuer risk, credentials, lending/underwriting data,
-  API plans, the admin health check, Spend Controls plans ($5/month — pending Xaman's confirmation that a plan fee is OK).
+  API plans, the admin health check. Spend Controls is FREE (2026-10-06): no plan fee, same reasoning as transactions.
 - **Community grants** — a person reviews every application; nothing is automated. The
   application form is gated by `GRANT_APPLICATIONS_OPEN` in `src/lib/grantsStatus.ts`
   (currently `false`: approved grants are waiting to be paid). Donations stay open.

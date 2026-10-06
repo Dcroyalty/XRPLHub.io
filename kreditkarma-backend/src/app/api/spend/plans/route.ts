@@ -1,5 +1,5 @@
 // src/app/api/spend/plans/route.ts
-// POST /api/spend/plans — create a Spend Controls plan (a draft until it is paid from the funder's own account).
+// POST /api/spend/plans — create a Spend Controls plan. FREE (no fee, no prepay): active as soon as it is created.
 //   body: { funder, name?, period: "weekly"|"monthly", checkSize: "10", payees: [{ address, label, category, budget, destinationTag? }] }
 //   ?dryRun=1 — validate + preview only (nothing saved): the check split, the XRP reserve that locks up front, the
 //   funder's RLUSD balance against the period's total. The create form calls this on every change.
@@ -8,7 +8,6 @@
 import { prisma } from "@/lib/xrplscore-db";
 import { rateLimit, rateLimited } from "@/lib/rateLimit";
 import { checkPayeeAccount, fromCents, newShareToken, ownerReserveXrp, rlusdBalance, validatePlanInput, type PlanInput } from "@/lib/spendControls";
-import { SPEND_PLAN_MONTHLY_USD } from "@/lib/servicePrices";
 import { SPEND_DISCLOSURE, spendErr, spendJson } from "@/lib/spendApi";
 
 export const runtime = "nodejs";
@@ -50,7 +49,7 @@ export async function POST(req: Request) {
     fundingNote: balance === null ? "Could not read your RLUSD balance just now." : balance >= v.totalBudgetCents / 100
       ? "Your wallet holds enough RLUSD for this period's checks."
       : `Your wallet holds ${balance} RLUSD but this period's checks total ${fromCents(v.totalBudgetCents)}. Checks don't lock funds — a check can only be cashed while the money is in your wallet.`,
-    price: { usdPerMonth: SPEND_PLAN_MONTHLY_USD, currency: "RLUSD", merchantsCash: "free" },
+    price: { free: true, note: "Spend Controls is free: no plan fee, no prepay. Merchants cash free. Your wallet pays only the XRP Ledger's network fee." },
     payeeProblems,
     disclosure: SPEND_DISCLOSURE,
   };
@@ -59,7 +58,7 @@ export async function POST(req: Request) {
 
   const plan = await prisma.spendPlan.create({
     data: {
-      funder: v.funder, name: v.name, period: v.period, currency: "RLUSD", checkSize: fromCents(v.checkSizeCents), shareToken: newShareToken(),
+      funder: v.funder, name: v.name, period: v.period, currency: "RLUSD", status: "active", checkSize: fromCents(v.checkSizeCents), shareToken: newShareToken(),
       payees: { create: v.payees.map((p, position) => ({ address: p.address, label: p.label, category: p.category, budget: p.budget, destinationTag: p.destinationTag ?? null, position })) },
     },
   });

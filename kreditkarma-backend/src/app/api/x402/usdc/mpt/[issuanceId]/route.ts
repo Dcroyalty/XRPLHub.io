@@ -3,7 +3,7 @@
 // The free /api/mpt/:issuanceId gives issuance facts + issuer powers +
 // issuer score/grade. This adds the parts that cost real live work —
 // account age, blackhole check, xrp-ledger.toml domain verification, the
-// full credential list, and the Bithomp cross-check — plus the `related`
+// full credential list (all live ledger reads; no third-party index) — plus the `related`
 // cross-sell block.
 //
 // Base rail: the same withX402 v1 wrapper as /api/x402/usdc/score, settling only after a
@@ -28,7 +28,6 @@ const MPT_RISK_OUTPUT_SCHEMA = {
       type: "object",
       properties: {
         ledger: { type: "string" },
-        bithompIndex: { type: "string" },
         interpretation: { type: "string", description: "'exists', 'may have been destroyed', or 'unknown' — never asserts non-existence." },
       },
     },
@@ -93,8 +92,8 @@ const handler = async (req: NextRequest): Promise<NextResponse<unknown>> => {
 const MPT_DESCRIPTION =
   "Full risk view of one XLS-33 Multi-Purpose Token issuance: what the issuer can do to a holder " +
   "(clawback, freeze, require-auth, non-transferable) plus the issuer's XRPLScore, account age, " +
-  "xrp-ledger.toml-verified domain, and credentials held. Live reads, cross-checked against " +
-  "Bithomp. An issuance not found returns 'unknown', never 'does not exist'. Path: the 48-hex " +
+  "xrp-ledger.toml-verified domain, and credentials held. Live reads from the validated " +
+  "ledger only. An issuance not found returns 'unknown', never 'does not exist'. Path: the 48-hex " +
   "MPTokenIssuanceID. The free /api/mpt/{id} gives issuance facts + powers + issuer score only.";
 
 const paidGET = withX402(

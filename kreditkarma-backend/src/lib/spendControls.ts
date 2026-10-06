@@ -6,7 +6,8 @@
 //     remainder check), so a merchant can be paid several times a period — a check is single-use.
 //   - XRPLHub stores the plan, never funds or keys. Every check is an unsigned RLUSD CheckCreate the funder signs; the
 //     merchant cashes with their own wallet (free); the funder cancels from the dashboard.
-//   - $5/month per plan, prepaid in RLUSD, verified on the ledger, single-use payment hashes.
+//   - FREE (2026-10-06): no plan fee, no prepay. Creating, signing and cashing checks are transactions Xaman offers free, and
+//     Xaman deleted XRPLHub's original app for charging for those — so XRPLHub charges nothing here.
 //   - Each open check holds 0.2 XRP of the funder's reserve (live from the ledger) until cashed or cancelled — shown up
 //     front. Checks do NOT lock funds: the funder must keep the allowance in their wallet.
 //   - Every check carries a deterministic InvoiceID, which is how the dashboard recognises it on the ledger. The ledger
@@ -19,14 +20,11 @@ import type { PrismaClient } from "@prisma/client";
 import { xrplRpc } from "./xrplNodes";
 import { isValidXrplAddress } from "./address";
 import { buildCheckCreate, RIPPLE_EPOCH } from "./checks";
-import { fetchLedgerTx, inspectPayment } from "./paymentGate";
 import { RLUSD_HEX, RLUSD_ISSUER } from "./pricing";
-import { SPEND_PLAN_MONTHLY_USD } from "./servicePrices";
 import { getAmendmentStatus } from "./amendments";
 
 export const MAX_PAYEES = 10;
 export const MAX_CHECKS_PER_PERIOD = 50;
-export const MAX_PREPAY_MONTHS = 12;
 export const BATCH_MAX_INNER = 8; // BatchV1_1 limit
 export const CATEGORIES = ["food", "groceries", "clothing", "school", "transport", "health", "housing", "utilities", "entertainment", "other"] as const;
 export type Period = "weekly" | "monthly";
@@ -238,36 +236,6 @@ export async function syncPlanChecks(prisma: PrismaClient, planId: string, funde
     await prisma.spendCheck.update({ where: { id: r.id }, data: { status: "closed", checkId, closedHow: how } });
   }
   return { ok: true, closeTime };
-}
-
-// ── plan payment ($5/month, prepaid in RLUSD) ───────────────────────────────────────────────────────────────────
-export const planPriceRlusd = (months: number) => SPEND_PLAN_MONTHLY_USD * months;
-
-export async function applyPlanPayment(prisma: PrismaClient, plan: { id: string; funder: string; paidThrough: Date | null }, txHash: string, months: number):
-  Promise<{ ok: true; paidThrough: Date } | { ok: false; error: string; retry?: boolean }> {
-  if (!Number.isInteger(months) || months < 1 || months > MAX_PREPAY_MONTHS) return { ok: false, error: `months must be 1–${MAX_PREPAY_MONTHS}` };
-  const h = txHash.trim().toUpperCase();
-  const got = await fetchLedgerTx(h);
-  if (!got.ok) return { ok: false, error: got.reason, retry: got.retry };
-  const p = inspectPayment(got.tx);
-  if (!p.ok) return { ok: false, error: p.reason, retry: p.retry };
-  if (p.currency !== "RLUSD") return { ok: false, error: "plans are paid in RLUSD" };
-  if (p.payer !== plan.funder) return { ok: false, error: "the plan must be paid from the funder's own account (that is how the plan is tied to it)" };
-  // One ledger payment buys ONE thing: refuse a hash the storefront already counted (and the storefront refuses ours).
-  if (await prisma.purchase.findUnique({ where: { txHash: h } }).catch(() => null)) return { ok: false, error: "this payment was already used for a storefront purchase" };
-  const due = planPriceRlusd(months);
-  if (p.amount + 1e-9 < due) return { ok: false, error: `received ${p.amount} RLUSD; ${months} month(s) is ${due} RLUSD` };
-  const from = plan.paidThrough && plan.paidThrough > new Date() ? plan.paidThrough : new Date();
-  const paidThrough = new Date(Date.UTC(from.getUTCFullYear(), from.getUTCMonth() + months, from.getUTCDate(), from.getUTCHours(), from.getUTCMinutes()));
-  try {
-    await prisma.$transaction([
-      prisma.spendPlanPayment.create({ data: { txHash: h, planId: plan.id, months, amount: String(p.amount) } }),
-      prisma.spendPlan.update({ where: { id: plan.id }, data: { paidThrough, status: "active" } }),
-    ]);
-  } catch {
-    return { ok: false, error: "this payment has already been used" };
-  }
-  return { ok: true, paidThrough };
 }
 
 // ── one-signature Batch (gated) ─────────────────────────────────────────────────────────────────────────────────

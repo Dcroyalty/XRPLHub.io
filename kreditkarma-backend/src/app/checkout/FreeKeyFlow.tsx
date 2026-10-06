@@ -10,6 +10,7 @@
 //   4. issued -> show the key ONCE
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { watchXaman } from "@/lib/wallet/xamanWatch";
 import WalletPicker from "@/lib/wallet/WalletPicker";
 import XamanPayPrompt from "@/components/XamanPayPrompt";
 import {
@@ -132,11 +133,13 @@ export default function FreeKeyFlow() {
     }
   }, []);
 
-  // Xaman poll (unchanged behaviour)
+  // Xaman status over its websocket; REST claim only on resolution or as a slow fallback (src/lib/wallet/xamanWatch.ts)
   useEffect(() => {
     if (phase !== "xaman-wait" || !startData.current?.uuid) return;
     const id = startData.current.uuid;
-    const t = setInterval(async () => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let live = true;
+    const tick = async () => {
       try {
         const res = await fetch("/api/free-key/claim", {
           method: "POST",
@@ -144,13 +147,15 @@ export default function FreeKeyFlow() {
           body: JSON.stringify({ uuid: id }),
         });
         const data = await res.json();
-        if (data.status === "pending") return;
-        applyStatus(data.status, data.key);
+        if (data.status !== "pending") { live = false; applyStatus(data.status, data.key); return; }
       } catch {
         /* keep polling */
       }
-    }, 3000);
-    return () => clearInterval(t);
+      if (live) timer = setTimeout(tick, xw.delay());
+    };
+    const xw = watchXaman(id, () => { if (timer) clearTimeout(timer); void tick(); });
+    timer = setTimeout(tick, xw.delay());
+    return () => { live = false; xw.stop(); if (timer) clearTimeout(timer); };
   }, [phase]);
 
   // ---- terminal screens ----
