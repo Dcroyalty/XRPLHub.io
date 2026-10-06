@@ -29,10 +29,12 @@ import {
   PRICE_PER_MPT_RLUSD,
   PRICE_PER_EXPOSURE_RLUSD,
   PRICE_PER_UNDERWRITE_RLUSD,
+  PRICE_PER_PRECHECK_RLUSD,
   TREASURY_ADDRESS,
 } from "@/lib/paycall";
+import { PRECHECK_INPUT_SCHEMA, PRECHECK_OUTPUT_SCHEMA } from "@/lib/paymentPrecheck";
 import { SERVICE_COUNT } from "@/app/api/execute/serviceCatalog";
-import { BASE_PAY_TO, BASE_NETWORK, USDC_BASE_ASSET, CDP_FACILITATOR_URL, PRICE_PER_SCORE_USDC, PRICE_PER_MPT_USDC, PRICE_PER_SCREEN_USDC, PRICE_PER_EXPOSURE_USDC, PRICE_PER_UNDERWRITE_USDC, PRICE_PER_REPORT_USDC } from "@/lib/x402Base";
+import { BASE_PAY_TO, BASE_NETWORK, USDC_BASE_ASSET, CDP_FACILITATOR_URL, PRICE_PER_SCORE_USDC, PRICE_PER_MPT_USDC, PRICE_PER_SCREEN_USDC, PRICE_PER_EXPOSURE_USDC, PRICE_PER_UNDERWRITE_USDC, PRICE_PER_REPORT_USDC, PRICE_PER_PRECHECK_USDC } from "@/lib/x402Base";
 import { UNDERWRITE_DISCLAIMER } from "@/lib/underwriteCanon";
 import {
   SCREEN_OFAC_DESCRIPTION,
@@ -266,6 +268,32 @@ function usdcExposureResource(origin: string) {
 }
 
 // XLS-66 underwriting-inputs bundle — the highest-value call. Facts only.
+// Agent payment pre-check — one verdict before paying an XRPL address (src/lib/paymentPrecheck.ts).
+const PRECHECK_DESCRIPTION =
+  "Agent payment pre-check: before paying an XRPL address, one verdict (block / caution / proceed) by fixed published " +
+  "rules — XRPLScore, a sanctions screen against every list held (anchored receipt), account age and ledger flags, and " +
+  "whether the ledger would reject the payment (missing tag, deposit auth, no trust line, unfunded account). Not advice.";
+function usdcPrecheckResource(origin: string) {
+  return {
+    resource: `${origin}/api/x402/precheck`,
+    method: "GET",
+    name: "Agent payment pre-check — pay per call in USDC on Base",
+    description: PRECHECK_DESCRIPTION + " $0.03 USDC on Base.",
+    x402Version: 1,
+    scheme: "exact",
+    network: BASE_NETWORK,
+    asset: USDC_BASE_ASSET,
+    assetSymbol: "USDC",
+    payTo: BASE_PAY_TO,
+    maxTimeoutSeconds: 300,
+    facilitator: CDP_FACILITATOR_URL,
+    noSignup: true,
+    amount: PRICE_PER_PRECHECK_USDC.toFixed(6),
+    inputSchema: PRECHECK_INPUT_SCHEMA,
+    outputSchema: PRECHECK_OUTPUT_SCHEMA,
+  };
+}
+
 function usdcUnderwriteResource(origin: string) {
   return {
     resource: `${origin}/api/x402/lending/underwrite`,
@@ -383,7 +411,17 @@ export async function GET(req: Request) {
           outputSchema: REPORT_SCHEMA.output,
           outputExample: REPORT_SCHEMA.outputExample,
         },
-        // XRPL twins of the four dual-rail resources (same URL as the Base entries further down; same face value).
+        // XRPL twins of the dual-rail resources (same URL as the Base entries further down; same face value).
+        {
+          resource: `${origin}/api/x402/precheck`,
+          method: "GET",
+          name: "Agent payment pre-check",
+          description: PRECHECK_DESCRIPTION,
+          ...common,
+          amount: PRICE_PER_PRECHECK_RLUSD.toFixed(6),
+          inputSchema: PRECHECK_INPUT_SCHEMA,
+          outputSchema: PRECHECK_OUTPUT_SCHEMA,
+        },
         {
           resource: `${origin}/api/x402/usdc/mpt/{mptokenIssuanceID}`,
           method: "GET",
@@ -467,6 +505,7 @@ export async function GET(req: Request) {
         usdcScreenResource(origin),
         usdcExposureResource(origin),
         usdcUnderwriteResource(origin),
+        usdcPrecheckResource(origin),
         usdcPlanResource(origin, "starter"),
         usdcPlanResource(origin, "growth"),
         usdcPlanResource(origin, "scale"),

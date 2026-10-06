@@ -198,6 +198,10 @@ x402 pay-per-call (data, not transactions) — EVERY paid route below takes RLUS
   /api/v1/pay-per-score.
 
 More x402 pay-per-call routes (both rails, same price):
+- GET ${origin}/api/x402/precheck?destination=r...&amount=&currency=XRP|RLUSD&destinationTag=&from= — AGENT PAYMENT PRE-CHECK, $0.03:
+  one verdict (block | caution | proceed) by fixed published rules before you pay an XRPL address — XRPLScore, sanctions screen against
+  every list held (anchored receipt), account age + ledger flags, and wouldFail when the ledger would reject the payment (missing
+  destination tag, Deposit Authorization, no RLUSD trust line, unfunded account). The rules come back in every response. Not advice.
 - POST ${origin}/api/x402/usdc/score — 300-850 score, $0.02 (body {"wallet":"r..."}; same product and price as GET /api/x402/score)
 - GET ${origin}/api/x402/usdc/mpt/<48-hex id> — full MPT issuer risk, $0.01
 - GET ${origin}/api/x402/screen/ofac?address=r... — OFAC SDN screening attestation, $0.01 (process not ground truth; see the screening section above)

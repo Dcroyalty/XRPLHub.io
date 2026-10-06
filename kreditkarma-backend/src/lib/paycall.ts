@@ -20,6 +20,7 @@ export const PRICE_PER_SCREEN_RLUSD = 0.01; // OFAC SDN screening attestation
 export const PRICE_PER_MPT_RLUSD = 0.01; // full MPT issuer risk view
 export const PRICE_PER_EXPOSURE_RLUSD = 0.01; // XLS-66 cross-broker lending exposure
 export const PRICE_PER_UNDERWRITE_RLUSD = 0.05; // underwriting-inputs bundle
+export const PRICE_PER_PRECHECK_RLUSD = 0.03; // agent payment pre-check (score + every-list screen + ledger flags)
 
 // How long an unpaid quote stays valid before it expires.
 export const QUOTE_TTL_MINUTES = 15;

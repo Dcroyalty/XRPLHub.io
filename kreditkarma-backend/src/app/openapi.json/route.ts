@@ -896,6 +896,37 @@ export async function GET(req: Request) {
         },
       },
 
+      "/api/x402/precheck": {
+        get: {
+          operationId: "paymentPrecheck",
+          summary: "Agent payment pre-check — one verdict before paying an XRPL address (x402, $0.03 USDC on Base or RLUSD on XRPL)",
+          description:
+            "Before an agent pays an XRPL address: a verdict (block / caution / proceed) by fixed published rules, with the " +
+            "destination's XRPLScore, a sanctions screen against every list held (anchored receipt, verify at /api/attest/verify), " +
+            "account age and ledger flags, and wouldFail when the ledger would reject the payment as described (missing " +
+            "destination tag, Deposit Authorization, no RLUSD trust line, unfunded account). The rules are returned in every " +
+            "response. Not advice; 'proceed' only means no rule fired. No signup.",
+          tags: ["Agents"],
+          parameters: [
+            { name: "destination", in: "query", required: true, description: "The XRPL address you are about to pay.", schema: { type: "string" } },
+            { name: "amount", in: "query", required: false, description: "Amount you intend to send.", schema: { type: "string" } },
+            { name: "currency", in: "query", required: false, schema: { type: "string", enum: ["XRP", "RLUSD"] } },
+            { name: "destinationTag", in: "query", required: false, schema: { type: "integer" } },
+            { name: "from", in: "query", required: false, description: "Your paying address (checks Deposit Authorization preauth).", schema: { type: "string" } },
+          ],
+          "x-payment-info": {
+            price: { mode: "fixed", currency: "USD", amount: "0.030000" },
+            protocols: [{ x402: {} }],
+            description: "Agent payment pre-check, USDC on Base (CDP) or RLUSD on XRPL (t54).",
+          },
+          responses: {
+            "200": { description: "{ verdict, wouldFail, reasons[], xrplScore, sanctions, account, payment, rules[], disclaimer }" },
+            "400": { description: "Malformed destination / amount / tag — refused before any charge." },
+            "402": { description: "Payment Required — x402 challenge on either rail (see /api/x402/usdc/mpt/{issuanceId})." },
+          },
+        },
+      },
+
       "/api/screen/ofac": {
         get: {
           operationId: "screenOfac",
