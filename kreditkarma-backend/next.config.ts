@@ -9,6 +9,15 @@ const nextConfig: NextConfig = {
   },
   // xrp-ledger.toml: the spec wants application/toml (text/plain also accepted) and CORS open,
   // so browser-based checkers can read it. Served from public/.well-known/.
+  // DEX order, swap and AMM deposit/withdraw builders were removed 2026-10-06 (Xaman charges for those; we don't
+  // compete with the wallet we sign through). Send their old indexed pages to the catalog instead of a 404.
+  async redirects() {
+    return ["dexorder", "smartswap", "ammentry", "ammwithdraw"].map((id) => ({
+      source: `/services/${id}`,
+      destination: "/services",
+      permanent: true,
+    }));
+  },
   async headers() {
     return [
       {

@@ -25,7 +25,7 @@ The live production app is a single Next.js project in **`kreditkarma-backend/`*
 ## Products
 
 - **XRPLScore** — a 300–850 credit-style score for an XRPL wallet.
-- **35 FREE XRPL transaction services** — on-chain actions (trustlines, escrows, AMM, NFT, etc.) we BUILD the
+- **31 FREE XRPL transaction services** — on-chain actions (trustlines, escrows, AMM pool creation, NFT, etc. — NOT DEX orders, swaps or AMM deposits/withdrawals: removed 2026-10-06 because Xaman charges for those) we BUILD the
   exact unsigned transaction for; the customer signs it. FREE on every path since 2026-10-05 (Xaman removed our original
   app for charging for transactions Xaman offers free): storefront (`/api/execute`), `GET /api/tx` (and the old
   `/api/x402/tx` URL), MCP `build_xrpl_transaction`, the ElizaOS plugin. One shared builder: `src/lib/freeTx.ts`.

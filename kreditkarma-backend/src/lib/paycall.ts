@@ -15,7 +15,7 @@ export const PRICE_PER_PRODUCT_RLUSD = 0.08;
 // The four resources that are payable on BOTH rails (USDC on Base via CDP, RLUSD on XRPL via t54) at the same face value
 // as their Base price in src/lib/x402Base.ts. Kept as literals here (not imported) so this file stays free of the CDP/viem
 // import chain; src/lib/x402Dual.ts checks on every request that the two rails quote the same price and fails closed if not.
-// (Transactions are not priced here: the 35 transaction services are free since 2026-10-05, see src/lib/freeTx.ts.)
+// (Transactions are not priced here: the 31 transaction services are free since 2026-10-05, see src/lib/freeTx.ts.)
 export const PRICE_PER_SCREEN_RLUSD = 0.01; // OFAC SDN screening attestation
 export const PRICE_PER_MPT_RLUSD = 0.01; // full MPT issuer risk view
 export const PRICE_PER_EXPOSURE_RLUSD = 0.01; // XLS-66 cross-broker lending exposure

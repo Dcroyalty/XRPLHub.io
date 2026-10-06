@@ -17,7 +17,7 @@ import { allocateDestinationTag } from '@/lib/purchaseIntent'
 import { priceUsd as listPriceUsd } from '@/lib/pricing'
 import { SERVICE_REQUIRED_AMENDMENT, serviceAvailability } from '@/lib/serviceAmendments'
 
-// The 35 transaction services are FREE (2026-10-05): there is nothing to pay for, so they have no names here and are refused
+// The 31 transaction services are FREE (2026-10-05): there is nothing to pay for, so they have no names here and are refused
 // below. What this route still takes payment for:
 const NAMES: Record<string, string> = {
   credential:'XRPLScore Verified Credential (90 days)',

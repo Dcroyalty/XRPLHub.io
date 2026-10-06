@@ -27,7 +27,7 @@ import { buildCheckCancel, buildCheckCash, buildCheckCreate, parseCurrency } fro
 // ── Per-product builders ──────────────────────────────────────────────
 // account = the customer's own wallet (the signer). A builder may be async (it can read the
 // ledger) and may return several steps. The services in serviceBuilders.ts (multisig,
-// issuerdecl, issuercfg, rippling, identity, compliance, ammentry, smartswap, trustsend)
+// issuerdecl, issuercfg, rippling, identity, compliance, trustsend)
 // replace the older single-transaction versions that used to live here.
 const builders: Record<string, Builder> = {
   ...richBuilders,
@@ -144,14 +144,7 @@ const builders: Record<string, Builder> = {
   },
 
   // ── DEFI ──────────────────────────────────────────────────────────
-  dexorder: (account, p) => {
-    const getsCur = str(p.takerGetsCurrency), getsVal = str(p.takerGetsValue), getsIss = str(p.takerGetsIssuer);
-    const paysCur = str(p.takerPaysCurrency), paysVal = str(p.takerPaysValue), paysIss = str(p.takerPaysIssuer);
-    if (!getsVal || !paysVal) return NEED(['takerGetsValue', 'takerPaysValue']);
-    const gets = getsCur === 'XRP' || !getsCur ? xrpToDrops(Number(getsVal)) : { currency: getsCur, issuer: getsIss, value: getsVal };
-    const pays = paysCur === 'XRP' || !paysCur ? xrpToDrops(Number(paysVal)) : { currency: paysCur, issuer: paysIss, value: paysVal };
-    return SAFE({ TransactionType: 'OfferCreate', Account: account, TakerGets: gets, TakerPays: pays }, 'DEX Order (OfferCreate)');
-  },
+
   ammlaunch: (account, p) => {
     const aCur = str(p.assetCurrency), aVal = str(p.assetValue), aIss = str(p.assetIssuer);
     const bCur = str(p.asset2Currency), bVal = str(p.asset2Value), bIss = str(p.asset2Issuer);

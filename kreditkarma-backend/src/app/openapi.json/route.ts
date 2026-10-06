@@ -287,7 +287,7 @@ export async function GET(req: Request) {
           summary: "FREE: the unsigned XRPL transaction for any of " + SERVICE_COUNT + " actions — no payment",
           description:
             "The unsigned transaction JSON for any of " + SERVICE_COUNT + " XRPL actions (CheckCreate, Escrow, TrustSet, NFT " +
-            "mint/sell/burn, AMM, DEX order, MPT issue/send, multisig, DID, credentials, permissioned domains, permission " +
+            "mint/sell/burn, AMM pool creation, MPT issue/send, multisig, DID, credentials, permissioned domains, permission " +
             "delegation, and more). FREE — XRPLHub charges nothing for transactions. Every step, in order, for multi-step " +
             "actions. Caution-tier actions (irreversible) return 409 confirmation_required with what is irreversible until " +
             "confirmCaution=true. The wallet owner signs the returned txjson with their own wallet — XRPLHub never signs, never " +

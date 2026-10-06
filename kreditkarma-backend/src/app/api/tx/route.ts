@@ -1,5 +1,5 @@
 // src/app/api/tx/route.ts
-// FREE: the unsigned transaction for any of the 35 XRPL services. See src/lib/freeTxHttp.ts.
+// FREE: the unsigned transaction for any of the 31 XRPL services. See src/lib/freeTxHttp.ts.
 import { handleFreeTxRequest } from "@/lib/freeTxHttp";
 
 export const runtime = "nodejs";

@@ -5,7 +5,7 @@
 // an XRP price is never stored — it is derived from a live rate at request time.
 
 /**
- * The 35 transaction services are FREE on every path (owner decision 2026-10-05, after Xaman removed XRPLHub's original
+ * The 31 transaction services are FREE on every path (owner decision 2026-10-05, after Xaman removed XRPLHub's original
  * app for charging for transactions Xaman offers free). Every entry for a catalog service below must be 0 —
  * check-service-parity.mjs fails the build otherwise. History: $15–$80 until 2026-10-05, then $1 / $5 for a few hours.
  * Still paid (NOT in this table's service rows): score reports + score API, screening, monitoring, MPT data, credentials
@@ -25,10 +25,7 @@ export const SERVICE_PRICE_USD: Readonly<Record<string, number>> = Object.freeze
   issuercfg: 0,
   trustline: 0,
   rippling: 0,
-  dexorder: 0,
   ammlaunch: 0,
-  ammentry: 0,
-  smartswap: 0,
   paychannel: 0,
   nftmint: 0,
   nftburn: 0,
@@ -46,7 +43,6 @@ export const SERVICE_PRICE_USD: Readonly<Record<string, number>> = Object.freeze
   checkcash: 0,
   checkcancel: 0,
   depositpreauth: 0,
-  ammwithdraw: 0,
   tickets: 0,
   credentialissue: 0,
   permdomain: 0,

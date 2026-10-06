@@ -153,40 +153,6 @@ export const SERVICE_CATALOG: ServiceDef[] = [
     ] },
 
   // ── DeFi ────────────────────────────────────────────────────────
-  { id: "dexorder", label: "DEX order (OfferCreate)", category: "DeFi", tier: "safe",
-    gives: "An OfferCreate txjson for a limit order on the XRPL DEX.",
-    params: [
-      P("takerGetsValue", "string", true, "Amount you give", "10"),
-      P("takerGetsCurrency", "string", false, "Currency you give (default XRP)", "XRP"),
-      P("takerGetsIssuer", "address", false, "Issuer if not XRP", "rIssuer..."),
-      P("takerPaysValue", "string", true, "Amount you want", "10"),
-      P("takerPaysCurrency", "string", false, "Currency you want (default XRP)", "USD"),
-      P("takerPaysIssuer", "address", false, "Issuer if not XRP", "rIssuer..."),
-    ] },
-  { id: "ammwithdraw", label: "AMM liquidity exit", category: "DeFi", tier: "safe",
-    gives:
-      "An AMMWithdraw txjson taking liquidity back out of an AMM pool. mode=all redeems ALL your LP tokens for both assets (tfWithdrawAll); single withdraws an amount of asset 1 (tfSingleAsset); two withdraws amounts of both (tfTwoAsset). Checked against the ledger: the pool must exist and you must hold its LP tokens.",
-    params: [
-      P("asset2Currency", "string", true, "Asset 2 currency (identifies the pool)", "RLUSD"),
-      P("asset2Issuer", "address", false, "Asset 2 issuer if not XRP", "rIssuer..."),
-      P("assetCurrency", "string", false, "Asset 1 currency (default XRP)", "XRP"),
-      P("assetIssuer", "address", false, "Asset 1 issuer if not XRP", "rIssuer..."),
-      P("mode", "string", false, "all (default), single, or two", "all"),
-      P("assetValue", "string", false, "Amount of asset 1 to withdraw (single / two modes)", "10"),
-      P("asset2Value", "string", false, "Amount of asset 2 to withdraw (two mode)", "14"),
-    ] },
-  { id: "smartswap", label: "Smart swap router (path payment)", category: "DeFi", tier: "safe",
-    gives:
-      "A cross-currency Payment routed by the ledger's own pathfinder across order books and AMM pools. You receive EXACTLY the amount you ask for; SendMax caps what you can be charged at the quote plus your slippage %. Refused if no route with liquidity exists.",
-    params: [
-      P("receiveValue", "string", true, "Amount you want to receive", "10"),
-      P("receiveCurrency", "string", true, "Currency you want to receive", "USD"),
-      P("receiveIssuer", "address", false, "Issuer of the currency you receive, if not XRP", "rIssuer..."),
-      P("sendCurrency", "string", false, "Currency you pay with (default XRP)", "XRP"),
-      P("sendIssuer", "address", false, "Issuer of the currency you pay with, if not XRP", "rIssuer..."),
-      P("slippagePct", "number", false, "Max % over the current quote you accept (default 1, max 10)", "1"),
-      P("destination", "address", false, "Deliver to this address (default: yourself)", "rDest..."),
-    ] },
   { id: "ammlaunch", label: "Create AMM pool", category: "DeFi", tier: "safe",
     gives: "An AMMCreate txjson launching a new liquidity pool.",
     params: [
@@ -197,17 +163,6 @@ export const SERVICE_CATALOG: ServiceDef[] = [
       P("asset2Currency", "string", false, "Asset 2 currency", "USD"),
       P("asset2Issuer", "address", false, "Asset 2 issuer if not XRP", "rIssuer..."),
       P("tradingFee", "number", false, "Fee in 1/1000 (default 500 = 0.5%)", "500"),
-    ] },
-  { id: "ammentry", label: "AMM liquidity deposit", category: "DeFi", tier: "safe",
-    gives:
-      "An AMMDeposit txjson (Asset + Asset2 identify the pool). Give both amounts for a two-sided deposit (tfTwoAsset) or only assetValue for a single-sided one (tfSingleAsset). Refused if no AMM exists for the pair.",
-    params: [
-      P("assetValue", "string", true, "Amount of asset 1", "1000"),
-      P("assetCurrency", "string", false, "Asset 1 currency (default XRP)", "XRP"),
-      P("assetIssuer", "address", false, "Asset 1 issuer if not XRP", "rIssuer..."),
-      P("asset2Currency", "string", true, "Asset 2 currency (identifies the pool)", "USD"),
-      P("asset2Issuer", "address", false, "Asset 2 issuer if not XRP", "rIssuer..."),
-      P("asset2Value", "string", false, "Amount of asset 2 — omit for a single-sided deposit", "500"),
     ] },
   { id: "paychannel", label: "Create payment channel", category: "DeFi", tier: "safe",
     gives: "A PaymentChannelCreate txjson for streaming/off-ledger payments.",

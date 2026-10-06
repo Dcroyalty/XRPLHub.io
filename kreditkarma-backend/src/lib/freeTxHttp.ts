@@ -1,5 +1,5 @@
 // src/lib/freeTxHttp.ts
-// The free REST endpoint for the 35 transaction services: GET or POST /api/tx (the old /api/x402/tx URL serves the same
+// The free REST endpoint for the 31 transaction services: GET or POST /api/tx (the old /api/x402/tx URL serves the same
 // handler, so existing clients keep working — it no longer asks for a payment).
 //   GET  /api/tx?productId=<id>&account=r...[&<params>][&confirmCaution=true]
 //   POST /api/tx { productId, account, params: {...}, confirmCaution? }

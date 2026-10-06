@@ -4,7 +4,7 @@
 // xrpl-ai.org / x402scan auto-discovery finds and lists all of them — each with
 // an inputSchema (every query param, its values, an example) and an
 // outputSchema + outputExample so a crawler knows exactly what it gets back.
-// The 35 transaction services are FREE since 2026-10-05 and are not listed here (see freeTransactions). Every PER-CALL paid
+// The 31 transaction services are FREE since 2026-10-05 and are not listed here (see freeTransactions). Every PER-CALL paid
 // resource is payable on BOTH rails (src/lib/x402Dual.ts): score, report, usdc/score,
 // mpt, screen/ofac, lending/exposure, lending/underwrite. Each appears twice: once as the Base/USDC entry and once as the
 // XRPL/RLUSD entry, for the SAME URL, at the same price. One product, one price, every rail: POST usdc/score and
@@ -504,7 +504,7 @@ export async function GET(req: Request) {
       // Stable machine-readable error codes returned by the RLUSD/t54 paid
       // routes. `error` is always one of these keys; the value describes it.
       errorCodes: X402_ERROR_CODES,
-      // Not x402: the 35 transaction services are free (owner decision 2026-10-05).
+      // Not x402: the 31 transaction services are free (owner decision 2026-10-05).
       freeTransactions: {
         endpoint: `${origin}/api/tx?productId={id}&account={r-address}[&<params>][&confirmCaution=true]`,
         alsoAt: `${origin}/api/x402/tx (historical URL, same free handler)`,

@@ -1,7 +1,7 @@
 # plugin-xrplhub
 
 **XRPLHub for ElizaOS agents.** Score an XRPL wallet, screen an address against OFAC SDN, look up an MPT issuer,
-**describe any of 35 XRPL transactions**, and **get the unsigned, ready-to-sign transaction for free** — trustlines,
+**describe any of 31 XRPL transactions**, and **get the unsigned, ready-to-sign transaction for free** — trustlines,
 escrows, AMM, NFTs, multisig, MPT issuance, permission delegation and more.
 
 > **Unsigned only. No custody.** This plugin never signs, never submits, and never touches a key. The transaction it
@@ -105,7 +105,7 @@ not pin a core version. Verified against `@elizaos/core` 1.7.2 (npm `latest`) an
 ```bash
 npm install
 npm run verify                # typecheck + tests (offline) + build + surface check
-node scripts/live-check.mjs   # manual: exercises every action against production, previews all 35 services
+node scripts/live-check.mjs   # manual: exercises every action against production, previews all 31 services
 ```
 
 ## Links

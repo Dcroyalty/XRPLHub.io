@@ -1,5 +1,5 @@
 // src/lib/freeTx.ts
-// THE way every one of the 35 transaction services is delivered — FREE, on every path (owner decision 2026-10-05,
+// THE way every one of the 31 transaction services is delivered — FREE, on every path (owner decision 2026-10-05,
 // after Xaman removed the original app for charging for transactions Xaman offers free):
 //   storefront   POST /api/execute            (+ a Xaman sign request)
 //   REST         GET  /api/tx  (and the old /api/x402/tx, same handler)

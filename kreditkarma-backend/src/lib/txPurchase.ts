@@ -59,7 +59,7 @@ export interface PriceInfo {
 export function priceInfo(productId: string): PriceInfo | null {
   const usd = priceUsd(productId);
   if (usd == null) return null;
-  // The 35 transaction services are free (owner decision 2026-10-05) — say so instead of describing payment rails.
+  // The 31 transaction services are free (owner decision 2026-10-05) — say so instead of describing payment rails.
   if (usd === 0) return { usd: 0, free: true, note: "Free. You sign it with your own wallet; XRPLHub charges nothing for transactions.", payWith: [] };
   return {
     usd,

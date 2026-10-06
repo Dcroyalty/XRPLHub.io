@@ -1,9 +1,8 @@
 // src/app/api/execute/serviceBuilders.ts
 // The storefront services that were rebuilt to match what they advertise. Each one
-// follows the XRPL reference for the transaction it builds (AccountSet, AMMDeposit,
-// Payment + ripple_path_find, TrustSet, SignerListSet…), and where correctness depends
-// on live ledger state (existing trust-line limit, whether an AMM exists, a real
-// payment path, an existing regular key) it READS that state instead of guessing.
+// follows the XRPL reference for the transaction it builds (AccountSet, Payment,
+// TrustSet, SignerListSet…), and where correctness depends
+// on live ledger state (existing trust-line limit, an existing regular key) it READS that state instead of guessing.
 //
 // Multi-step services return `steps`, signed in order; the plan (step ids) is fixed at
 // step 1 and later steps are built by id (ctx.planIds).
@@ -24,11 +23,6 @@ const ASF = { DISABLE_MASTER: 4, NO_FREEZE: 6, DEFAULT_RIPPLE: 8 } as const;
 const TF_DISALLOW_XRP = 0x00100000; // AccountSet tfDisallowXRP
 const TF_SET_NO_RIPPLE = 0x00020000; // TrustSet
 const TF_CLEAR_NO_RIPPLE = 0x00040000; // TrustSet
-const TF_SINGLE_ASSET = 0x00080000; // AMMDeposit
-const TF_TWO_ASSET = 0x00100000; // AMMDeposit
-const TF_WITHDRAW_ALL = 0x00020000; // AMMWithdraw (tfWithdrawAll)
-const TF_W_SINGLE_ASSET = 0x00080000; // AMMWithdraw (tfSingleAsset)
-const TF_W_TWO_ASSET = 0x00100000; // AMMWithdraw (tfTwoAsset)
 
 const LEDGER_UNREACHABLE =
   'could not read your account from the ledger just now — try again in a moment (this transaction is not built blind).';
@@ -188,74 +182,6 @@ export const richBuilders: Record<string, Builder> = {
     ], 'Compliance Bundle (identity + domain + DID)');
   },
 
-  // ── AMM Liquidity Entry ────────────────────────────────────────────────────
-  // AMMDeposit REQUIRES Asset and Asset2 (they identify the pool). Two amounts => tfTwoAsset;
-  // one amount => tfSingleAsset.
-  ammentry: async (account, p) => {
-    const aVal = str(p.assetValue);
-    const bVal = str(p.asset2Value);
-    if (!aVal) return NEED(['assetValue']);
-    if (!str(p.asset2Currency)) return NEED(['asset2Currency']);
-    const a = assetFrom(str(p.assetCurrency) || 'XRP', str(p.assetIssuer));
-    if (!a.ok) return BAD(a.error);
-    const b = assetFrom(str(p.asset2Currency), str(p.asset2Issuer));
-    if (!b.ok) return BAD(b.error);
-    if (a.asset.currency === b.asset.currency && a.asset.issuer === b.asset.issuer) return BAD('the two pool assets must be different');
-    if (!positiveDecimal(aVal) || (bVal && !positiveDecimal(bVal))) return BAD('amounts must be positive numbers');
-
-    const tx: Record<string, unknown> = { TransactionType: 'AMMDeposit', Account: account, Asset: a.asset, Asset2: b.asset };
-    if (bVal) {
-      tx.Amount = amountOf(a.asset, aVal);
-      tx.Amount2 = amountOf(b.asset, bVal);
-      tx.Flags = TF_TWO_ASSET;
-    } else {
-      tx.Amount = amountOf(a.asset, aVal);
-      tx.Flags = TF_SINGLE_ASSET;
-    }
-    const exists = await ammExists(a.asset, b.asset);
-    if (exists === false) return BAD('there is no AMM pool for that pair — use AMM Pool Launch to create one first');
-    return SAFE(tx, bVal ? 'AMM Liquidity Deposit (two assets)' : 'AMM Liquidity Deposit (single asset)');
-  },
-
-  // ── Smart Swap Router ──────────────────────────────────────────────────────
-  // A cross-currency Payment. We ask the ledger's own pathfinder (ripple_path_find) for a
-  // route that delivers EXACTLY the amount you want, then use its computed Paths (which span
-  // order books and AMM pools) and cap what you can be charged with SendMax = quote + slippage.
-  // No tfPartialPayment: it either delivers the full amount within the cap or fails.
-  smartswap: async (account, p) => {
-    const recvVal = str(p.receiveValue);
-    if (!recvVal) return NEED(['receiveValue']);
-    if (!str(p.receiveCurrency)) return NEED(['receiveCurrency']);
-    const send = assetFrom(str(p.sendCurrency) || 'XRP', str(p.sendIssuer));
-    if (!send.ok) return BAD(send.error);
-    const recv = assetFrom(str(p.receiveCurrency), str(p.receiveIssuer));
-    if (!recv.ok) return BAD(recv.error);
-    if (send.asset.currency === recv.asset.currency && send.asset.issuer === recv.asset.issuer) return BAD('the currency you send and the currency you receive are the same');
-    if (!positiveDecimal(recvVal)) return BAD('the amount to receive must be a positive number');
-    const slip = str(p.slippagePct) === '' ? 1 : Number(p.slippagePct);
-    if (!Number.isFinite(slip) || slip <= 0 || slip > 10) return BAD('slippage must be more than 0% and at most 10%');
-    const dest = str(p.destination) || account;
-    if (!isAddr(dest)) return BAD('invalid destination address');
-
-    const destAmount = amountOf(recv.asset, recvVal) as string | { currency: string; issuer: string; value: string };
-    const alts = await findPaths({ source: account, destination: dest, destinationAmount: destAmount, sourceCurrency: send.asset });
-    if (!alts) return BAD('could not compute a route right now — the ledger path-finder is unavailable, try again shortly');
-
-    const priced = alts
-      .map((alt) => ({ alt, n: typeof alt.source_amount === 'string' ? Number(alt.source_amount) : Number(alt.source_amount.value) }))
-      .filter((x) => Number.isFinite(x.n) && x.n > 0);
-    if (priced.length === 0) return BAD('no route with enough liquidity was found for that swap (it may need a trust line, or the pools/order books are too thin)');
-    const best = priced.reduce((m, x) => (x.n < m.n ? x : m));
-
-    const src = best.alt.source_amount;
-    const sendMax = typeof src === 'string'
-      ? String(Math.ceil(Number(src) * (1 + slip / 100)))
-      : { currency: src.currency, issuer: src.issuer ?? account, value: iouValue(best.n * (1 + slip / 100)) };
-    const tx: Record<string, unknown> = { TransactionType: 'Payment', Account: account, Destination: dest, Amount: destAmount, SendMax: sendMax };
-    if (best.alt.paths_computed.length > 0) tx.Paths = best.alt.paths_computed;
-    return SAFE(tx, `Smart Swap (route found; you pay at most ${slip}% over the current quote)`);
-  },
-
   // ── Trust Line + Send Currency ─────────────────────────────────────────────
   // Two transactions from YOUR account: (1) TrustSet so you can hold the token, (2) a Payment
   // of that token to the destination. Step 2 needs you to already hold enough of the token, so
@@ -314,48 +240,6 @@ export const richBuilders: Record<string, Builder> = {
         ? 'Preauthorize a sender (Deposit Auth is not on yet — it takes effect once you enable it)'
         : 'Preauthorize a sender for Deposit Auth';
     return SAFE({ TransactionType: 'DepositPreauth', Account: account, [remove ? 'Unauthorize' : 'Authorize']: sender }, label);
-  },
-
-  // ── AMM Liquidity Exit (AMMWithdraw) ───────────────────────────────────────
-  // Take liquidity back out of an AMM pool. mode "all" redeems ALL your LP tokens for both assets
-  // (tfWithdrawAll); "single" withdraws an amount of one asset (tfSingleAsset); "two" withdraws
-  // amounts of both (tfTwoAsset). Asset + Asset2 identify the pool. We check on the ledger that the
-  // pool exists and that you actually hold its LP tokens.
-  ammwithdraw: async (account, p) => {
-    if (!str(p.asset2Currency)) return NEED(['asset2Currency']);
-    const a = assetFrom(str(p.assetCurrency) || 'XRP', str(p.assetIssuer));
-    if (!a.ok) return BAD(a.error);
-    const b = assetFrom(str(p.asset2Currency), str(p.asset2Issuer));
-    if (!b.ok) return BAD(b.error);
-    if (a.asset.currency === b.asset.currency && a.asset.issuer === b.asset.issuer) return BAD('the two pool assets must be different');
-
-    const mode = ['single', 'two'].includes(str(p.mode).toLowerCase()) ? str(p.mode).toLowerCase() : 'all';
-    const aVal = str(p.assetValue);
-    const bVal = str(p.asset2Value);
-    const tx: Record<string, unknown> = { TransactionType: 'AMMWithdraw', Account: account, Asset: a.asset, Asset2: b.asset };
-    if (mode === 'all') {
-      tx.Flags = TF_WITHDRAW_ALL;
-    } else if (mode === 'single') {
-      if (!aVal) return NEED(['assetValue']);
-      if (!positiveDecimal(aVal)) return BAD('the amount must be a positive number');
-      tx.Amount = amountOf(a.asset, aVal);
-      tx.Flags = TF_W_SINGLE_ASSET;
-    } else {
-      if (!aVal || !bVal) return NEED(['assetValue', 'asset2Value']);
-      if (!positiveDecimal(aVal) || !positiveDecimal(bVal)) return BAD('amounts must be positive numbers');
-      tx.Amount = amountOf(a.asset, aVal);
-      tx.Amount2 = amountOf(b.asset, bVal);
-      tx.Flags = TF_W_TWO_ASSET;
-    }
-
-    const amm = await getAmm(a.asset, b.asset);
-    if (amm === false) return BAD('there is no AMM pool for that pair');
-    if (amm) {
-      const lines = await getLines(account, amm.account);
-      if (lines && !lines.some((l) => l.currency.toUpperCase() === amm.lpCurrency.toUpperCase() && Number(l.balance) > 0))
-        return BAD('you hold no LP tokens for that pool, so there is nothing to withdraw');
-    }
-    return SAFE(tx, mode === 'all' ? 'AMM Liquidity Exit (withdraw everything)' : mode === 'single' ? 'AMM Liquidity Exit (one asset)' : 'AMM Liquidity Exit (both assets)');
   },
 
   // ── Permission Delegation (XLS-75) ─────────────────────────────────────────
