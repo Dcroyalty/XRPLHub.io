@@ -4,7 +4,7 @@
 // xrpl-ai.org / x402scan auto-discovery finds and lists all of them — each with
 // an inputSchema (every query param, its values, an example) and an
 // outputSchema + outputExample so a crawler knows exactly what it gets back.
-// The 31 transaction services are FREE since 2026-10-05 and are not listed here (see freeTransactions). Every PER-CALL paid
+// XRPLHub no longer builds generic XRPL transactions (catalog removed 2026-10-07; /api/tx is 410 Gone). Every PER-CALL paid
 // resource is payable on BOTH rails (src/lib/x402Dual.ts): score, report, usdc/score,
 // mpt, screen/ofac, lending/exposure, lending/underwrite. Each appears twice: once as the Base/USDC entry and once as the
 // XRPL/RLUSD entry, for the SAME URL, at the same price. One product, one price, every rail: POST usdc/score and
@@ -33,7 +33,6 @@ import {
   TREASURY_ADDRESS,
 } from "@/lib/paycall";
 import { PRECHECK_INPUT_SCHEMA, PRECHECK_OUTPUT_SCHEMA } from "@/lib/paymentPrecheck";
-import { SERVICE_COUNT } from "@/app/api/execute/serviceCatalog";
 import { BASE_PAY_TO, BASE_NETWORK, USDC_BASE_ASSET, CDP_FACILITATOR_URL, PRICE_PER_SCORE_USDC, PRICE_PER_MPT_USDC, PRICE_PER_SCREEN_USDC, PRICE_PER_EXPOSURE_USDC, PRICE_PER_UNDERWRITE_USDC, PRICE_PER_REPORT_USDC, PRICE_PER_PRECHECK_USDC } from "@/lib/x402Base";
 import { UNDERWRITE_DISCLAIMER } from "@/lib/underwriteCanon";
 import {
@@ -377,8 +376,7 @@ export async function GET(req: Request) {
       description:
         "On-chain creditworthiness scoring for the XRP Ledger. A 300–850 score from 8 signals, " +
         "full risk reports, screening and lending data, paid per call in RLUSD on the XRP Ledger or USDC on Base (same price) — " +
-        "no account, no API key, no signup. Prebuilt XRPL transactions for " + SERVICE_COUNT + " actions are FREE and not x402 " +
-        "resources: GET /api/tx (see freeTransactions below).",
+        "no account, no API key, no signup. Includes an agent payment pre-check before paying any XRPL address.",
       provider: { name: "XRPLHub.io", url: origin, contact: "support@xrplhub.io" },
       facilitator: FACILITATOR_URL,
       network: XRPL_NETWORK,
@@ -543,16 +541,6 @@ export async function GET(req: Request) {
       // Stable machine-readable error codes returned by the RLUSD/t54 paid
       // routes. `error` is always one of these keys; the value describes it.
       errorCodes: X402_ERROR_CODES,
-      // Not x402: the 31 transaction services are free (owner decision 2026-10-05).
-      freeTransactions: {
-        endpoint: `${origin}/api/tx?productId={id}&account={r-address}[&<params>][&confirmCaution=true]`,
-        alsoAt: `${origin}/api/x402/tx (historical URL, same free handler)`,
-        mcpTool: "build_xrpl_transaction",
-        price: "free",
-        actions: SERVICE_COUNT,
-        cautionTier: "Irreversible actions return 409 confirmation_required with what is irreversible, until confirmCaution=true.",
-        signing: "You sign with your own wallet. XRPLHub never signs and never holds keys or funds.",
-      },
       guarantees: {
         settlement: "On every resource, on both rails: the payment settles ONLY after the paid work returns success (XRPL: t54 settles after the handler; Base: withX402 settles only on a <400 response). A handler failure returns error:handler_failed and does NOT charge you — retry with the same PAYMENT-SIGNATURE within maxTimeoutSeconds.",
         idempotency: "Send an Idempotency-Key header (or rely on the payment's invoiceId). A retried request replays the original response — you can never pay twice.",

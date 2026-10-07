@@ -1,16 +1,8 @@
 import { MetadataRoute } from 'next';
-import { RAW_PRODUCTS } from '@/lib/serviceContent';
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const base = 'https://www.xrplhub.io';
   const now  = new Date();
-
-  const servicePages: MetadataRoute.Sitemap = RAW_PRODUCTS.map((p) => ({
-    url:              `${base}/services/${p.id}`,
-    lastModified:     now,
-    changeFrequency:  'monthly',
-    priority:         0.75,
-  }));
 
   return [
     {
@@ -20,20 +12,13 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority:         1.0,
     },
     {
-      url:              `${base}/services`,
-      lastModified:     now,
-      changeFrequency:  'weekly',
-      priority:         0.85,
-    },
-    ...servicePages,
-    {
       url:              `${base}/spend`,
       lastModified:     now,
       changeFrequency:  'monthly',
       priority:         0.7,
     },
     {
-      url:              `${base}/#products`,
+      url:              `${base}/#only`,
       lastModified:     now,
       changeFrequency:  'weekly',
       priority:         0.9,

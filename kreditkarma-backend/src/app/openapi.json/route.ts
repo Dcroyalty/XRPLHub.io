@@ -11,7 +11,6 @@ import {
   PRICE_PER_PRODUCT_RLUSD,
 } from "@/lib/paycall";
 
-import { BUILDABLE_SERVICE_IDS, SERVICE_COUNT } from "@/app/api/execute/serviceCatalog";
 import { SCREEN_OFAC_OUTPUT_SCHEMA, SCREEN_OFAC_OUTPUT_EXAMPLE } from "@/lib/screen";
 import { LENDING_EXPOSURE_OUTPUT_SCHEMA } from "@/lib/lendingExposure";
 
@@ -137,17 +136,18 @@ export async function GET(req: Request) {
       version: "1.1.0",
       description:
         "Pay-per-call XRP Ledger services for AI agents, settled in RLUSD. " +
-        "A 300–850 wallet creditworthiness score from 8 signals, full risk reports, and " +
-        "ready-to-sign prebuilt XRPL transactions for " + SERVICE_COUNT + " actions. No account, no API key, no signup. " +
+        "A 300–850 wallet creditworthiness score from 8 signals, full risk reports, an agent payment pre-check, MPT issuer " +
+        "risk, sanctions screening and XLS-66 lending data. No account, no API key, no signup. " +
         "A free (unauthenticated) score is also at GET /api/score/{wallet}. UNSIGNED ONLY: XRPLHub builds transactions and " +
-        "scores wallets but never signs or holds keys; the caller signs with their own wallet.\n\n" +
-        "TRANSACTIONS ARE FREE: GET /api/tx (no payment) for any of the " + SERVICE_COUNT + " actions. AGENT SAFETY on every paid x402 route, on both rails (RLUSD on XRPL or USDC on Base, same price): the payment settles ONLY after the paid " +
+        "scores wallets but never signs or holds keys; the caller signs with their own wallet. XRPLHub does not build generic " +
+        "XRPL transactions (that catalog was removed on 2026-10-07).\n\n" +
+        "AGENT SAFETY on every paid x402 route, on both rails (RLUSD on XRPL or USDC on Base, same price): the payment settles ONLY after the paid " +
         "work returns success — a handler failure returns `error: \"handler_failed\"` and does NOT charge " +
         "you (retry with the same PAYMENT-SIGNATURE within maxTimeoutSeconds). Send an `Idempotency-Key` " +
         "header (or rely on the payment invoiceId) — a retried request replays the original response, so " +
         "you can never pay twice. Every failure `error` is one of the codes in /.well-known/x402 " +
         "`errorCodes`.\n\n" +
-        "RETIRED (HTTP 410 — use the route in `useInstead`): /api/x402-tx -> /api/tx (free); " +
+        "RETIRED (HTTP 410): /api/tx, /api/x402/tx and /api/x402-tx (the generic transaction catalog); " +
         "/api/v1/wallet-report -> /api/x402/report; /api/v1/pay-per-score -> /api/x402/score.\n\n" +
         "OFAC SDN SCREENING (/api/screen/ofac, /api/x402/screen/ofac): attests to PROCESS, not ground " +
         "truth. A receipt records that an address was compared against a named, hash-pinned OFAC SDN " +
@@ -277,77 +277,6 @@ export async function GET(req: Request) {
               }
             ),
             "402": resp402,
-          },
-        },
-      },
-
-      "/api/tx": {
-        get: {
-          operationId: "freeTx",
-          summary: "FREE: the unsigned XRPL transaction for any of " + SERVICE_COUNT + " actions — no payment",
-          description:
-            "The unsigned transaction JSON for any of " + SERVICE_COUNT + " XRPL actions (CheckCreate, Escrow, TrustSet, NFT " +
-            "mint/sell/burn, AMM pool creation, MPT issue/send, multisig, DID, credentials, permissioned domains, permission " +
-            "delegation, and more). FREE — XRPLHub charges nothing for transactions. Every step, in order, for multi-step " +
-            "actions. Caution-tier actions (irreversible) return 409 confirmation_required with what is irreversible until " +
-            "confirmCaution=true. The wallet owner signs the returned txjson with their own wallet — XRPLHub never signs, never " +
-            "holds keys or funds. Also POST {productId, account, params, confirmCaution}. The historical URL /api/x402/tx serves " +
-            "the same free handler. Rate-limited per client.",
-          security: [],
-          tags: ["Transactions"],
-          parameters: [
-            {
-              name: "productId", in: "query", required: true,
-              description: "Which XRPL action to build. Full catalogue + per-action params at /api/mcp (list_xrpl_services).",
-              schema: { type: "string", enum: BUILDABLE_SERVICE_IDS, example: "checkcreate" },
-              example: "checkcreate",
-            },
-            {
-              name: "account", in: "query", required: true,
-              description: "XRPL classic address that will sign the transaction.",
-              schema: { type: "string", pattern: "^r[1-9A-HJ-NP-Za-km-z]{24,34}$" },
-              example: "rMxCKbEDwqr76QuheSUMdEGf4B9xJ8m5De",
-            },
-            {
-              name: "confirmCaution", in: "query", required: false,
-              description: "Caution-tier only: true once the wallet owner has read the irreversible block returned by the 409.",
-              schema: { type: "boolean" },
-            },
-            {
-              name: "<action params>", in: "query", required: false,
-              description: "Per-action params as query args, e.g. destination, amount, currency, issuer, uri, finishAfter. See list_xrpl_services.",
-              schema: { type: "string" },
-            },
-          ],
-          responses: {
-            "200": ok(
-              "The unsigned transaction, ready for `account` to sign. Free.",
-              {
-                type: "object",
-                properties: {
-                  free: { type: "boolean", enum: [true] },
-                  productId: { type: "string" },
-                  label: { type: "string" },
-                  tier: { type: "string", enum: ["safe", "caution"] },
-                  txjson: { type: "object" },
-                  transactions: { type: "array", description: "Multi-step actions: every step, in signing order." },
-                  signWith: { type: "string" },
-                  instructions: { type: "string" },
-                },
-              },
-              {
-                free: true,
-                productId: "checkcreate",
-                label: "Create Check (XRP)",
-                tier: "safe",
-                txjson: { TransactionType: "CheckCreate", Account: "rMxCKbEDwqr76QuheSUMdEGf4B9xJ8m5De", Destination: "rDest00000000000000000000000000000", SendMax: "10000000" },
-                signWith: "rMxCKbEDwqr76QuheSUMdEGf4B9xJ8m5De",
-                instructions: "Check that Account equals signWith, then sign with your own XRPL wallet and submit it.",
-              }
-            ),
-            "409": { description: "confirmation_required (caution tier: shows what is irreversible; repeat with confirmCaution=true)." },
-            "422": { description: "missing_params — the fields this action needs." },
-            "429": { description: "Rate limited — retry after Retry-After seconds." },
           },
         },
       },
@@ -1276,45 +1205,6 @@ export async function GET(req: Request) {
             "200": { description: "The bundle: exposure, score, screening (+ receipt), observation history, one attestation." },
             "402": { description: "Payment Required — x402 challenge. Pay EITHER in USDC on Base (v1 body; retry with X-PAYMENT) OR in RLUSD on the XRP Ledger (v2: PAYMENT-REQUIRED header, network xrpl:0; retry with PAYMENT-SIGNATURE, result wrapped as { data, x402 })." },
             "503": { description: "LendingProtocol (XLS-66) not yet enabled — body carries the live XRPLScore + OFAC screening." },
-          },
-        },
-      },
-
-      "/api/execute/preview": {
-        post: {
-          operationId: "executePreview",
-          summary: "Free description of a service transaction (no payment; never returns the signable txjson)",
-          description:
-            "Validates the request by building it, then returns a DESCRIPTION — what it is, what is irreversible, the steps. For the signable txjson (free) call GET /api/tx. Nothing is submitted. " +
-            "For the MPT issuance builder (productId 'mptissue') it also returns the full manifest of what is " +
-            "permanent, what is locked and what the issuer could still change — written for the LIVE DynamicMPT " +
-            "(XLS-94) amendment state, which the response reports and dates ('permanence'); if the state can't be " +
-            "read the wording is hedged, never 'permanent' — a plain-English guide to all 6 capability flags (what each lets the issuer " +
-            "do to holders — clawback means you can take the token back from anyone), and the issuer's backing " +
-            "declaration echoed back with the hard line: XRPLHub publishes the declaration and does not verify " +
-            "it. Get the signable transaction free from GET /api/tx or POST /api/execute. Free.",
-          security: [],
-          tags: ["Transactions"],
-          requestBody: {
-            required: true,
-            content: {
-              "application/json": {
-                schema: {
-                  type: "object",
-                  required: ["productId", "account"],
-                  properties: {
-                    productId: { type: "string", example: "mptissue" },
-                    account: { type: "string", pattern: "^r[1-9A-HJ-NP-Za-km-z]{24,34}$", description: "the issuer / signer" },
-                    params: { type: "object", description: "per-service params — see /api/mcp list_xrpl_services" },
-                  },
-                },
-              },
-            },
-          },
-          responses: {
-            "200": { description: "The description (no txjson) + (for mptissue) the permanence manifest, flag guide, and backing declaration." },
-            "400": { description: "Bad request / invalid params." },
-            "422": { description: "Missing required params (see needsParams)." },
           },
         },
       },

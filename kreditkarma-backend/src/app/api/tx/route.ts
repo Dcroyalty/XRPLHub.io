@@ -1,9 +1,9 @@
 // src/app/api/tx/route.ts
-// FREE: the unsigned transaction for any of the 31 XRPL services. See src/lib/freeTxHttp.ts.
-import { handleFreeTxRequest } from "@/lib/freeTxHttp";
+// RETIRED 2026-10-07 — the generic transaction catalog was removed. See src/lib/retiredTx.ts.
+import { retiredTxResponse } from "@/lib/retiredTx";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export const GET = handleFreeTxRequest;
-export const POST = handleFreeTxRequest;
+export function GET() { return retiredTxResponse(); }
+export function POST() { return retiredTxResponse(); }

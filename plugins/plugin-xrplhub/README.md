@@ -1,18 +1,11 @@
 # plugin-xrplhub
 
-**XRPLHub for ElizaOS agents.** Score an XRPL wallet, screen an address against OFAC SDN, look up an MPT issuer,
-**describe any of 31 XRPL transactions**, and **get the unsigned, ready-to-sign transaction for free** — trustlines,
-escrows, AMM, NFTs, multisig, MPT issuance, permission delegation and more.
+**XRPLHub for ElizaOS agents.** Score an XRPL wallet, screen an address against OFAC SDN, and see what an MPT issuer
+can do to its holders — three read-only lookups.
 
-> **Unsigned only. No custody.** This plugin never signs, never submits, and never touches a key. The transaction it
-> returns is a JSON object for **your agent's own wallet** to sign and submit. For agent wallet creation, signing
-> and payments, use Ripple's [XRPL AI Starter Kit](https://ripple.com/insights/xrpl-ai-starter-kit/) (Agent Wallet and
-> Payment skills). XRPLHub is the complement: it builds transactions (free) and scores wallets; something else signs.
-
-> **Transactions are free** (since 2026-10-05). `XRPLHUB_BUILD_TRANSACTION` returns the unsigned txjson directly — no
-> payment, no x402. It only passes a transaction on after checking that every step's `Account` is the wallet you asked
-> about and that nothing is already signed. `XRPLHUB_PREVIEW_TRANSACTION` describes one first (what it does, what is
-> irreversible, the fields it needs).
+> **Read-only. No custody.** This plugin never builds, signs or submits a transaction and never touches a key. For agent
+> wallet creation, signing and payments, use Ripple's [XRPL AI Starter Kit](https://ripple.com/insights/xrpl-ai-starter-kit/)
+> (Agent Wallet and Payment skills). XRPLHub is the complement: it tells your agent about a wallet or token before it acts.
 
 ## Install
 
@@ -43,35 +36,17 @@ There is nothing to configure: no API key, no environment variable, no setting. 
 | `XRPLHUB_SCORE_WALLET` | XRPLScore (300–850, 8 on-chain signals) for one wallet. Use before paying, lending to, or onboarding a wallet. | free | an XRPL address |
 | `XRPLHUB_SCREEN_ADDRESS` | Compares an address to a pinned OFAC SDN snapshot and returns a verifiable receipt. **Attests to process, not ground truth**: "no match" is not "clean". | free | an XRPL address |
 | `XRPLHUB_MPT_RISK` | What an MPT issuer can do to a holder (clawback, freeze, require-auth, non-transferable) plus the issuer's score. | free | a 48-hex `MPTokenIssuanceID` |
-| `XRPLHUB_LIST_SERVICES` | Every transaction XRPLHub builds, with each one's parameters. | free | — |
-| `XRPLHUB_PREVIEW_TRANSACTION` | Describes one transaction: what it does, **what is irreversible**, every field it needs. **No signable transaction.** | free | `product_id` |
-| `XRPLHUB_BUILD_TRANSACTION` | Returns the **unsigned txjson** for one transaction + wallet (every step, in order, for multi-step services), after checking every step's `Account` is that wallet. | free | `product_id`, a wallet address, `params`, `confirm_caution` (caution-tier only) |
 
-Arguments come from `options.parameters` when your runtime provides structured action parameters
-(`wallet_address`, `issuance_id`, `product_id`, `params`, `confirm_caution`), otherwise from the message text (an address,
-a 48-hex id, and optionally a JSON object such as `{"product_id":"trustline","params":{"currency":"RLUSD","value":"100"}}`).
+Arguments come from `options.parameters` when your runtime provides structured action parameters (`wallet_address`,
+`issuance_id`), otherwise from the message text (an address or a 48-hex id).
 
-### Building a transaction
-
-```
-User:   set up a trustline for RLUSD on rs59g3amo5iT6T64Cg96XXMAWuw3WPQcLF
-Agent:  XRPLHUB_PREVIEW_TRANSACTION → what it does, what is irreversible, the fields      (free)
-Agent:  XRPLHUB_BUILD_TRANSACTION   → the unsigned TrustSet txjson for that wallet         (free)
-Agent:  (your signing plugin)       → checks Account == your wallet, signs, submits
-```
-
-- **Free.** XRPLHub charges nothing for transactions; your wallet pays only the XRP Ledger's own network fee.
-- **Caution-tier services** (multisig lockdown, regular key, No Freeze, MPT issuance, permission delegation) can be hard or
-  impossible to undo. `XRPLHUB_BUILD_TRANSACTION` withholds the transaction and returns what is irreversible until you
-  pass `confirm_caution: true`, which you should do **only after the wallet owner has read it**.
-- Multi-step services return several transactions: sign them **in order**, each validated before the next.
+The transaction list / preview / build actions were removed on 2026-10-07, when XRPLHub stopped building generic XRPL
+transactions. Build transactions with your wallet or the XRPL libraries.
 
 ## Safety rules the plugin enforces
 
-- **Only a transaction for your wallet, never altered.** The build action passes a transaction on only through
-  `checkTransactions()`: every step's `Account` must equal the wallet you asked about, nothing may already be signed, and
-  any non-printable content is refused rather than trimmed. The read/describe actions never pass a transaction on, even
-  from a server that (wrongly) returns one — a test asserts it.
+- **Never a transaction.** No action passes a transaction on, even from a server that (wrongly) returns one — a test
+  asserts it.
 - **Checksums, not just regexes.** Addresses are verified with the XRPL base58 checksum. A mistyped address is refused
   before any network call.
 - **No guessing.** An invalid explicit parameter is refused (never swapped for another address found in the chat text).
@@ -79,7 +54,7 @@ Agent:  (your signing plugin)       → checks Account == your wallet, signs, su
 - **Untrusted ledger text.** Token names, metadata and domains are stripped of control/bidi characters, length-capped,
   and labelled as data, never instructions.
 - **Failures are values, not exceptions.** Network errors, timeouts and server errors come back as `success: false`
-  with a plain message that says nothing was built or charged.
+  with a plain message.
 - **Enforced by a check.** `npm run verify` fails if the built package gains a service, provider, setting, signing or
   submission call, key vocabulary, environment access, or any runtime import other than `node:crypto`.
 
@@ -105,7 +80,7 @@ not pin a core version. Verified against `@elizaos/core` 1.7.2 (npm `latest`) an
 ```bash
 npm install
 npm run verify                # typecheck + tests (offline) + build + surface check
-node scripts/live-check.mjs   # manual: exercises every action against production, previews all 31 services
+node scripts/live-check.mjs   # manual: exercises every action against production
 ```
 
 ## Links

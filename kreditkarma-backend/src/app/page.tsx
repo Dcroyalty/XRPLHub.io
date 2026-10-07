@@ -2,8 +2,6 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { watchXaman } from '@/lib/wallet/xamanWatch';
-import { SERVICE_PRICE_USD } from '@/lib/servicePrices';
-import { DELEGABLE_PERMISSIONS, MAX_DELEGATE_PERMISSIONS } from '@/lib/delegationPermissions';
 import { GRANT_APPLICATIONS_OPEN, GRANTS_PAUSED_TITLE, GRANTS_PAUSED_MESSAGE, GRANTS_DONATE_NOTE } from '@/lib/grantsStatus';
 import WalletPicker from '@/lib/wallet/WalletPicker';
 import XamanPayPrompt from '@/components/XamanPayPrompt';
@@ -94,28 +92,21 @@ function Wordmark({ size = 18 }: { size?: number }) {
 const tickerLines = (): string[] => [
   'Write a check on XRPL — yes, really. Create, cash, or cancel a Check in a few taps',
   'XRPLScore™ — your own on-chain credit score. No FICO. No bureau. No SSN.',
-  'Lock XRP in an on-chain Escrow — it releases at the time you set',
   'Community Grants: a public treasury on the XRP Ledger — applications are paused until it is funded',
-  'Mint NFTs with royalties baked in — up to 50%, recorded on-chain',
-  'One leaked key shouldn\'t drain your wallet — lock it down with Multi-Sig Fortress',
   'XRPLScore™ reads 8 public on-chain signals — account age, activity, balances, trust lines and more',
-  'Launch a token the right way — renounce freeze authority for good with Issuer Trustless Declaration',
-  'Spin up an AMM liquidity pool — we build the transaction, you sign it',
-  'Put your domain and DID on-chain — verifiable, portable, yours',
   'Donate to the public grants treasury — every payment in and out is visible on-chain',
   'Check any XRPL wallet\'s XRPLScore™ free — read from mainnet, refreshed every 15 minutes',
-  'Found an XRPL tutorial but don\'t code? Skip it — pay here, we build the exact transaction and you sign it',
-  `${PRODUCTS.length} XRPL services done for you · Free — just sign your transaction · Live on mainnet in ~4 seconds`,
-  'XRPLHub.io — XRPL Services · Community Grants · XRPLScore™',
+  'Spend Controls — budgets and subscriptions paid by XRPL checks you sign. Free.',
+  'Before you hold an MPT: see what its issuer can do to you — clawback, freeze, require approval',
+  'Agents: one pre-check before paying any XRPL address — score, sanctions, and whether the payment would fail',
+  'XRPLHub.io — XRPLScore™ · Spend Controls · MPT Issuer Risk',
 ];
 
-// ─── XRPL SERVICES — DONE FOR YOU (mirrors xrpl.org tutorials) ───
+// ─── MPT ISSUANCE WITH A RECORDED BACKING DECLARATION (the one transaction product on this page) ───
 import { PRODUCTS, type Product } from '@/lib/serviceContent';
 
 // ─── EXECUTION FORM SCHEMA ───
-// Per-product fields the customer fills AFTER payment so we build the exact
-// transaction. Defaults + placeholders keep input clean; the engine validates.
-// Products NOT listed here need no params — they execute straight to Xaman sign.
+// The fields the issuer fills so we build the exact MPTokenIssuanceCreate. The engine validates.
 type PickerKind = 'checks'|'nfts'|'mpts'|'holders';
 type ExecField = { key:string; label:string; placeholder?:string; type?:'text'|'number'|'select'|'picker'|'datetime'|'permissions'; options?:string[]; default?:string; help?:string; required?:boolean; pickerType?:PickerKind };
 // Ripple epoch = seconds since 2000-01-01T00:00:00Z (946,684,800s after the Unix epoch) — same constant every server
@@ -126,36 +117,6 @@ const RIPPLE_EPOCH_OFFSET = 946_684_800;
 // field when someone types RLUSD into a paired currency field, so they don't have to go find and paste it.
 const WELL_KNOWN_ISSUERS: Record<string,string> = { RLUSD: 'rMxCKbEDwqr76QuheSUMdEGf4B9xJ8m5De' };
 const EXEC_FIELDS: Record<string, ExecField[]> = {
-  // Wallet security (caution tier handled server-side)
-  delegate: [
-    { key:'delegate', label:'Account to authorize (the delegate)', placeholder:'rXXX…', required:true, help:'They sign with their own key. It must be an activated account, and not yours.' },
-    { key:'permissions', label:`What they may sign for you (up to ${MAX_DELEGATE_PERMISSIONS})`, type:'permissions', required:true, help:'You will confirm every one of these in plain English before you sign.' },
-  ],
-  multisig: [
-    { key:'signers', label:'Signer wallet addresses', placeholder:'rAAA…, rBBB…, rCCC…', help:'Comma-separated XRPL addresses allowed to co-sign', required:true },
-    { key:'quorum', label:'Required signatures (quorum)', type:'number', default:'2', help:'How many signers must approve each transaction', required:true },
-    { key:'disableMaster', label:'Also disable my master key (3-step lockdown)', type:'select', options:['off','on'], default:'off', help:'OFF: sets the signer list only — your master key can STILL sign alone. ON: also removes any regular key and disables your master key, so ONLY your signers can move funds. Irreversible unless your quorum can be reached.' },
-  ],
-  regkey: [{ key:'regularKey', label:'Regular key address', placeholder:'rXXX…', help:'A backup signing key. Your master key keeps working.', required:true }],
-  // Token issuer
-  tokenfee: [{ key:'transferFee', label:'Transfer fee %', type:'number', default:'0.5', help:'0–50%. Requires "holders can transfer" ON. May be changeable later — see the notice above.', required:true }],
-  issuercfg: [
-    { key:'domain', label:'Domain (optional)', placeholder:'example.com', help:'Lowercase hostname, no https://. Provide at least one of domain, transfer fee or tick size — Default Ripple is always enabled.' },
-    { key:'transferFee', label:'Transfer fee % (optional)', type:'number', placeholder:'0.5', help:'0–100%. Charged on holder-to-holder transfers of your token.' },
-    { key:'tickSize', label:'Tick size (optional)', type:'number', placeholder:'5', help:'0 (off) or 3–15 significant digits of order-book price precision.' },
-    { key:'disallowXRP', label:'Set the DisallowXRP flag', type:'select', options:['off','on'], default:'off', help:'Advisory flag signalling this account does not want XRP.' },
-  ],
-  rippling: [
-    { key:'mode', label:'Mode', type:'select', options:['issuer','holder'], default:'issuer', help:'issuer: account-wide Default Ripple. holder: NoRipple on ONE of your trust lines.' },
-    { key:'enable', label:'Allow rippling?', type:'select', options:['on','off'], default:'on', help:'on = allow rippling, off = block it.' },
-    { key:'currency', label:'Currency (holder mode)', placeholder:'USD', help:'Holder mode only: the trust line to change.' },
-    { key:'issuer', label:'Issuer (holder mode)', placeholder:'rXXX…', help:'Holder mode only: the counterparty of that trust line. Your current limit is kept.' },
-  ],
-  trustline: [
-    { key:'currency', label:'Currency code', placeholder:'USD', help:'3-letter code or 40-char hex', required:true },
-    { key:'issuer', label:'Issuer address', placeholder:'rXXX…', required:true },
-    { key:'limit', label:'Trust limit', type:'number', default:'1000000000', help:'Max you will hold' },
-  ],
   mptissue: [
     { key:'name', label:'Token name', placeholder:'ACME Points', help:'Stored in on-ledger metadata (≤64 chars)', required:true },
     { key:'ticker', label:'Ticker', placeholder:'ACME', help:'1–6 letters/digits, stored in metadata', required:true },
@@ -173,90 +134,6 @@ const EXEC_FIELDS: Record<string, ExecField[]> = {
     { key:'backingStatement', label:'Backing statement', placeholder:'e.g. 1:1 USD held at …', help:'What you claim backs it. Required unless backing = none. A claim is not evidence.' },
     { key:'verifiedBy', label:'Backing verified by (optional)', placeholder:'e.g. an auditor', help:'Who verifies it, if anyone. Never XRPLHub.' },
     { key:'redeemable', label:'Redeemable for the underlying?', type:'select', options:['unspecified','yes','no'], default:'unspecified', help:'Can a holder exchange the token for what backs it?' },
-  ],
-  mptsend: [
-    { key:'mptIssuanceId', label:'MPT Issuance ID', placeholder:'00000000…', required:true, type:'picker', pickerType:'mpts', help:'A token you have issued.' },
-    { key:'destination', label:'Send to wallet', placeholder:'rXXX…', required:true },
-    { key:'amount', label:'Amount', type:'number', required:true },
-  ],
-  trustsend: [
-    { key:'currency', label:'Currency code', placeholder:'USD', required:true, help:'3 characters, or a longer code such as RLUSD (we encode it for you).' },
-    { key:'issuer', label:'Issuer address', placeholder:'rXXX…', required:true },
-    { key:'destination', label:'Send to wallet', placeholder:'rXXX…', required:true },
-    { key:'amount', label:'Amount to send', type:'number', required:true, help:'Step 2 needs you to already hold this much of the token, and the destination to trust the issuer.' },
-    { key:'limit', label:'Your trust limit', type:'number', default:'1000000000', help:'At least the amount you are sending.' },
-  ],
-  freezeline: [
-    { key:'holder', label:'Holder address to freeze', placeholder:'rXXX…', required:true, type:'picker', pickerType:'holders', help:'A wallet with a trust line to you.' },
-    { key:'currency', label:'Currency code', placeholder:'USD', required:true },
-  ],
-  // DeFi
-  depositpreauth: [
-    { key:'sender', label:'Sender to preauthorize', placeholder:'rXXX…', required:true, help:'The one account allowed to pay you while Deposit Auth is on. Counts toward your owner reserve (0.2 XRP).' },
-    { key:'action', label:'Action', type:'select', options:['authorize','remove'], default:'authorize', help:'authorize = allow this sender; remove = revoke an existing preauthorization.' },
-  ],
-  ammlaunch: [
-    { key:'assetValue', label:'Asset 1 amount', type:'number', required:true },
-    { key:'assetCurrency', label:'Asset 1 currency', placeholder:'XRP or USD', default:'XRP' },
-    { key:'assetIssuer', label:'…issuer (if not XRP)', placeholder:'rXXX…' },
-    { key:'asset2Value', label:'Asset 2 amount', type:'number', required:true },
-    { key:'asset2Currency', label:'Asset 2 currency', placeholder:'USD' },
-    { key:'asset2Issuer', label:'…issuer (if not XRP)', placeholder:'rXXX…' },
-    { key:'tradingFee', label:'Trading fee (0–1000 = 0–1%)', type:'number', default:'500' },
-  ],
-  paychannel: [
-    { key:'destination', label:'Destination wallet', placeholder:'rXXX…', required:true },
-    { key:'amount', label:'XRP to fund channel', type:'number', required:true },
-    { key:'publicKey', label:'Channel public key', placeholder:'EDxxxx / 02xxxx', required:true },
-    { key:'settleDelay', label:'Settle delay (seconds)', type:'number', default:'86400' },
-  ],
-  tickets: [{ key:'ticketCount', label:'How many tickets', type:'number', default:'1', help:'Reserve 1–250 sequence slots', required:true }],
-  // NFT
-  nftmint: [
-    { key:'uri', label:'Metadata URI', placeholder:'ipfs://… or https://…', required:true },
-    { key:'royalty', label:'Royalty %', type:'number', default:'0', help:'0–50%' },
-    { key:'taxon', label:'Collection taxon', type:'number', default:'0' },
-  ],
-  nftburn: [{ key:'nftokenId', label:'NFToken ID to burn', placeholder:'000800…', required:true, type:'picker', pickerType:'nfts' }],
-  nftoffer: [
-    { key:'nftokenId', label:'NFToken ID', placeholder:'000800…', required:true, type:'picker', pickerType:'nfts', help:'An NFT you currently own — this creates a SELL offer.' },
-    { key:'amount', label:'Sale price (XRP)', type:'number', required:true },
-  ],
-  // Payments
-  checkcreate: [
-    { key:'destination', label:'Pay to wallet', placeholder:'rXXX…', required:true },
-    { key:'currency', label:'Currency', type:'select', options:['XRP','RLUSD'], default:'XRP' },
-    { key:'amount', label:'Most it can be cashed for', type:'number', required:true, help:'A check does not lock funds — keep this much in your wallet until it is cashed.' },
-  ],
-  checkcash: [
-    { key:'checkId', label:'Check ID', placeholder:'object hash', required:true, type:'picker', pickerType:'checks', help:'A check written to you (only the recipient can cash a check).' },
-    { key:'currency', label:'Currency', type:'select', options:['XRP','RLUSD'], default:'XRP', help:'Must match the check.' },
-    { key:'amount', label:'Amount to cash', type:'number', required:true, help:'At most the check’s maximum. A check is single-use: cashing less still closes it.' },
-  ],
-  checkcancel: [{ key:'checkId', label:'Check ID to cancel', placeholder:'object hash', required:true, type:'picker', pickerType:'checks', help:'A check you wrote, or one written to you.' }],
-  escrow: [
-    { key:'destination', label:'Release to wallet', placeholder:'rXXX…', required:true },
-    { key:'amount', label:'XRP to lock', type:'number', required:true },
-    { key:'finishAfter', label:'Release at', type:'datetime', help:'Pick the date and time — we compute the Ripple-time seconds for you.', required:true },
-  ],
-  // Identity / compliance
-  identity: [
-    { key:'domain', label:'Your domain', placeholder:'xrplhub.io', required:true, help:'Lowercase hostname. Written to your account Domain field.' },
-    { key:'email', label:'Email (optional)', placeholder:'you@example.com', help:'Stored only as an MD5 hash — the XRPL EmailHash (Gravatar) convention.' },
-  ],
-  compliance: [
-    { key:'domain', label:'Your domain', placeholder:'xrplhub.io', required:true },
-    { key:'email', label:'Email (optional)', placeholder:'you@example.com', help:'Stored only as an MD5 hash (XRPL EmailHash).' },
-    { key:'didUri', label:'DID document URI', placeholder:'https://… or ipfs://…', required:true, help:'Step 2 creates your DID pointing at this document (256 bytes max).' },
-  ],
-  did: [{ key:'uri', label:'DID document URI', placeholder:'ipfs://… or https://…', required:true }],
-  credentialissue: [
-    { key:'subject', label:'Subject wallet', placeholder:'rXXX…', required:true },
-    { key:'credentialType', label:'Credential type', placeholder:'KYC', required:true },
-  ],
-  permdomain: [
-    { key:'credentialType', label:'Accepted credential type', placeholder:'KYC', required:true },
-    { key:'acceptedIssuer', label:'Accepted issuer (blank = you)', placeholder:'rXXX…' },
   ],
 };
 
@@ -596,49 +473,6 @@ function ConnectWalletModal({ show, onClose, onConnected }: { show:boolean; onCl
   );
 }
 
-// "What I hold" picker for an ID-shaped field (Check ID, NFToken ID, MPT Issuance ID, trust-line holder address).
-// Fetches GET /api/execute/mine once per (account, pickerType) and offers the results as a <select>; a manual-entry
-// toggle is always available — this is a convenience, never a hard requirement (an item beyond the 200-item cap, or
-// one the picker can't see for some reason, can still be typed by hand).
-function PickerField({ field, value, onChange, account }: { field: ExecField; value: string; onChange: (v: string) => void; account: string }) {
-  const [items, setItems] = useState<{ id: string; label: string; meta?: Record<string, string> }[] | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [manual, setManual] = useState(false);
-  useEffect(() => {
-    if (!account || !field.pickerType) { setItems(null); return; }
-    let dead = false;
-    setLoading(true);
-    fetch(`${API_URL}/api/execute/mine?type=${field.pickerType}&account=${encodeURIComponent(account)}`)
-      .then(r => r.json())
-      .then(d => { if (!dead) setItems(Array.isArray(d?.items) ? d.items : []); })
-      .catch(() => { if (!dead) setItems([]); })
-      .finally(() => { if (!dead) setLoading(false); });
-    return () => { dead = true; };
-  }, [account, field.pickerType]);
-
-  if (!account) return <input value={value} onChange={e=>onChange(e.target.value)} placeholder={field.placeholder||''} style={{ ...INP, fontFamily:"'IBM Plex Mono',monospace", fontSize:13 }} />;
-  if (manual || (items && items.length === 0)) {
-    return (
-      <div>
-        <input value={value} onChange={e=>onChange(e.target.value)} placeholder={field.placeholder||''} style={{ ...INP, fontFamily:"'IBM Plex Mono',monospace", fontSize:13 }} />
-        {items && items.length === 0 && !loading && <p style={{ fontSize:11,color:'rgba(255,255,255,.3)',marginTop:4 }}>Nothing found for this wallet — paste the ID directly.</p>}
-        {!manual ? null : <button type="button" onClick={()=>setManual(false)} style={{ fontSize:11,color:'#10b981',background:'none',border:'none',cursor:'pointer',marginTop:4,padding:0 }}>← pick from a list instead</button>}
-      </div>
-    );
-  }
-  return (
-    <div>
-      <select value={value} onChange={e=>onChange(e.target.value)} disabled={loading} style={{ ...INP, fontSize:13 }}>
-        <option value="">{loading ? 'Loading…' : `Select — ${items?.length ?? 0} found`}</option>
-        {(items||[]).map(it => <option key={it.id} value={it.id}>{it.label}</option>)}
-      </select>
-      <button type="button" onClick={()=>setManual(true)} style={{ fontSize:11,color:'rgba(255,255,255,.35)',background:'none',border:'none',cursor:'pointer',marginTop:4,padding:0 }}>or type an ID manually</button>
-    </div>
-  );
-}
-
-// Escrow's FinishAfter needs raw Ripple-time seconds; nobody should have to compute that by hand. Renders a normal
-// date/time picker and converts to seconds on every change, plus a plain-English confirmation of what was picked.
 function DateTimeField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const [local, setLocal] = useState('');
   const handle = (v: string) => {
@@ -657,139 +491,6 @@ function DateTimeField({ value, onChange }: { value: string; onChange: (v: strin
           Releases {picked.toLocaleString()} — Ripple time {value} ({picked.getTime() > Date.now() ? `in ~${Math.max(1, Math.round((picked.getTime()-Date.now())/86400000))} day(s)` : 'in the past — pick a future time'}).
         </p>
       )}
-    </div>
-  );
-}
-
-// Permission Delegation (XLS-75): pick up to MAX_DELEGATE_PERMISSIONS permissions, grouped by what they can do to you.
-// Value is the comma-joined list the server's parsePermissions() reads; every item shows exactly what it allows (the same
-// copy, from src/lib/delegationPermissions.ts, that the confirmation step repeats before signing).
-const RISK_GROUPS: { risk:'spend'|'control'|'low'; title:string; color:string }[] = [
-  { risk:'spend', title:'Can move, sell or destroy what you hold', color:'#f87171' },
-  { risk:'control', title:'Changes how your account or tokens behave', color:'#f59e0b' },
-  { risk:'low', title:'Brings value in, or only cleans up', color:'#10b981' },
-];
-function PermissionsField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const chosen = value.split(',').map(s => s.trim()).filter(Boolean);
-  const toggle = (v: string) => {
-    const next = chosen.includes(v) ? chosen.filter(c => c !== v) : chosen.length >= MAX_DELEGATE_PERMISSIONS ? chosen : [...chosen, v];
-    onChange(next.join(','));
-  };
-  return (
-    <div>
-      <p style={{ fontSize:11,color:'rgba(255,255,255,.4)',marginBottom:8 }}>{chosen.length} of {MAX_DELEGATE_PERMISSIONS} chosen</p>
-      {RISK_GROUPS.map(g => (
-        <div key={g.risk} style={{ marginBottom:10 }}>
-          <p style={{ fontSize:10,fontWeight:700,color:g.color,letterSpacing:'.08em',textTransform:'uppercase',marginBottom:5 }}>{g.title}</p>
-          {DELEGABLE_PERMISSIONS.filter(d => d.risk === g.risk).map(d => {
-            const on = chosen.includes(d.value);
-            const full = !on && chosen.length >= MAX_DELEGATE_PERMISSIONS;
-            return (
-              <label key={d.value} style={{ display:'flex',gap:9,alignItems:'flex-start',padding:'7px 9px',borderRadius:9,marginBottom:4,cursor:full?'not-allowed':'pointer',opacity:full?.4:1,background:on?`${g.color}14`:'rgba(255,255,255,.03)',border:`1px solid ${on?g.color+'55':'rgba(255,255,255,.06)'}` }}>
-                <input type="checkbox" checked={on} disabled={full} onChange={()=>toggle(d.value)} style={{ marginTop:3 }} />
-                <span>
-                  <span style={{ fontSize:13,fontWeight:700,color:'#fff' }}>{d.label}</span>
-                  <span style={{ fontSize:10,color:'rgba(255,255,255,.35)',fontFamily:"'IBM Plex Mono',monospace",marginLeft:6 }}>{d.value}</span>
-                  <span style={{ display:'block',fontSize:11,color:'rgba(255,255,255,.5)',lineHeight:1.55,marginTop:2 }}>{d.allows}</span>
-                </span>
-              </label>
-            );
-          })}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// Delegation info-step panel: the LIVE amendment state (Buy stays disabled until the ledger says it's active) and the
-// FREE revoke — list who this wallet has delegated to and take it back with one signature. Server: /api/delegate.
-type DelegationAvail = { available:boolean; message:string|null; earliestActivation:string|null };
-type DelegationRow = { delegate:string; permissions:{ value:string; label:string; risk:string }[] };
-function useDelegationAvailability(enabled: boolean) {
-  const [avail, setAvail] = useState<DelegationAvail|null>(null);
-  useEffect(() => {
-    if (!enabled) return;
-    let dead = false;
-    const unknown = { available:false, message:'Could not check availability — try again shortly.', earliestActivation:null };
-    fetch(`${API_URL}/api/delegate`).then(r => r.json()).then(d => { if (!dead) setAvail(d?.availability ?? unknown); })
-      .catch(() => { if (!dead) setAvail(unknown); });
-    return () => { dead = true; };
-  }, [enabled]);
-  return avail;
-}
-function DelegationPanel({ account, avail, walletSel }: { account:string; avail:DelegationAvail|null; walletSel:string }) {
-  const [rows, setRows] = useState<DelegationRow[]|null>(null);
-  const [err, setErr] = useState('');
-  const [busy, setBusy] = useState('');
-  const [sign, setSign] = useState<{ delegate:string; qr:string|null; link:string|null; txjson:Record<string,unknown> }|null>(null);
-  useEffect(() => {
-    if (!account || !avail?.available) return;
-    let dead = false;
-    fetch(`${API_URL}/api/delegate?account=${encodeURIComponent(account)}`)
-      .then(async r => { const d = await r.json(); if (!r.ok) throw new Error(d.message || 'lookup failed'); return d; })
-      .then(d => { if (!dead) setRows(d.delegations ?? []); })
-      .catch(e => { if (!dead) setErr(e instanceof Error ? e.message : 'Could not read your delegations.'); });
-    return () => { dead = true; };
-  }, [account, avail?.available]);
-  // While a revoke is out for signature, watch the LEDGER (not the wallet) until the delegation is gone.
-  useEffect(() => {
-    if (!sign) return;
-    const iv = setInterval(async () => {
-      try {
-        const r = await fetch(`${API_URL}/api/delegate?account=${encodeURIComponent(account)}`);
-        const d = await r.json();
-        if (r.ok && !(d.delegations ?? []).some((x: DelegationRow) => x.delegate === sign.delegate)) { setSign(null); setRows(d.delegations ?? []); setBusy(''); }
-      } catch { /* keep polling */ }
-    }, 4000);
-    return () => clearInterval(iv);
-  }, [sign, account]);
-  const revoke = async (delegate: string) => {
-    setBusy(delegate); setErr('');
-    try {
-      const r = await fetch(`${API_URL}/api/delegate`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ account, delegate }) });
-      const d = await r.json();
-      if (!r.ok) throw new Error(d.message || 'Could not build the revoke');
-      if (walletSel !== 'xaman') {
-        const provider = getWalletProvider(walletSel);
-        if (provider?.submitTx) { await provider.submitTx(d.txjson); setSign({ delegate, qr:null, link:null, txjson:d.txjson }); return; }
-      }
-      setSign({ delegate, qr:d.qr_png ?? null, link:d.deep_link ?? null, txjson:d.txjson });
-    } catch (e) { setErr(e instanceof WalletCancelled ? 'You declined the signature.' : e instanceof Error ? e.message : 'Revoke failed'); setBusy(''); }
-  };
-
-  if (!avail) return <p style={{ fontSize:12,color:'rgba(255,255,255,.35)',marginBottom:16 }}>Checking the XRP Ledger for the PermissionDelegationV1_1 amendment…</p>;
-  if (!avail.available) {
-    return (
-      <div style={{ background:'rgba(34,211,238,.07)',border:'1px solid rgba(34,211,238,.35)',borderRadius:12,padding:'13px 16px',marginBottom:18 }}>
-        <p style={{ fontSize:11,fontWeight:700,color:'#22d3ee',letterSpacing:'.06em',textTransform:'uppercase',marginBottom:6 }}>Live from the XRP Ledger · not active yet</p>
-        <p style={{ fontSize:13,color:'rgba(255,255,255,.7)',lineHeight:1.7 }}>{avail.message}</p>
-      </div>
-    );
-  }
-  return (
-    <div style={{ background:'rgba(255,255,255,.03)',border:'1px solid rgba(255,255,255,.08)',borderRadius:12,padding:'13px 16px',marginBottom:18 }}>
-      <p style={{ fontSize:11,fontWeight:700,color:'#22d3ee',letterSpacing:'.06em',textTransform:'uppercase',marginBottom:6 }}>Revoke a delegation — free</p>
-      {!account && <p style={{ fontSize:12,color:'rgba(255,255,255,.5)' }}>Connect your wallet to see who can sign for your account, and revoke them with one signature.</p>}
-      {account && rows === null && !err && <p style={{ fontSize:12,color:'rgba(255,255,255,.4)' }}>Reading your delegations…</p>}
-      {account && rows && rows.length === 0 && <p style={{ fontSize:12,color:'rgba(255,255,255,.5)' }}>No account can sign for this wallet right now.</p>}
-      {(rows ?? []).map(row => (
-        <div key={row.delegate} style={{ display:'flex',justifyContent:'space-between',gap:10,alignItems:'center',padding:'8px 0',borderTop:'1px solid rgba(255,255,255,.06)',flexWrap:'wrap' }}>
-          <div style={{ minWidth:0 }}>
-            <p style={{ fontSize:12,fontFamily:"'IBM Plex Mono',monospace",color:'#fff' }}>{row.delegate.slice(0,10)}…{row.delegate.slice(-6)}</p>
-            <p style={{ fontSize:11,color:'rgba(255,255,255,.45)' }}>{row.permissions.map(p => p.label).join(' · ')}</p>
-          </div>
-          <button disabled={!!busy} onClick={()=>revoke(row.delegate)} style={{ ...Btn('ghost', undefined, { fontSize:12, padding:'7px 12px', opacity: busy && busy !== row.delegate ? .4 : 1 }) }}>{busy === row.delegate ? 'Waiting for signature…' : 'Revoke'}</button>
-        </div>
-      ))}
-      {sign && (
-        <div style={{ marginTop:10,textAlign:'center' }}>
-          {sign.qr && <img src={sign.qr} alt="Scan with Xaman to revoke" style={{ width:170,height:170,borderRadius:12,background:'#fff',padding:6 }} />}
-          {sign.link && <a href={sign.link} target="_blank" rel="noreferrer" style={{ display:'block',fontSize:12,color:'#22d3ee',marginTop:8 }}>Open in Xaman →</a>}
-          {!sign.qr && !sign.link && walletSel === 'xaman' && <pre style={{ fontSize:10,textAlign:'left',whiteSpace:'pre-wrap',color:'rgba(255,255,255,.6)' }}>{JSON.stringify(sign.txjson, null, 2)}</pre>}
-          <p style={{ fontSize:11,color:'rgba(255,255,255,.4)',marginTop:6 }}>Watching the ledger — this updates by itself once the revoke validates.</p>
-        </div>
-      )}
-      {err && <p style={{ fontSize:12,color:'#fca5a5',marginTop:8 }}>⚠️ {err}</p>}
     </div>
   );
 }
@@ -841,9 +542,7 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
     fetch(`${API_URL}/api/mpt/permanence`).then(r => r.json()).then(d => { if (!dead && Array.isArray(d?.headline)) setMptPerm(d); }).catch(() => { if (!dead) setMptPerm(null); });
     return () => { dead = true; };
   }, [step, product?.id]);
-  // Amendment-gated service (today: delegate): Buy is disabled until the validated ledger says the amendment is active.
-  const delegAvail = useDelegationAvailability(show && product?.id === 'delegate');
-  const buyBlocked = product?.id === 'delegate' && !delegAvail?.available;
+  const buyBlocked = false;
   const exPollRef = useRef<ReturnType<typeof setTimeout>|null>(null);
   const pollRef   = useRef<ReturnType<typeof setTimeout>|null>(null);
   const cancelRef = useRef(false);
@@ -1142,12 +841,8 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
                   <select value={exForm[f.key] ?? f.default ?? f.options[0]} onChange={e=>setF(f.key,e.target.value)} style={{ ...INP, fontSize:13 }}>
                     {f.options.map(o => <option key={o} value={o}>{o}</option>)}
                   </select>
-                ) : f.type==='picker' ? (
-                  <PickerField field={f} value={exForm[f.key] ?? ''} onChange={v=>setF(f.key,v)} account={connectedWallet} />
                 ) : f.type==='datetime' ? (
                   <DateTimeField value={exForm[f.key] ?? ''} onChange={v=>setF(f.key,v)} />
-                ) : f.type==='permissions' ? (
-                  <PermissionsField value={exForm[f.key] ?? ''} onChange={v=>setF(f.key,v)} />
                 ) : (
                   <input type={f.type==='number'?'number':'text'} value={exForm[f.key] ?? f.default ?? ''} onChange={e=>setF(f.key,e.target.value)} placeholder={f.placeholder||''} style={{ ...INP, fontFamily:(f.key.toLowerCase().includes('address')||f.key.includes('issuer')||f.key.includes('destination')||f.key.includes('wallet')||f.key.includes('Id')||f.key.includes('holder')||f.key.includes('subject'))?"'IBM Plex Mono',monospace":'inherit', fontSize:f.type==='number'?14:13 }} />
                 )}
@@ -1461,8 +1156,7 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
       <div style={{ background:'rgba(255,255,255,.03)',borderRadius:11,padding:'11px 15px',marginBottom:20 }}>
         <p style={{ fontSize:11,color:'rgba(255,255,255,.3)',lineHeight:1.7 }}><strong style={{ color:'rgba(255,255,255,.45)' }}>Disclosure: </strong>On-chain operational service. You sign every transaction yourself in Xaman; we never hold your keys or funds. Not insurance, securities, or financial advice. All XRPL transactions are irrevocable.</p>
       </div>
-      {product.id === 'delegate' && <DelegationPanel account={connectedWallet} avail={delegAvail} walletSel={walletSel} />}
-      <button disabled={buyBlocked} onClick={()=>{ if (!buyBlocked) setStep('execute'); }} style={{ ...Btn('color',product.color,{width:'100%',padding:'15px',fontSize:16,opacity:buyBlocked?.4:1,cursor:buyBlocked?'not-allowed':'pointer'}) }}>{buyBlocked ? (delegAvail ? 'Not available yet — switches on by itself' : 'Checking availability…') : <>Build &amp; sign — free →</>}</button>
+      <button disabled={buyBlocked} onClick={()=>{ if (!buyBlocked) setStep('execute'); }} style={{ ...Btn('color',product.color,{width:'100%',padding:'15px',fontSize:16,opacity:buyBlocked?.4:1,cursor:buyBlocked?'not-allowed':'pointer'}) }}><>Build &amp; sign — free →</></button>
     </Overlay>
   );
 }
@@ -1794,9 +1488,9 @@ function AboutModal({ show, onClose }: { show:boolean; onClose:()=>void }) {
       <h2 style={{ fontSize:24,fontWeight:900,marginBottom:18 }}>Consumer and B2B financial tools on the XRP Ledger.</h2>
       <div style={{ fontSize:14,color:'rgba(255,255,255,.65)',lineHeight:1.9,display:'flex',flexDirection:'column',gap:14 }}>
         <p>XRPLHub was built for the people legacy finance was designed to exclude. No bank account. No credit history. No gatekeepers. Just an XRPL wallet and access to real services.</p>
-        <p>We build entirely on the <strong style={{ color:'#fff' }}>XRP Ledger</strong> — fast, low-cost, and energy-efficient. Three pillars power the platform: XRPL Services, Community Grants, and XRPLScore.</p>
+        <p>We build entirely on the <strong style={{ color:'#fff' }}>XRP Ledger</strong> — fast, low-cost, and energy-efficient. We build only what nobody else on the XRP Ledger offers: XRPLScore with monitoring and lending readiness, Spend Controls, and MPT issuer-power risk — plus a community grants treasury.</p>
         <p><strong style={{ color:'#10b981' }}>XRPLScore™</strong> is our proprietary on-chain rating, 300–850, computed from your wallet’s public on-chain history (cached for up to 15 minutes). No FICO. No bureau. No SSN. It is derived only from public on-chain history.</p>
-        <p>Our <strong style={{ color:'#fff' }}>XRPL Services</strong> are on-chain tools covering major XRPL transaction types — free: we build the exact transaction and you sign it in your own wallet.</p>
+        <p><strong style={{ color:'#fff' }}>Spend Controls</strong> lets you give someone a budget they can only spend with payees you approve, or pay one payee every week or month — each payment an XRPL check you sign in your own wallet. Free. <strong style={{ color:'#fff' }}>MPT issuer-power risk</strong> shows what the issuer of a Multi-Purpose Token can do to its holders, read straight from the ledger.</p>
         <p><strong style={{ color:'#10b981' }}>Community Grants</strong>: donors fund a public XRPL treasury. A person reviews every application and makes every decision. Approved grants go wallet-to-wallet. No NGO. No middlemen. Every payment is verifiable on-chain. (Applications are paused until the treasury is funded.)</p>
         <p style={{ fontSize:12,color:'rgba(255,255,255,.4)',fontStyle:'italic' }}>XRPLScore™ methodology is proprietary and licensable to financial institutions, DeFi platforms, and on-chain data partners. Partnership inquiries: <a href="mailto:partners@xrplhub.io" style={{ color:'#10b981' }}>partners@xrplhub.io</a></p>
       </div>
@@ -1810,10 +1504,11 @@ function FAQModal({ show, onClose }: { show:boolean; onClose:()=>void }) {
   const [open, setOpen] = useState<number|null>(0);
   const faqs:[string,string][] = [
     ['What is XRPLScore™?',"XRPLScore™ is XRPLHub's proprietary on-chain rating — 300 to 850, computed from your wallet’s public on-chain history (cached for up to 15 minutes). No SSN, no credit bureau, no FICO affiliation. It's your verifiable on-chain reputation."],
-    ['How do the XRPL Services work?','They are free. Pick a service, fill in the details, and we build the exact transaction for your wallet. You check it and sign it yourself; some services are several transactions signed one after another. A signed transaction settles in about 4 seconds. Services that can be hard or impossible to undo show you exactly what is irreversible and ask you to confirm first.'],
+    ['How does Spend Controls work?','It is free. You approve the payees and set a budget per week or month (or one subscription amount). Each payment is an XRPL check you sign in your own wallet; the payee cashes it with theirs, up to the amount you set. A check is only created for the current period — never ahead — and you can cancel any check before it is cashed.'],
+    ['Does XRPLHub build XRPL transactions for me?','Only inside its own products: Spend Controls checks, MPT issuance with a recorded backing declaration, and Permissioned Domains gated on XRPLScore credentials. For anything else, use your wallet — Xaman does most everyday transactions itself.'],
     ['How does the grant system work?',"Donate XRP/RLUSD to the public treasury (viewable on XRPScan). Applications are currently paused until the treasury is funded. When they reopen, anyone in need can apply for $25–$100; a person reviews every application and makes every decision, and approved funds go directly to the recipient's XRPL wallet."],
-    ['Do I need a wallet?','You need an XRPL wallet. Xaman (free on iOS and Android at xaman.app) is how you connect on this site and the wallet we recommend. To sign a service you can also use Crossmark or GemWallet on desktop — just make sure it is the same XRPL account you connected, because the transaction we build is for that account.'],
-    ['Is XRPLHub a bank?','No. Not a bank, broker, insurer, or FDIC institution. XRPLHub is a financial technology platform on the XRP Ledger. All services are on-chain operational tools.'],
+    ['Do I need a wallet?','You need an XRPL wallet. Xaman (free on iOS and Android at xaman.app) is how you connect on this site and the wallet we recommend. To sign you can also use Crossmark or GemWallet on desktop — just make sure it is the same XRPL account you connected, because the transaction we build is for that account.'],
+    ['Is XRPLHub a bank?','No. Not a bank, broker, insurer, or FDIC institution. XRPLHub is a financial technology platform on the XRP Ledger. It never holds your funds or your keys.'],
   ];
   return (
     <Overlay show={show} onClose={onClose} wide>
@@ -1845,11 +1540,11 @@ function TermsModal({ show, onClose }: { show:boolean; onClose:()=>void }) {
       <div style={{ maxHeight:'60vh',overflowY:'auto',paddingRight:8 }}>
         <p style={P}>By using xrplhub.io you agree to these Terms in full.</p>
         <span style={H}>1. Who We Are</span>
-        <p style={P}>XRPLHub is a financial technology platform on the XRP Ledger providing XRPL Services, XRPLScore, and a community grant program. We are not a bank, broker-dealer, investment advisor, insurer, or FDIC-insured institution.</p>
+        <p style={P}>XRPLHub is a financial technology platform on the XRP Ledger providing XRPLScore, Spend Controls, MPT issuer risk and a community grant program. We are not a bank, broker-dealer, investment advisor, insurer, or FDIC-insured institution.</p>
         <span style={H}>2. Eligibility</span>
         <p style={P}>You must be 18+ and legally able to enter contracts in your jurisdiction. Service unavailable where prohibited by law, including OFAC-sanctioned regions.</p>
-        <span style={H}>3. XRPL Services & Payment Verification</span>
-        <p style={P}>Services are on-chain operational tools, and they are free: XRPLHub charges nothing for transactions. We build the exact transaction for your wallet and you sign and submit it yourself; some services are several transactions signed in order. XRPLHub never holds your keys and cannot sign for you. <strong style={{ color:'rgba(255,255,255,.8)' }}>All XRPL transactions are final and irrevocable</strong>, and if the ledger rejects a transaction you may need to correct your details and try again. Services are not insurance contracts, securities, or financial instruments.</p>
+        <span style={H}>3. Transactions We Build</span>
+        <p style={P}>XRPLHub builds transactions only inside its own products (Spend Controls checks, MPT issuance with a recorded backing declaration, XRPLScore-gated Permissioned Domains), and charges nothing for them. We build the exact transaction for your wallet and you sign and submit it yourself. XRPLHub never holds your keys and cannot sign for you. <strong style={{ color:'rgba(255,255,255,.8)' }}>All XRPL transactions are final and irrevocable</strong>, and if the ledger rejects a transaction you may need to correct your details and try again. These are not insurance contracts, securities, or financial instruments.</p>
         <span style={H}>4. XRPLScore™</span>
         <p style={P}>XRPLScore™ is our proprietary on-chain assessment derived from public XRPL wallet data. It is not a FICO score, consumer credit report, or NRSRO rating, and has no affiliation with any credit bureau. The XRPLScore™ name, methodology, signal weighting, and underlying framework are intellectual property of XRPLHub and are available for commercial licensing.</p>
 
@@ -2134,7 +1829,7 @@ export default function XRPLHubHome() {
     const w = localStorage.getItem('xh_wallet'); if (w) { setConnected(w); setWI(w); }
   }, []);
 
-  // Deep-link from a per-service SEO page (/services/<id> -> /?product=<id>): open that product's modal directly.
+  // Deep-link (/?product=mptissue): open the MPT issuance modal directly.
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const id = new URLSearchParams(window.location.search).get('product');
@@ -2210,55 +1905,6 @@ export default function XRPLHubHome() {
   }, [connectedWallet]);
 
   const handleLogout = () => { setUser(null); if (typeof window !== 'undefined') localStorage.removeItem('xh_user'); };
-  const featured = (PRODUCTS as readonly Product[]).filter(p => p.featured);
-  // Order the grid by how a normal person relates to it, NOT by technical category.
-  // Checks & everyday money first → familiar concepts (escrow=safe-hold, NFT=digital art,
-  // identity) → then the power-user / wizard tools (DeFi, token issuing, wallet security) last.
-  const TOP_ORDER = [
-    // ── Everyday money: "I can write/cash/cancel a check, send money safely" ──
-    'checkcash',      // Cash a Check
-    'checkcancel',    // Cancel a Check
-    'escrow',         // Hold money safely until a date (like a deposit in escrow)
-    'paychannel',     // Stream / channel payments
-    'depositpreauth', // Preauthorize a sender for Deposit Auth
-    'trustsend',      // Set up to receive a currency
-    // ── Familiar digital things: art, collectibles, identity ──
-    'nftmint',        // Mint an NFT (digital art / collectible)
-    'nftoffer',       // Sell an NFT
-    'nftburn',        // Burn an NFT
-    'identity',       // Put your identity on-chain
-    'did',            // Digital ID
-    'credentialissue',// Issue a credential / certificate
-    'compliance',     // Compliance bundle
-    'permdomain',     // Permissioned domain
-    // ── Money tools: tokens, trust lines, fees ──
-    'trustline',      // Connect to a token
-    'tokenfee',       // Set a transfer fee
-    'issuerdecl',     // Become a token issuer
-    'issuercfg',      // Full issuer setup
-    'mptissue',       // Issue a multi-purpose token
-    'mptsend',        // Send a multi-purpose token
-    'rippling',       // Rippling control
-    'globalfreeze',   // Freeze your token globally
-    'freezeline',     // Freeze a single trust line
-    // ── DeFi (power users) ──
-    'ammlaunch',      // Launch an AMM pool
-    'tickets',        // Create tickets
-    // ── Wallet security (advanced, last) ──
-    'multisig',       // Multi-sig
-    'regkey',         // Regular key
-    'delegate',       // Permission delegation (XLS-75)
-    'depositauth',    // Deposit auth
-    'desttag',        // Destination tag lock
-  ];
-  const others   = (PRODUCTS as readonly Product[]).filter(p => !p.featured).sort((a,b) => {
-    const ai = TOP_ORDER.indexOf(a.id), bi = TOP_ORDER.indexOf(b.id);
-    if (ai === -1 && bi === -1) return 0;
-    if (ai === -1) return 1;
-    if (bi === -1) return -1;
-    return ai - bi;
-  });
-
   return (
     <>
       <style>{`
@@ -2419,6 +2065,8 @@ export default function XRPLHubHome() {
               <h3 style={{ fontSize:22,fontWeight:900,marginBottom:10 }}>MPT issuer-power risk</h3>
               <p style={{ fontSize:13,color:'rgba(255,255,255,.55)',lineHeight:1.7,marginBottom:14 }}>What can the issuer of a Multi-Purpose Token do to you? Claw it back, freeze it, block transfers, require approval. Read straight from the ledger, with the issuer&apos;s own XRPLScore.</p>
               <MptPowerCheck />
+              <button onClick={()=>{ const p = PRODUCTS.find(x=>x.id==='mptissue'); if (p) setAP(p); }} style={{ marginTop:14,padding:'10px 16px',borderRadius:99,border:'1px solid rgba(245,158,11,.4)',background:'transparent',color:'#f59e0b',fontWeight:700,fontSize:12,cursor:'pointer',fontFamily:'inherit',alignSelf:'flex-start' }}>Issuing an MPT? Record its backing declaration →</button>
+              <p style={{ fontSize:11,color:'rgba(255,255,255,.35)',marginTop:6,lineHeight:1.5 }}>Free. You sign in your own wallet. Earns the io.xrplhub.mpt.v1.declared credential — a record of what you declared, never a verification of it.</p>
             </div>
           </div>
         </section>
@@ -2453,60 +2101,6 @@ export default function XRPLHubHome() {
                 <p style={{ fontSize:11,color:'rgba(255,255,255,.28)',marginTop:10 }}>or <button onClick={()=>setShowConnect(true)} style={{ background:'none',border:'none',color:'#10b981',cursor:'pointer',fontWeight:700,fontSize:11,fontFamily:'inherit',padding:0 }}>connect your Xaman wallet</button> for your full personalized credit report</p>
             </div>
           )}
-          </div>
-        </section>
-
-        {/* PRODUCTS */}
-        <section id="products" className="section-pad" style={{ padding:'0 24px 72px',maxWidth:1280,margin:'0 auto' }}>
-          <div style={{ textAlign:'center',marginBottom:40 }}>
-            <div style={{ display:'inline-flex',alignItems:'center',gap:6,marginBottom:12 }}>
-              <span style={{ width:5,height:5,borderRadius:'50%',background:'#10b981',boxShadow:'0 0 8px #10b981' }} />
-              <span style={{ fontSize:11,fontWeight:700,color:'#10b981',letterSpacing:'.14em',textTransform:'uppercase' }}>Free utility · {PRODUCTS.length} transaction builders</span>
-            </div>
-            <h2 style={{ fontSize:'clamp(22px,3.2vw,32px)',fontWeight:900,letterSpacing:'-1.5px',marginBottom:12 }}>Transaction builders — free</h2>
-            <p style={{ fontSize:14,color:'rgba(255,255,255,.44)',maxWidth:560,margin:'0 auto' }}>Pick an action → we build the exact transaction → you sign it in your own wallet. One signature, no payment.</p>
-            <p style={{ fontSize:12,color:'rgba(255,255,255,.4)',maxWidth:540,margin:'10px auto 0',lineHeight:1.6 }}>Every transaction service is free. You sign in your own wallet; XRPLHub never holds your keys or funds. (The network itself charges a tiny fee per transaction, a fraction of a cent, paid by your wallet.)</p>
-            <p style={{ fontSize:12,color:'rgba(255,255,255,.32)',maxWidth:540,margin:'10px auto 0',lineHeight:1.6 }}>Every one of these is a documented XRPL operation. You can code it yourself from the developer tutorials — or let us build the exact transaction for you to sign in your wallet. No coding, no copy-paste errors.</p>
-          </div>
-          <div style={{ display:'grid',gridTemplateColumns:'1fr',gap:18,marginBottom:18 }}>
-            {featured.map(p=>(
-              <div key={p.id} className="pcard-hero" onClick={()=>setAP(p)} style={{ background:`linear-gradient(135deg,${p.color}14,rgba(6,6,22,.85))`,border:`1px solid ${p.color}38`,borderRadius:22,padding:'28px 30px',position:'relative',overflow:'hidden',cursor:'pointer' }}>
-                <div style={{ position:'absolute',top:-40,right:-40,width:220,height:220,borderRadius:'50%',background:`radial-gradient(circle,${p.color}18 0%,transparent 70%)`,pointerEvents:'none' }} />
-                {p.tag && <span style={tagStyle(p.tag, p.color, {top:14, right:14, fontSize:10, padding:'5px 11px'})}>★ {p.tag} · TOP PICK</span>}
-                <div className="pcard-hero-row">
-                  <div>
-                    <div style={{ display:'flex',alignItems:'center',gap:14,marginBottom:14 }}>
-                      <div style={{ width:60,height:60,borderRadius:16,background:`${p.color}20`,border:`1px solid ${p.color}38`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:30,animation:'float 4s ease-in-out infinite',flexShrink:0 }}>{p.emoji}</div>
-                      <div>
-                        <div style={{ fontSize:10,fontWeight:700,color:p.color,letterSpacing:'.13em',textTransform:'uppercase',marginBottom:4,fontFamily:"'IBM Plex Mono',monospace" }}>{p.cat} · {p.amendment}</div>
-                        <h3 style={{ fontSize:'clamp(20px,2.4vw,26px)',fontWeight:900,letterSpacing:'-.5px' }}>{p.name}</h3>
-                      </div>
-                    </div>
-                    <p style={{ fontSize:14,color:'rgba(255,255,255,.55)',lineHeight:1.7,marginBottom:0,maxWidth:540 }}>{p.tagline}</p>
-                  </div>
-                  <div style={{ textAlign:'right',flexShrink:0 }}>
-                    <div style={{ fontSize:'clamp(22px,2.4vw,28px)',fontWeight:900,color:p.color,whiteSpace:'nowrap' }}>Free</div>
-                    <div style={{ fontSize:11,color:'rgba(255,255,255,.32)',marginBottom:12,whiteSpace:'nowrap' }}>you sign in your own wallet</div>
-                    <button style={{ padding:'12px 22px',borderRadius:99,background:p.color,color:'#000',border:'none',fontWeight:800,fontSize:13,cursor:'pointer',fontFamily:'inherit',whiteSpace:'nowrap' }}>Build &amp; sign →</button>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-          <div className="prod-grid">
-            {others.map(p=>(
-              <div key={p.id} className="pcard" onClick={()=>setAP(p)} style={{ background:'rgba(6,6,22,.72)',backdropFilter:'blur(16px)',border:`1px solid ${p.color}22`,borderRadius:18,padding:18,position:'relative',overflow:'hidden',cursor:'pointer',display:'flex',flexDirection:'column',minHeight:230 }}>
-                {p.tag && <span style={tagStyle(p.tag, p.color, {top:10, right:10, fontSize:9, padding:'3px 8px'})}>{p.tag}</span>}
-                <div style={{ width:42,height:42,borderRadius:12,background:`${p.color}18`,border:`1px solid ${p.color}25`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:20,marginBottom:12 }}>{p.emoji}</div>
-                <div style={{ fontSize:9,fontWeight:700,color:p.color,letterSpacing:'.11em',textTransform:'uppercase',marginBottom:6,fontFamily:"'IBM Plex Mono',monospace",opacity:.85 }}>{p.cat}</div>
-                <h3 style={{ fontSize:14,fontWeight:800,marginBottom:5,lineHeight:1.25 }}>{p.name}</h3>
-                <p style={{ fontSize:11,color:'rgba(255,255,255,.42)',lineHeight:1.55,marginBottom:12,flex:1 }}>{p.tagline}</p>
-                <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',paddingTop:10,borderTop:`1px solid ${p.color}15`,gap:6,marginTop:'auto' }}>
-                  <span style={{ fontSize:13,fontWeight:900,color:p.color,lineHeight:1.3 }}>Free</span>
-                  <button style={{ padding:'6px 12px',borderRadius:99,background:`${p.color}18`,border:`1px solid ${p.color}32`,color:p.color,fontWeight:700,fontSize:10,cursor:'pointer',fontFamily:'inherit',whiteSpace:'nowrap' }}>Build →</button>
-                </div>
-              </div>
-            ))}
           </div>
         </section>
 

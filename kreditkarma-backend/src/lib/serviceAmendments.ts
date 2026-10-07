@@ -6,17 +6,14 @@
 //
 // Enforced in two places, both BEFORE any money moves:
 //   - /api/create-payment refuses to start a payment for an unavailable service;
-//   - the service's own builder refuses to build (so /api/execute, /api/x402/tx — which builds before it
-//     settles — and the free preview all refuse too, and an x402 caller is never charged).
-// GET /api/services/availability serves the same answer to the storefront so the Buy button is honest.
+//   - the product's own builder refuses to build (so /api/execute refuses too).
 
 import { getAmendmentStatuses, type AmendmentStatus } from "./amendments";
-import { DELEGATION_AMENDMENT } from "./delegation";
 
 /** productId -> the amendment it needs. */
-export const SERVICE_REQUIRED_AMENDMENT: Readonly<Record<string, string>> = Object.freeze({
-  delegate: DELEGATION_AMENDMENT,
-});
+// Empty since 2026-10-07: the only amendment-gated service (delegate) was removed along with the generic builders. The gate
+// stays so a future product transaction that needs an amendment is fail-closed from day one.
+export const SERVICE_REQUIRED_AMENDMENT: Readonly<Record<string, string>> = Object.freeze({});
 
 export interface ServiceAvailability {
   productId: string;

@@ -26,7 +26,8 @@ for (const k of ["services", "providers", "evaluators", "routes", "events", "mod
   const empty = v === undefined || (Array.isArray(v) && v.length === 0) || (typeof v === "object" && v !== null && Object.keys(v).length === 0);
   if (!empty) fail(`plugin.${k} must be empty/absent (found ${typeof v})`);
 }
-const expected = ["XRPLHUB_SCORE_WALLET", "XRPLHUB_SCREEN_ADDRESS", "XRPLHUB_MPT_RISK", "XRPLHUB_LIST_SERVICES", "XRPLHUB_PREVIEW_TRANSACTION", "XRPLHUB_BUILD_TRANSACTION"];
+// Read-only lookups only: the transaction list/preview/build actions were removed 2026-10-07 with XRPLHub's generic builders.
+const expected = ["XRPLHUB_SCORE_WALLET", "XRPLHUB_SCREEN_ADDRESS", "XRPLHUB_MPT_RISK"];
 const names = (plugin?.actions ?? []).map((a) => a.name);
 if (JSON.stringify(names) !== JSON.stringify(expected)) fail(`actions must be exactly ${expected.join(", ")} (found ${names.join(", ")})`);
 
@@ -36,9 +37,7 @@ const params = pkg.agentConfig?.pluginParameters ?? {};
 if (Object.keys(params).length) fail("package.json agentConfig.pluginParameters must be empty (no settings)");
 if (pkg.dependencies && Object.keys(pkg.dependencies).length) fail("package.json must have no runtime dependencies");
 
-// 3. Shipped JS: no key/signing/submission vocabulary, no env access, and only node:crypto imported. (Since 2026-10-05 the
-//    plugin passes on the UNSIGNED transaction for free — but only through checkTransactions(), which requires every step's
-//    Account to be the agent's own wallet; asserted in section 4.)
+// 3. Shipped JS: no key/signing/submission vocabulary, no env access, and only node:crypto imported.
 const FORBIDDEN = [
   [/privateKey|private_key|secretKey|mnemonic|passphrase/i, "key material vocabulary"],
   [/\bseed\b/i, "seed"],
@@ -64,10 +63,10 @@ for (const file of walk(dist).filter((f) => f.endsWith(".js"))) {
 const client = fs.readFileSync(path.join(dist, "client.js"), "utf8");
 if (!client.includes("https://www.xrplhub.io")) fail("client must pin https://www.xrplhub.io");
 
-// 4. A transaction is only ever passed on after checkTransactions() (Account must be the agent's wallet, unsigned).
+// 5. No transaction tools: the plugin never asks XRPLHub to build a transaction.
 {
   const actions = fs.readFileSync(path.join(root, "src", "actions.ts"), "utf8");
-  if (!/checkTransactions\(d, wallet\.value\)/.test(actions)) fail("src/actions.ts: the build action must pass its result through checkTransactions(d, wallet.value)");
+  if (/build_xrpl_transaction|preview_xrpl_transaction|list_xrpl_services/.test(actions)) fail("src/actions.ts calls a removed transaction tool");
 }
 
 if (problems.length) {

@@ -25,13 +25,13 @@ The live production app is a single Next.js project in **`kreditkarma-backend/`*
 ## Products
 
 - **XRPLScore** — a 300–850 credit-style score for an XRPL wallet.
-- **31 FREE XRPL transaction services** — on-chain actions (trustlines, escrows, AMM pool creation, NFT, etc. — NOT DEX orders, swaps or AMM deposits/withdrawals: removed 2026-10-06 because Xaman charges for those) we BUILD the
-  exact unsigned transaction for; the customer signs it. FREE on every path since 2026-10-05 (Xaman removed our original
-  app for charging for transactions Xaman offers free): storefront (`/api/execute`), `GET /api/tx` (and the old
-  `/api/x402/tx` URL), MCP `build_xrpl_transaction`, the ElizaOS plugin. One shared builder: `src/lib/freeTx.ts`.
-  Caution-tier confirmations, amendment gates and per-client rate limits are KEPT. `BUILDABLE_SERVICE_IDS` in
-  `src/app/api/execute/serviceCatalog.ts` is the ONE source of the count; `scripts/check-service-parity.mjs` fails the
-  build if any transaction service price is not $0 or a payment step creeps back onto a transaction path.
+- **NO generic transaction catalog** (removed 2026-10-07: we keep only products nobody else offers). `/api/tx`,
+  `/api/x402/tx`, `/api/x402-tx` answer 410 (`src/lib/retiredTx.ts`); MCP has no build/preview/list tools; old
+  `/services/*` pages redirect (checks → /spend, the rest → /). The ONLY transactions we build are inside our products:
+  Spend Controls checks (`src/lib/checks.ts`), `mptissue` (feeds the io.xrplhub.mpt.v1.declared credential; MPT card on the
+  homepage) and `permdomain` (XRPLScore-gated domains, returned by `/api/domains/build`), both free, via `/api/execute`,
+  plus the admin-only `adminhealthcheck` (proves the paid path; `scripts/test-paid-path.mjs`). `scripts/check-service-parity.mjs`
+  (KEPT_TX) fails the build if any other transaction, a service count or a "catalog" claim creeps back.
 - **Still PAID** (prices in `src/lib/servicePrices.ts` / `src/lib/paycall.ts`, ledger-verified, single-use): score
   reports + score API, screening + receipts, monitoring, MPT data + issuer risk, credentials, lending/underwriting data,
   API plans, the admin health check, the agent payment pre-check (`/api/x402/precheck`, $0.03, both x402 rails,
@@ -43,7 +43,7 @@ The live production app is a single Next.js project in **`kreditkarma-backend/`*
   shows ONLY Spend Controls and signs with `xumm-xapp-sdk` `openSignRequest` — never add the catalog, DEX or anything
   Xaman does itself to it.
 - **Focus (competitive map, 2026-10-06):** lead with XRPLScore + monitoring + lending readiness, Spend Controls, MPT
-  issuer-power risk. Don't rebuild what Xaman charges for (DEX orders, swaps, AMM deposit/withdraw were removed).
+  issuer-power risk. Don't rebuild what Xaman or any wallet already does.
 - **Community grants** — a person reviews every application; nothing is automated. The
   application form is gated by `GRANT_APPLICATIONS_OPEN` in `src/lib/grantsStatus.ts`
   (currently `false`: approved grants are waiting to be paid). Donations stay open.

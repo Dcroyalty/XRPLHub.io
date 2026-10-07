@@ -1,13 +1,23 @@
 # XRPLHub.io
 
-**On-chain creditworthiness for the XRP Ledger.** XRPLHub gives any XRPL wallet a
-300–850 credit-style score (**XRPLScore**) computed from 8 public-ledger signals,
-builds ready-to-sign XRPL transactions for 31 actions for free, issues signed
-score certificates (XRPLHub's own attestation), and runs a community micro-grant fund
-(human-reviewed; applications currently paused).
+**On-chain creditworthiness for the XRP Ledger.** XRPLHub builds only what nobody else on the XRP Ledger offers:
+
+- **XRPLScore** — a 300–850 credit-style score for any XRPL wallet from 8 public-ledger signals, with continuous
+  monitoring (signed webhooks) and XLS-66 lending readiness (cross-broker exposure, underwriting inputs).
+- **Spend Controls** — budgets a payee can only spend at places you approve, and subscriptions (one check per period,
+  never issued ahead), paid by XRPL checks you sign. Free. Also as a Xaman xApp.
+- **MPT issuer-power risk** — what a Multi-Purpose Token's issuer can do to holders (clawback, freeze, require-auth,
+  transfer limits) plus the issuer's own XRPLScore.
+- **Agent payment pre-check** — one paid call before an agent pays an XRPL address: score, sanctions screen, account
+  flags, and whether the ledger would reject the payment.
+
+Plus signed score certificates and credentials (XLS-70), sanctions screening receipts, and a community micro-grant fund
+(human-reviewed; applications currently paused). XRPLHub does not build generic XRPL transactions; the few it builds
+live inside the products above (Spend Controls checks, XRPLScore-gated Permissioned Domains, MPT issuance with a
+recorded backing declaration).
 
 - **Live app:** https://www.xrplhub.io
-- **Unsigned only, no custody:** XRPLHub builds the exact transaction and scores wallets; it never signs or holds keys. Agents sign with their own wallet (see Ripple's [XRPL AI Starter Kit](https://ripple.com/insights/xrpl-ai-starter-kit/) Wallet and Payment skills).
+- **Unsigned only, no custody:** XRPLHub scores and checks; any transaction it builds is unsigned — it never signs or holds keys. Agents sign with their own wallet (see Ripple's [XRPL AI Starter Kit](https://ripple.com/insights/xrpl-ai-starter-kit/) Wallet and Payment skills).
 - **The wallet score is free and unauthenticated.** Paid actions settle in **XRP or RLUSD** — no account, no signup.
 - Next.js + TypeScript on Vercel · Neon Postgres (Prisma) · Xaman (XUMM) for signing.
 
@@ -56,17 +66,14 @@ https://www.xrplhub.io/api/mcp
 claude mcp add xrplhub --url https://www.xrplhub.io/api/mcp
 ```
 
-21 tools. Every one that returns a transaction returns an **unsigned txjson** — the wallet owner signs it in their
-own wallet; XRPLHub never signs for anyone.
+Every tool that returns a transaction returns an **unsigned txjson** — the wallet owner signs it in their own wallet;
+XRPLHub never signs for anyone. (The generic transaction tools were removed on 2026-10-07.)
 
-**Score & services**
+**Score**
 
 | Tool | What you get | Cost |
 |---|---|---|
 | `check_xrpl_score` | 300–850 score, grade, percentile, 8-signal breakdown, tips. Param: `wallet_address`. | free |
-| `list_xrpl_services` | All 31 `build_xrpl_transaction` actions, each with params + examples. Call this first. No params. | free |
-| `preview_xrpl_transaction` | Describe one action first: what it does, what's irreversible, every field it needs. No signable txjson. Params: `product_id`, `params` (optional). | free |
-| `build_xrpl_transaction` | The unsigned, ready-to-sign txjson for one of 31 actions — FREE, no payment. Caution-tier actions return what is irreversible until `confirm_caution` is true. Params: `product_id`, `wallet_address`, `params`, `confirm_caution`. | free |
 | `issue_score_credential` | Score certificate signed by XRPLHub (score computed fresh at issuance), with a URL where XRPLHub confirms it — XRPLHub's own attestation, not independently verifiable. 90 days. Params: `wallet_address`, `currency`, `uuid`. | 1 XRP / 1 RLUSD |
 | `check_service_health` | Is the money path working right now — database, Xaman, both x402 facilitators, the anchor config, alerting — before you pay. No params. | free |
 
@@ -115,17 +122,13 @@ own wallet; XRPLHub never signs for anyone.
 | `submit_grant_application` | Apply for a community micro-grant. **Currently paused** — returns an error until applications reopen. Params: `wallet_address`, `category`, `amount`, `description`. | free |
 | `donate_to_community_fund` | Donate XRP or RLUSD to the grant treasury; returns a ready-to-sign Payment if you pass `donor_wallet`. Params: `amount`, `currency`, `donor_wallet`, `message`. | free |
 
-### Free transactions (31 actions, no payment)
-
-- `GET /api/tx?productId=<id>&account=r...[&<params>][&confirmCaution=true]` — the unsigned txjson (also POST; `/api/x402/tx` serves the same free handler)
-- MCP `build_xrpl_transaction` and the storefront do the same. You sign in your own wallet; XRPLHub never signs.
-
 ### x402 (pay-per-call data: RLUSD on XRPL or USDC on Base, no signup)
 
 - Discovery: https://www.xrplhub.io/.well-known/x402
 - OpenAPI 3.1: https://www.xrplhub.io/openapi.json
 - `GET /api/x402/score?wallet=r...` — 300–850 score + 8 signals
 - `GET /api/x402/report?wallet=r...` — score + risk flags + recommendations + on-chain snapshot
+- `GET /api/x402/precheck?destination=r...` — agent payment pre-check: one verdict (block / caution / proceed) by published rules
 
 ### llms.txt
 

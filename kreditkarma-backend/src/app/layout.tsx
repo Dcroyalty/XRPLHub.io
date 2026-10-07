@@ -1,6 +1,5 @@
 import type { Metadata } from 'next';
 import './globals.css';
-import { SERVICE_COUNT } from '@/app/api/execute/serviceCatalog';
 // Vercel Web Analytics: page views + referrers (e.g. youtube.com), no cookies, no personal data,
 // no consent banner needed -- it's aggregate/anonymous by design. View it at vercel.com -> the
 // kreditkarma-obi2 project -> Analytics tab. Already an installed dependency; just never mounted.
@@ -11,8 +10,8 @@ export const metadata: Metadata = {
   // every other host (xrplhub.io, xrplhub.com, kreditkarma.us) redirects here.
   metadataBase: new URL('https://www.xrplhub.io'),
   alternates: { canonical: './' },
-  title: 'XRPLHub — XRPL Services, Community Grants & the XRPLScore API',
-  description: `${SERVICE_COUNT} done-for-you XRPL transaction services · A public grants treasury on the XRP Ledger · XRPLScore on-chain scoring (300–850 from 8 signals) with a REST API billed in RLUSD. Works with Xaman, Crossmark and GemWallet.`,
+  title: 'XRPLHub — XRPLScore, Spend Controls & MPT Issuer Risk',
+  description: 'XRPLScore: a 300–850 credit-style score for any XRP Ledger wallet, with monitoring and XLS-66 lending readiness · Spend Controls: budgets and subscriptions paid by XRPL checks you sign · MPT issuer-power risk · an agent payment pre-check. Works with Xaman, Crossmark and GemWallet.',
   icons: { icon: '/favicon.ico' },
 };
 

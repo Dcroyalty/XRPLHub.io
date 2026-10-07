@@ -9,14 +9,15 @@ const nextConfig: NextConfig = {
   },
   // xrp-ledger.toml: the spec wants application/toml (text/plain also accepted) and CORS open,
   // so browser-based checkers can read it. Served from public/.well-known/.
-  // DEX order, swap and AMM deposit/withdraw builders were removed 2026-10-06 (Xaman charges for those; we don't
-  // compete with the wallet we sign through). Send their old indexed pages to the catalog instead of a 404.
+  // The generic transaction catalog and its /services pages were removed 2026-10-07 (XRPLHub keeps only products nobody
+  // else offers). The check pages go to Spend Controls, so "create an XRPL check" searches land on a real product;
+  // every other old service page (and the catalog index) goes to the homepage. Specific rules first — first match wins.
   async redirects() {
-    return ["dexorder", "smartswap", "ammentry", "ammwithdraw"].map((id) => ({
-      source: `/services/${id}`,
-      destination: "/services",
-      permanent: true,
-    }));
+    return [
+      ...["checkcreate", "checkcash", "checkcancel"].map((id) => ({ source: `/services/${id}`, destination: "/spend", permanent: true })),
+      { source: "/services/:id", destination: "/", permanent: true },
+      { source: "/services", destination: "/", permanent: true },
+    ];
   },
   async headers() {
     return [

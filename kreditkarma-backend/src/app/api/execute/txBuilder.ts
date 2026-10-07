@@ -1,6 +1,11 @@
 // src/app/api/execute/txBuilder.ts
-// The autonomous execution brain. Maps each productId to the exact XRPL
-// transaction the CUSTOMER signs in Xaman to receive their service.
+// The transactions XRPLHub still builds — ONLY the ones its own products depend on (owner decision 2026-10-07: the
+// generic transaction catalog was removed; we keep only products nobody else offers):
+//   mptissue          — MPTokenIssuanceCreate with a recorded backing declaration; feeds the io.xrplhub.mpt.v1.declared
+//                       credential and the MPT issuer-risk registry (/api/execute/verify).
+//   permdomain        — PermissionedDomainSet for a domain gated on XRPLScore credentials (/api/domains/build).
+//   adminhealthcheck  — admin-only TicketCreate x1 that proves the real paid path (scripts/test-paid-path.mjs).
+// Spend Controls builds its checks in src/lib/checks.ts; credentials build CredentialCreate/Accept in their own routes.
 //
 // SAFETY TIERS:
 //   'safe'      → additive or reversible; auto-builds, no special warning
@@ -20,44 +25,12 @@ import {
   BAD, BLOCKED, CAUTION, NEED, SAFE, isAddr, str, xrpToDrops,
   type Builder, type BuildResult, type BuildStep, type Params,
 } from './buildKit';
-import { richBuilders } from './serviceBuilders';
 import { planScoreDomain } from '@/lib/domainKit';
-import { buildCheckCancel, buildCheckCash, buildCheckCreate, parseCurrency } from '@/lib/checks';
 
 // ── Per-product builders ──────────────────────────────────────────────
-// account = the customer's own wallet (the signer). A builder may be async (it can read the
-// ledger) and may return several steps. The services in serviceBuilders.ts (multisig,
-// issuerdecl, issuercfg, rippling, identity, compliance, trustsend)
-// replace the older single-transaction versions that used to live here.
+// account = the customer's own wallet (the signer). A builder may be async (it can read the ledger).
 const builders: Record<string, Builder> = {
-  ...richBuilders,
-
-  // ── WALLET SECURITY ───────────────────────────────────────────────
-  regkey: (account, p) => {
-    // SetRegularKey — caution: master key still works unless later disabled
-    const key = str(p.regularKey);
-    if (!key || !isAddr(key)) return NEED(['regularKey']);
-    return CAUTION({ TransactionType: 'SetRegularKey', Account: account, RegularKey: key }, 'Set Regular Key');
-  },
-  depositauth: (account) => SAFE({ TransactionType: 'AccountSet', Account: account, SetFlag: 9 }, 'Enable Deposit Auth'), // asfDepositAuth
-  desttag: (account) => SAFE({ TransactionType: 'AccountSet', Account: account, SetFlag: 1 }, 'Require Destination Tag'), // asfRequireDest
-  lockdown: () => BLOCKED('XRP Lockdown disables the master key and can permanently lock you out of your account. For your protection, this cannot be auto-executed. Contact support@xrplhub.io for a guided, manual process.'),
-
-  // ── TOKEN ISSUER ──────────────────────────────────────────────────
-  tokenfee: (account, p) => {
-    const fee = Number(p.transferFee); // 0..1000000000 (0%..100% as billionths over 1e9 base); UI passes percent
-    if (p.transferFee === undefined) return NEED(['transferFee']);
-    // percent → TransferRate: 1.0 + pct/100, expressed as integer billionths
-    const rate = Math.round((1 + Number(fee) / 100) * 1_000_000_000);
-    if (rate < 1_000_000_000 || rate > 2_000_000_000) return BAD('transfer fee must be between 0% and 100%');
-    return SAFE({ TransactionType: 'AccountSet', Account: account, TransferRate: rate }, 'Set Transfer Fee');
-  },
-  trustline: (account, p) => {
-    const issuer = str(p.issuer), currency = str(p.currency), limit = str(p.limit || '1000000000');
-    if (!issuer || !currency) return NEED(['issuer', 'currency']);
-    if (!isAddr(issuer)) return BAD('invalid issuer address');
-    return SAFE({ TransactionType: 'TrustSet', Account: account, LimitAmount: { currency, issuer, value: limit } }, 'Set Trust Line');
-  },
+  // ── MPT issuance with a recorded backing declaration (credentials + MPT issuer risk) ──
   mptissue: (account, p, ctx) => {
     // Full MPTokenIssuanceCreate builder. Choices here are hard or impossible to
     // undo (which ones depends on the live DynamicMPT amendment state — see
@@ -129,127 +102,18 @@ const builders: Record<string, Builder> = {
 
     return CAUTION(txjson, 'Multi-Purpose Token Issuance');
   },
-  mptsend: (account, p) => {
-    const dest = str(p.destination), issuanceId = str(p.mptIssuanceId), amount = str(p.amount);
-    if (!dest || !issuanceId || !amount) return NEED(['destination', 'mptIssuanceId', 'amount']);
-    if (!isAddr(dest)) return BAD('invalid destination address');
-    return SAFE({ TransactionType: 'Payment', Account: account, Destination: dest, Amount: { mpt_issuance_id: issuanceId, value: amount } }, 'Send MPT');
-  },
-  globalfreeze: (account) => SAFE({ TransactionType: 'AccountSet', Account: account, SetFlag: 7 }, 'Global Freeze (asfGlobalFreeze)'), // asfGlobalFreeze=7
-  freezeline: (account, p) => {
-    const issuer = str(p.holder), currency = str(p.currency);
-    if (!issuer || !currency) return NEED(['holder', 'currency']);
-    if (!isAddr(issuer)) return BAD('invalid holder address');
-    return SAFE({ TransactionType: 'TrustSet', Account: account, LimitAmount: { currency, issuer, value: '0' }, Flags: 0x00100000 }, 'Freeze Trust Line (tfSetFreeze)');
-  },
 
-  // ── DEFI ──────────────────────────────────────────────────────────
-
-  ammlaunch: (account, p) => {
-    const aCur = str(p.assetCurrency), aVal = str(p.assetValue), aIss = str(p.assetIssuer);
-    const bCur = str(p.asset2Currency), bVal = str(p.asset2Value), bIss = str(p.asset2Issuer);
-    if (!aVal || !bVal) return NEED(['assetValue', 'asset2Value']);
-    const a = aCur === 'XRP' || !aCur ? xrpToDrops(Number(aVal)) : { currency: aCur, issuer: aIss, value: aVal };
-    const b = bCur === 'XRP' || !bCur ? xrpToDrops(Number(bVal)) : { currency: bCur, issuer: bIss, value: bVal };
-    return SAFE({ TransactionType: 'AMMCreate', Account: account, Amount: a, Amount2: b, TradingFee: Number(p.tradingFee || 500) }, 'Create AMM Pool');
-  },
-  paychannel: (account, p) => {
-    const dest = str(p.destination), amount = str(p.amount), pubkey = str(p.publicKey);
-    if (!dest || !amount || !pubkey) return NEED(['destination', 'amount', 'publicKey']);
-    if (!isAddr(dest)) return BAD('invalid destination address');
-    return SAFE({ TransactionType: 'PaymentChannelCreate', Account: account, Destination: dest, Amount: xrpToDrops(Number(amount)), SettleDelay: Number(p.settleDelay || 86400), PublicKey: pubkey }, 'Create Payment Channel');
-  },
-  tickets: (account, p) => {
-    const count = Number(p.ticketCount || 1);
-    if (count < 1 || count > 250) return BAD('ticket count must be 1–250');
-    return SAFE({ TransactionType: 'TicketCreate', Account: account, TicketCount: count }, 'Create Tickets');
-  },
-
-  // ── ADMIN-ONLY (see servicePrices.ts's ADMIN_ONLY_SERVICE_IDS; never on the storefront) ──
-  // Deliberately the cheapest, most reversible-in-effect op available: one spare ticket, no
-  // account-config change, nothing to undo.
+  // ── ADMIN-ONLY (see servicePrices.ts's ADMIN_ONLY_SERVICE_IDS; never public) ──
   adminhealthcheck: (account) => SAFE({ TransactionType: 'TicketCreate', Account: account, TicketCount: 1 }, 'Admin health-check (TicketCreate x1)'),
 
-  // ── NFT ───────────────────────────────────────────────────────────
-  nftmint: (account, p) => {
-    const uri = str(p.uri);
-    const royalty = Number(p.royalty || 0); // percent
-    if (!uri) return NEED(['uri']);
-    const transferFee = Math.round(royalty * 1000); // percent → 0..50000 (XRPL NFT fee is in 1/100,000)
-    if (transferFee < 0 || transferFee > 50000) return BAD('royalty must be 0–50%');
-    const uriHex = Buffer.from(uri, 'utf8').toString('hex').toUpperCase();
-    return SAFE({ TransactionType: 'NFTokenMint', Account: account, URI: uriHex, NFTokenTaxon: Number(p.taxon || 0), TransferFee: transferFee, Flags: 8 }, 'Mint NFT'); // tfTransferable
-  },
-  nftburn: (account, p) => {
-    const id = str(p.nftokenId);
-    if (!id) return NEED(['nftokenId']);
-    return SAFE({ TransactionType: 'NFTokenBurn', Account: account, NFTokenID: id }, 'Burn NFT');
-  },
-  nftoffer: (account, p) => {
-    const id = str(p.nftokenId), amount = str(p.amount);
-    if (!id || !amount) return NEED(['nftokenId', 'amount']);
-    return SAFE({ TransactionType: 'NFTokenCreateOffer', Account: account, NFTokenID: id, Amount: xrpToDrops(Number(amount)), Flags: 1 }, 'Create NFT Sell Offer'); // tfSellNFToken
-  },
-
-  // ── PAYMENTS ──────────────────────────────────────────────────────
-  // XRP (default, unchanged) or RLUSD — one shared builder (src/lib/checks.ts) that also enforces a 64-hex CheckID,
-  // which xrpl.js validate() does not.
-  checkcreate: (account, p) => {
-    const dest = str(p.destination), amount = str(p.amount);
-    if (!dest || !amount) return NEED(['destination', 'amount']);
-    if (!isAddr(dest)) return BAD('invalid destination address');
-    const currency = parseCurrency(p.currency);
-    if (!currency) return BAD('currency must be XRP or RLUSD');
-    const b = buildCheckCreate({ account, destination: dest, currency, amount });
-    return b.ok ? SAFE(b.txjson, `Create Check (${currency})`) : BAD(b.error);
-  },
-  checkcash: (account, p) => {
-    const checkId = str(p.checkId), amount = str(p.amount);
-    if (!checkId || !amount) return NEED(['checkId', 'amount']);
-    const currency = parseCurrency(p.currency);
-    if (!currency) return BAD('currency must be XRP or RLUSD');
-    const b = buildCheckCash({ account, checkId, currency, amount });
-    return b.ok ? SAFE(b.txjson, `Cash Check (${currency})`) : BAD(b.error);
-  },
-  checkcancel: (account, p) => {
-    const checkId = str(p.checkId);
-    if (!checkId) return NEED(['checkId']);
-    const b = buildCheckCancel({ account, checkId });
-    return b.ok ? SAFE(b.txjson, 'Cancel Check') : BAD(b.error);
-  },
-  escrow: (account, p) => {
-    const dest = str(p.destination), amount = str(p.amount), finishAfter = Number(p.finishAfter);
-    if (!dest || !amount || !finishAfter) return NEED(['destination', 'amount', 'finishAfter']);
-    if (!isAddr(dest)) return BAD('invalid destination address');
-    return SAFE({ TransactionType: 'EscrowCreate', Account: account, Destination: dest, Amount: xrpToDrops(Number(amount)), FinishAfter: finishAfter }, 'Create Escrow');
-  },
-
-  // ── IDENTITY / COMPLIANCE ─────────────────────────────────────────
-  did: (account, p) => {
-    const uri = str(p.uri);
-    if (!uri) return NEED(['uri']);
-    const hex = Buffer.from(uri, 'utf8').toString('hex').toUpperCase();
-    return SAFE({ TransactionType: 'DIDSet', Account: account, URI: hex }, 'Create / Update DID');
-  },
-  credentialissue: (account, p) => {
-    const subject = str(p.subject), credType = str(p.credentialType);
-    if (!subject || !credType) return NEED(['subject', 'credentialType']);
-    if (!isAddr(subject)) return BAD('invalid subject address');
-    const typeHex = Buffer.from(credType, 'utf8').toString('hex').toUpperCase();
-    return SAFE({ TransactionType: 'CredentialCreate', Account: account, Subject: subject, CredentialType: typeHex }, 'Issue Credential');
-  },
+  // ── XRPLScore-gated Permissioned Domain (credentials) ──
   permdomain: (account, p) => {
-    // XRPLScore-gated domain: minTier (min600|min650|min700|min750) accepts that tier AND every tier above it (a wallet holds only its
-    // highest tier — listing one tier silently rejects better wallets). Optional alsoAccept "rIssuer:type,…" and domainId (to update).
-    if (str(p.minTier)) {
-      const plan = planScoreDomain({ owner: account, minTier: p.minTier, alsoAccept: p.alsoAccept, domainId: p.domainId });
-      if (!plan.ok) return BAD(plan.error);
-      return SAFE(plan.txjson as unknown as Record<string, unknown>, plan.updatesDomainId ? 'Update Permissioned Domain (XRPLScore-gated)' : 'Create Permissioned Domain (XRPLScore-gated)');
-    }
-    const credType = str(p.credentialType), issuer = str(p.acceptedIssuer || account);
-    if (!credType) return NEED(['credentialType']);
-    const typeHex = Buffer.from(credType, 'utf8').toString('hex').toUpperCase();
-    return SAFE({ TransactionType: 'PermissionedDomainSet', Account: account, AcceptedCredentials: [{ Credential: { Issuer: issuer, CredentialType: typeHex } }] }, 'Set Permissioned Domain');
+    // minTier (min600|min650|min700|min750) accepts that tier AND every tier above it (a wallet holds only its highest
+    // tier — listing one tier silently rejects better wallets). Optional alsoAccept "rIssuer:type,…" and domainId (to update).
+    if (!str(p.minTier)) return NEED(['minTier']);
+    const plan = planScoreDomain({ owner: account, minTier: p.minTier, alsoAccept: p.alsoAccept, domainId: p.domainId });
+    if (!plan.ok) return BAD(plan.error);
+    return SAFE(plan.txjson as unknown as Record<string, unknown>, plan.updatesDomainId ? 'Update Permissioned Domain (XRPLScore-gated)' : 'Create Permissioned Domain (XRPLScore-gated)');
   },
 };
 

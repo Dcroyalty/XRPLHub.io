@@ -3,8 +3,6 @@
 // AI crawlers. Plain text, stable URL: https://www.xrplhub.io/llms.txt
 
 import { PLAN_ORDER, PLANS } from "@/lib/plans";
-import { SERVICE_CATALOG, SERVICE_COUNT } from "@/app/api/execute/serviceCatalog";
-import { priceUsd } from "@/lib/pricing";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,24 +16,20 @@ export async function GET(req: Request) {
     return `- ${p.name} (${price}): ${p.monthlyQuota.toLocaleString()} scored calls/mo, ${p.rateLimitPerMin} req/min`;
   }).join("\n");
 
-  const services = SERVICE_CATALOG.filter((s) => s.tier !== "blocked").map((s) => {
-    const req = s.params.filter((x) => x.required).map((x) => x.name);
-    const price = priceUsd(s.id);
-    return `- ${s.id} — ${s.label}${price != null ? ` — ${price}` : ""}${req.length ? ` (params: ${req.join(", ")})` : ""}`;
-  }).join("\n");
-
   const body = `# XRPLHub.io
 
 > On-chain creditworthiness for the XRP Ledger. XRPLHub gives any XRPL wallet a
-> 300-850 credit-style score (XRPLScore) from 8 public-ledger signals, sells
-> ready-to-sign prebuilt XRPL transactions for ${SERVICE_COUNT} actions, issues signed
-> verifiable score credentials, and runs an on-chain community micro-grant fund.
+> 300-850 credit-style score (XRPLScore) from 8 public-ledger signals, with monitoring and XLS-66
+> lending readiness; Spend Controls (budgets and subscriptions paid by XRPL checks you sign);
+> MPT issuer-power risk; an agent payment pre-check; signed verifiable score credentials; and an
+> on-chain community micro-grant fund. XRPLHub does not build generic XRPL transactions.
 > The wallet score is free and unauthenticated. Paid actions settle in XRP or
 > RLUSD with no account and no signup.
 
 ## Signing: unsigned only (no custody)
 
-XRPLHub builds and scores; it never signs and never holds keys. Every transaction we return is unsigned txjson
+XRPLHub scores and checks; it never signs and never holds keys. The few transactions it builds — inside its own
+products (Spend Controls checks, XRPLScore-gated Permissioned Domains, MPT issuance with a recorded declaration) — are unsigned txjson
 for the wallet owner (or the agent's own wallet) to sign and submit. For agent wallet creation, signing and payments
 use Ripple's XRPL AI Starter Kit (Agent Wallet and Payment skills, https://ripple.com/insights/xrpl-ai-starter-kit/)
 and pair it with XRPLHub for the built transactions and wallet scoring.
@@ -63,7 +57,7 @@ a finished count).
 - GET ${origin}/api/credentials/account?address=r... — every credential this account holds (issuer, type, accepted, expired, expiry), live. Default walks the owner directory (bounded ~20s; may return coverage:"partial" for an exchange-scale account). Add &issuer=r... (and &type=<name|hex> unless it is XRPLHub's issuer) for a direct ledger lookup that is always fast and complete.
 - GET ${origin}/api/credentials/issuer?address=r... — everything an issuer has issued: types, subject count, acceptance rate, from the census
 - GET ${origin}/api/domains/eligible?address=r...&domain=<64-hex DomainID> — does this account hold a credential satisfying this permissioned domain, live
-- GET|POST ${origin}/api/domains/build?account=r...&minTier=min650 — free plan for a Permissioned Domain gated on XRPLScore credentials (the floor tier AND every tier above it are listed for you); the unsigned PermissionedDomainSet is the storefront service permdomain, delivered over x402. Guide: ${origin}/api/domains/guide
+- GET|POST ${origin}/api/domains/build?account=r...&minTier=min650 — FREE: the plan AND the unsigned PermissionedDomainSet ("transaction") for a Permissioned Domain gated on XRPLScore credentials (the floor tier AND every tier above it are listed for you). You sign it with your own wallet. Guide: ${origin}/api/domains/guide
 - POST ${origin}/api/credentials/request { "subject": "r..." } — a wallet requests its XRPLScore credential (fresh score ≥ 600 → queued; we issue, the wallet accepts). GET the same URL with ?subject= for status and the unsigned CredentialAccept.
 
 ## Multi-Purpose Token (MPT, XLS-33) registry + issuer risk (free)
@@ -153,9 +147,6 @@ MCP server (Streamable HTTP, JSON-RPC 2.0, no auth):
 - Claude Code: claude mcp add xrplhub --url ${origin}/api/mcp
 - Tools:
   - check_xrpl_score — free 300-850 wallet score + 8-signal breakdown + tips. Param: wallet_address.
-  - list_xrpl_services — the ${SERVICE_COUNT} build_xrpl_transaction actions, each with its params + examples. No params.
-  - preview_xrpl_transaction — FREE. What one XRPL transaction does, what is irreversible and every field it needs. Returns NO signable txjson. Params: product_id, params (optional).
-  - build_xrpl_transaction — FREE. Returns the unsigned txjson for one of ${SERVICE_COUNT} XRPL actions, directly (no payment). Caution-tier actions return confirmation_required with what is irreversible until confirm_caution is true. Params: product_id, wallet_address, params, confirm_caution. NOTE: mptissue (MPT issuance) has a full form — name, ticker, supply cap, decimals, 6 capability flags (canTransfer/canTrade/canEscrow/canLock/requireAuth/canClawback — clawback = you can take the token back from any holder), an optional transfer fee, and a backing declaration (backingType, backingStatement, verifiedBy, redeemable). Free description (preview_xrpl_transaction, or POST /api/execute/preview — neither returns the signable txjson) shows what is permanent vs changeable RIGHT NOW (read live from the DynamicMPT amendment state; hedged if unreadable) + the flag guide + the backing hard line (XRPLHub publishes the declaration, never verifies it).
   - issue_score_credential — paid (1 XRP or 1 RLUSD) signed, verifiable score certificate, 90 days. Params: wallet_address, currency, uuid (2nd call).
   - submit_grant_application — apply for a $25-$100 community micro-grant (a person reviews every application). Params: wallet_address, category, amount, description.
   - donate_to_community_fund — donate XRP or RLUSD to the grant treasury. Params: amount, currency, donor_wallet, message.
@@ -174,17 +165,6 @@ MCP server (Streamable HTTP, JSON-RPC 2.0, no auth):
 
 Health: GET ${origin}/api/health  (503 when a money-path component is down; ?deep=1 for live facilitator probes)
 
-## Free transactions — all ${SERVICE_COUNT} XRPL actions
-
-XRPLHub charges nothing for transactions. It builds the exact unsigned transaction; you sign it in your own wallet
-(Xaman, Crossmark, GemWallet or any XRPL wallet). XRPLHub never signs and never holds keys or funds.
-- GET ${origin}/api/tx?productId=<id>&account=r...[&<params>][&confirmCaution=true] — the unsigned txjson (every step, in
-  order, for multi-step actions). Also POST {productId, account, params, confirmCaution}. /api/x402/tx serves the same free handler.
-- Caution-tier actions (multisig lockdown, regular key, No Freeze, MPT issuance, permission delegation) return 409
-  confirmation_required with what is irreversible; repeat with confirmCaution=true once the wallet owner has read it.
-- MCP: build_xrpl_transaction (same thing). Storefront: ${origin} — pick an action, fill the form, sign. No payment step.
-- Rate-limited per client.
-
 x402 pay-per-call (data, not transactions) — EVERY paid route below takes RLUSD on the XRP Ledger (t54) OR USDC on Base (CDP), same price, no signup:
 - Discovery: ${origin}/.well-known/x402  (carries per-resource inputSchema + outputSchema, the errorCodes map, and the settlement/idempotency guarantees)
 - OpenAPI 3.1: ${origin}/openapi.json
@@ -194,7 +174,7 @@ x402 pay-per-call (data, not transactions) — EVERY paid route below takes RLUS
   work succeeds — a handler failure returns error:"handler_failed" and does NOT
   charge you (retry with the same PAYMENT-SIGNATURE). Send an Idempotency-Key
   header (or rely on the invoiceId) — a retry replays the original response.
-- RETIRED (410): /api/x402-tx (use /api/tx), /api/v1/wallet-report,
+- RETIRED (410): /api/tx, /api/x402/tx, /api/x402-tx (the generic transaction catalog, removed 2026-10-07), /api/v1/wallet-report,
   /api/v1/pay-per-score.
 
 More x402 pay-per-call routes (both rails, same price):
@@ -243,13 +223,6 @@ returns HTTP 402 (error "key_expired", with expiredAt and renew URLs) — not
 401 — so an agent can re-buy without a human.
 
 ${plans}
-
-## The ${SERVICE_COUNT} prebuilt XRPL transaction actions
-
-All of them are FREE: GET /api/tx, MCP build_xrpl_transaction, or the storefront return the unsigned txjson with no payment.
-The wallet owner signs in their own wallet. This never signs for anyone.
-
-${services}
 
 ## Treasury
 

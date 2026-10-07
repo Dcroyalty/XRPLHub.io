@@ -3,8 +3,8 @@
  *
  * Measures, LOCALLY, every custom_meta field XUMM_API actually validates -- identifier (max 40),
  * blob stringified (max 1500), instruction (max 280), per docs.xaman.dev's post-payload reference --
- * for the EXECUTE payload (every step of every one of the storefront services) and the PAYMENT payload (every
- * service + donate), using the real builders. No network call to Xaman, no money moved.
+ * for the EXECUTE payload (every step of the transactions XRPLHub still builds: mptissue, permdomain) and the PAYMENT
+ * payload (every priced product + donate), using the real builders. No network call to Xaman, no money moved.
  *
  * Run: node scripts/test-xaman-payload-sizes.mjs
  */
@@ -18,40 +18,11 @@ const LIMITS = { identifier: 40, blob: 1500, instruction: 280 };
 const ACCOUNT = 'rs59g3amo5iT6T64Cg96XXMAWuw3WPQcLF'; // a real, validly-checksummed address (the treasury's) -- needed to pass isAddr(); nothing is submitted anywhere
 const HASH64 = 'A'.repeat(64);
 
-// Other real, validly-checksummed mainnet addresses already known from this session -- used only as
-// distinct counterparties for measurement, nothing is submitted anywhere.
-const RLUSD_ISSUER = 'rMxCKbEDwqr76QuheSUMdEGf4B9xJ8m5De';
-const ANCHOR = 'r9dQS1oGms3B7SdY6nyU24Dy7dWyWXuJXb';
-const ISSUER3 = 'rmWjCGeLtuLGerEuvHDkrsr46ej2Ni13f';
 
 // Minimal valid params per product so every builder actually returns steps instead of NEED(...).
 const PARAMS = {
-  regkey: { regularKey: RLUSD_ISSUER },
-  tokenfee: { transferFee: 1 },
-  trustline: { issuer: RLUSD_ISSUER, currency: 'USD' },
-  trustsend: { issuer: RLUSD_ISSUER, currency: 'USD', destination: ANCHOR, amount: '1' },
   mptissue: { name: 'Example Token Name Long', ticker: 'EXAMPL', maximumAmount: '1000000' },
-  mptsend: { destination: ANCHOR, mptIssuanceId: '0'.repeat(48), amount: '1' },
-  freezeline: { holder: RLUSD_ISSUER, currency: 'USD' },
-  ammlaunch: { assetValue: '1', asset2Value: '1', asset2Currency: 'USD' },
-  paychannel: { destination: ANCHOR, amount: '1', publicKey: 'ED' + '0'.repeat(64) },
-  nftmint: { uri: 'ipfs://Qm' + 'x'.repeat(44) },
-  nftburn: { nftokenId: '0'.repeat(64) },
-  nftoffer: { nftokenId: '0'.repeat(64), amount: '1' },
-  checkcreate: { destination: ANCHOR, amount: '1' },
-  checkcash: { checkId: '0'.repeat(64), amount: '1' },
-  checkcancel: { checkId: '0'.repeat(64) },
-  depositpreauth: { sender: RLUSD_ISSUER },
-  escrow: { destination: ANCHOR, amount: '1', finishAfter: 800000000 },
-  identity: { domain: 'example.com' },
-  did: { uri: 'https://example.com/did.json' },
-  compliance: { domain: 'example.com', didUri: 'https://example.com/did.json' },
-  credentialissue: { subject: ANCHOR, credentialType: 'kyc-basic' },
-  permdomain: { credentialType: 'kyc-basic' },
-  multisig: { signers: `${RLUSD_ISSUER},${ANCHOR},${ISSUER3}`, quorum: 2 },
-  issuercfg: { domain: 'example.com' },
-  rippling: {},
-  tickets: { ticketCount: 1 },
+  permdomain: { minTier: 'min650' },
 };
 
 let worstIdentifier = 0, worstBlob = 0, worstInstruction = 0;

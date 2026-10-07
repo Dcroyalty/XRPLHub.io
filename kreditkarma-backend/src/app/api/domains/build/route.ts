@@ -9,12 +9,11 @@
 //
 // FREE: validates the choice and returns the PLAN — exactly which (issuer, CredentialType) pairs the domain will accept, what it
 // costs to create, what members must do — and where to get the transaction. The signable PermissionedDomainSet is the
-// storefront service `permdomain`, FREE since 2026-10-05: GET /api/tx or the storefront. Unsigned only: XRPLHub builds the
-// transaction, the institution signs it with its own wallet; we never sign, submit or hold keys.
+// signable PermissionedDomainSet itself (`transaction`, FREE). Unsigned only: XRPLHub builds the transaction, the institution
+// signs it with its own wallet; we never sign, submit or hold keys. (Until 2026-10-07 it pointed at the generic /api/tx.)
 
 import { NextResponse } from "next/server";
 import { planScoreDomain, DOMAIN_KIT_NOTES, MEMBER_STEPS, SCORE_TIERS, TIER_FLOOR, tiersFrom } from "@/lib/domainKit";
-import { paymentResourceUrl, priceInfo, type Primitive } from "@/lib/txPurchase";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -37,12 +36,6 @@ function respond(input: { account?: unknown; minTier?: unknown; alsoAccept?: unk
   const plan = planScoreDomain({ owner: account, minTier: input.minTier, alsoAccept: input.alsoAccept, domainId: input.domainId });
   if (!plan.ok) return NextResponse.json({ error: "bad_request", message: plan.error, ...(plan.needs ? { needs: plan.needs } : {}) }, { status: 400 });
 
-  const params: Record<string, Primitive> = { minTier: plan.minTier };
-  if (input.alsoAccept !== undefined && input.alsoAccept !== "") {
-    params.alsoAccept = typeof input.alsoAccept === "string" ? input.alsoAccept : plan.accepted.filter((a) => a.issuer !== DOMAIN_KIT_NOTES.issuer).map((a) => `${a.issuer}:${a.credentialType}`).join(",");
-  }
-  if (plan.updatesDomainId) params.domainId = plan.updatesDomainId;
-
   return NextResponse.json(
     {
       free: true,
@@ -64,13 +57,9 @@ function respond(input: { account?: unknown; minTier?: unknown; alsoAccept?: unk
         eligibilityCheck: `${ORIGIN}/api/domains/eligible?address=<wallet>&domain=<DomainID>`,
         afterCreating: "Read the new domain's DomainID from the validated transaction's metadata (the created PermissionedDomain node's LedgerIndex), then use it in the eligibility check above.",
       },
-      transaction: null,
-      getTheTransaction: {
-        service: "permdomain",
-        price: priceInfo("permdomain"),
-        freeResource: paymentResourceUrl(ORIGIN, "permdomain", plan.owner, params),
-        how: "GET freeResource — free, no payment. The response holds the unsigned PermissionedDomainSet. Or use the storefront at xrplhub.io. Check that its Account equals your owner account, then sign with your own wallet.",
-      },
+      transaction: plan.txjson,
+      signWith: plan.owner,
+      howToSign: "Check that the transaction's Account equals your owner account, then sign it with your own wallet (Xaman, Crossmark, GemWallet or any XRPL signer). XRPLHub never signs.",
       guide: `${ORIGIN}/api/domains/guide`,
       notes: DOMAIN_KIT_NOTES,
       disclaimer: DOMAIN_KIT_NOTES.notAdvice,

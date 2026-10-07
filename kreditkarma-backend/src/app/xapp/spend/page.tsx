@@ -1,6 +1,6 @@
 "use client";
 // src/app/xapp/spend/page.tsx — the Spend Controls xApp (runs INSIDE Xaman; console "WebApp URL" points here).
-// Shows ONLY Spend Controls: your plans, this period's checks, new subscription / new budget. No transaction catalog,
+// Shows ONLY Spend Controls: your plans, this period's checks, new subscription / new budget. Nothing else:
 // no DEX, nothing Xaman does itself. Every signature is a Xaman sign request opened with the xApp SDK
 // (xumm-xapp-sdk openSignRequest) — see SignPanel in ../../spend/ui.tsx.
 //

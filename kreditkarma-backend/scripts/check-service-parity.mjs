@@ -1,13 +1,14 @@
 // scripts/check-service-parity.mjs
-// Build-time guard: fails `npm run build` when the storefront's surfaces disagree about what it sells.
+// Build-time guard (runs before `next build`): XRPLHub keeps ONLY products nobody else offers (owner decision 2026-10-07 —
+// the generic transaction catalog was removed). This fails the build if the catalog creeps back or the copy drifts:
 //
-//   1. The service ids on the homepage, in the catalog (minus blocked ones), in the server price
-//      table, and in the builders are the SAME set — and every product on the page is placed by
-//      TOP_ORDER (an unplaced product silently sorts to the wrong place).
-//   2. Every hard-coded "N services/actions" claim in source, READMEs, CLAUDE.md and server.json
-//      equals the real count (BUILDABLE_SERVICE_IDS.length). Counts built from SERVICE_COUNT /
-//      PRODUCTS.length aren't typed by hand and are skipped.
-//   3. No public copy claims an AI/LLM does anything — there is none in the shipped code.
+//   1. The transactions XRPLHub still builds are exactly KEPT_TX (each used inside one of our own products), each is free,
+//      the builders match, and the admin health check stays admin-only AND buildable.
+//   2. The retired transaction routes answer 410 (retiredTxResponse) and never ask for payment; MCP exposes no generic
+//      transaction tools.
+//   3. No public copy states a service/action count or advertises a transaction catalog.
+//   4. No AI-as-actor claims (there is no LLM in the shipped code); no unsupported decision-time promise.
+//   5. Every paid x402 resource costs the same on both rails and goes through the dual-rail wrapper.
 //
 // Plain regex over source text (no TS toolchain needed), so it runs in a second.
 
@@ -17,95 +18,16 @@ import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (p) => fs.readFileSync(path.join(root, p), "utf8").replace(/\r\n/g, "\n");
+const exists = (p) => fs.existsSync(path.join(root, p));
 const problems = [];
 const fail = (m) => problems.push(m);
 
-const set = (a) => new Set(a);
-const diff = (a, b) => [...a].filter((x) => !b.has(x));
-const same = (label, a, b, an, bn) => {
-  const d1 = diff(a, b), d2 = diff(b, a);
-  if (d1.length) fail(`${label}: in ${an} but not in ${bn}: ${d1.join(", ")}`);
-  if (d2.length) fail(`${label}: in ${bn} but not in ${an}: ${d2.join(", ")}`);
+/** The ONLY transactions XRPLHub builds publicly, and the product each one lives in. */
+const KEPT_TX = {
+  mptissue: "MPT issuance with a recorded backing declaration (io.xrplhub.mpt.v1.declared credential + MPT issuer risk)",
+  permdomain: "XRPLScore-gated Permissioned Domain (credentials; /api/domains/build)",
 };
 
-// ── extract the id sets ──────────────────────────────────────────────────────
-const page = read("src/app/page.tsx");
-// RAW_PRODUCTS lives in src/lib/serviceContent.ts (the one source for both the client homepage and the
-// server-rendered per-service pages) — read the id set from there, not from page.tsx.
-const content = read("src/lib/serviceContent.ts");
-const ps = content.indexOf("export const RAW_PRODUCTS = [");
-const pe = content.indexOf("] as const;", ps);
-if (ps < 0 || pe < 0) fail("serviceContent.ts: could not find the RAW_PRODUCTS block");
-const pageIds = [...content.slice(ps, pe).matchAll(/\{ id:'([a-z0-9]+)'/g)].map((m) => m[1]);
-if (new Set(pageIds).size !== pageIds.length) fail("serviceContent.ts: duplicate product ids");
-
-// featured products render in their own grid above the ordered one, so they are not in TOP_ORDER
-const featuredIds = content.slice(ps, pe).split("\n  { id:'").slice(1)
-  .filter((b) => /featured:true/.test(b.slice(0, 300)))
-  .map((b) => b.slice(0, b.indexOf("'")));
-const to = page.indexOf("const TOP_ORDER = [");
-const toEnd = page.indexOf("];", to);
-const topOrder = to < 0 ? [] : [...page.slice(to, toEnd).matchAll(/'([a-z0-9]+)'/g)].map((m) => m[1]);
-
-const catalog = read("src/app/api/execute/serviceCatalog.ts");
-const entries = catalog.split(/\n  \{ id: "/).slice(1);
-const catalogAll = [], blocked = [];
-for (const e of entries) {
-  const id = e.slice(0, e.indexOf('"'));
-  catalogAll.push(id);
-  if (/tier: "blocked"/.test(e.slice(0, 400))) blocked.push(id);
-}
-const buildable = catalogAll.filter((id) => !blocked.includes(id));
-
-const prices = read("src/lib/servicePrices.ts");
-const priceKeys = [...prices.matchAll(/^  ([a-z0-9]+): \d+/gm)].map((m) => m[1]).filter((k) => k !== "credential");
-
-// Admin-only products (e.g. the paid-path health check): never customer-facing, so excluded from every
-// comparison below -- but their invisibility and their builder are explicitly ASSERTED, not just assumed.
-const adminOnlyBlock = prices.slice(prices.indexOf("ADMIN_ONLY_SERVICE_IDS"));
-const adminOnlyIds = new Set([...adminOnlyBlock.slice(0, adminOnlyBlock.indexOf("]")).matchAll(/"([a-z0-9]+)"/g)].map((m) => m[1]));
-const priceKeysPublic = priceKeys.filter((k) => !adminOnlyIds.has(k));
-
-const builderKeysAll = new Set();
-for (const f of ["src/app/api/execute/txBuilder.ts", "src/app/api/execute/serviceBuilders.ts"]) {
-  for (const m of read(f).matchAll(/^  ([a-z0-9]+): (?:\(|async|builders\.)/gm)) builderKeysAll.add(m[1]);
-}
-const builderKeys = new Set([...builderKeysAll].filter((k) => !adminOnlyIds.has(k)));
-for (const id of adminOnlyIds) {
-  if (!builderKeysAll.has(id)) fail(`admin-only product "${id}" has no builder in txBuilder.ts/serviceBuilders.ts`);
-  if (!priceKeys.includes(id)) fail(`admin-only product "${id}" has no entry in servicePrices.ts's ADMIN_ONLY_PRICE_USD`);
-  if (pageIds.includes(id)) fail(`admin-only product "${id}" is on the storefront homepage -- it must never be customer-visible`);
-  if (catalogAll.includes(id)) fail(`admin-only product "${id}" is in serviceCatalog.ts -- it must never be customer-visible`);
-}
-
-const names = read("src/app/api/create-payment/route.ts");
-const nameKeys = [...names.slice(names.indexOf("const NAMES"), names.indexOf("const MAX_DONATION")).matchAll(/([a-z0-9]+):'/g)].map((m) => m[1]).filter((k) => !["credential", "donate"].includes(k));
-
-// ── transaction services are FREE (owner decision 2026-10-05, after Xaman removed the original app for charging for them) ──
-{
-  const priceOf = Object.fromEntries([...prices.matchAll(/^  ([a-z0-9]+): ([\d.]+)/gm)].map((m) => [m[1], Number(m[2])]));
-  for (const id of buildable) {
-    if (priceOf[id] !== 0) fail(`servicePrices.ts: "${id}" is $${priceOf[id]} — every transaction service must be free ($0)`);
-  }
-  if (!/TX_SERVICE_PRICE_USD = 0;/.test(prices)) fail("servicePrices.ts: TX_SERVICE_PRICE_USD must be 0");
-}
-
-const N = buildable.length;
-same("page vs catalog", set(pageIds), set(buildable), "the homepage", "the catalog (buildable)");
-same("price table vs catalog", set(priceKeysPublic), set(buildable), "servicePrices.ts", "the catalog (buildable)");
-same("builders vs catalog", builderKeys, set(catalogAll), "the builders", "the catalog");
-// create-payment sells NO transaction service: none of them may appear in its NAMES, and it must refuse a $0 product.
-{
-  const sold = nameKeys.filter((k) => buildable.includes(k));
-  if (sold.length) fail("create-payment NAMES still lists transaction services (they are free): " + sold.join(", "));
-  if (!/listPriceUsd\(product\) === 0/.test(names)) fail("create-payment must refuse free transaction services (listPriceUsd(product) === 0)");
-}
-same("TOP_ORDER vs page", set([...topOrder, ...featuredIds]), set(pageIds), "TOP_ORDER + featured", "the homepage");
-if (blocked.some((id) => pageIds.includes(id))) fail("a blocked service is on the homepage: " + blocked.filter((id) => pageIds.includes(id)).join(", "));
-
-// ── hard-coded counts ────────────────────────────────────────────────────────
-// a count is a number that isn't part of a longer or comma-grouped number ("5,000 transactions")
-const COUNT = /(?<![\d,.])\b(\d{2,3})\b(?![,.]\d)(?=[ `*]+(?:(?:XRPL|Done-For-You|paid|prebuilt)[ `*]+)*(?:actions?|services?|Services|ids|build_xrpl_transaction|prebuilt|transaction))/g;
 function walk(dir, out = []) {
   for (const e of fs.readdirSync(path.join(root, dir), { withFileTypes: true })) {
     const p = path.join(dir, e.name);
@@ -114,92 +36,101 @@ function walk(dir, out = []) {
   }
   return out;
 }
-const files = [...walk("src"), "README.md", "../README.md", "../CLAUDE.md", "../server.json"].filter((f) => fs.existsSync(path.join(root, f)));
-for (const f of files) {
+
+// ── 1. kept transactions ─────────────────────────────────────────────────────────────────────────────────────────────
+const catalog = read("src/app/api/execute/serviceCatalog.ts");
+const catalogIds = [...catalog.matchAll(/\n  \{ id: "([a-z0-9]+)"/g)].map((m) => m[1]);
+const kept = Object.keys(KEPT_TX);
+const extra = catalogIds.filter((id) => !kept.includes(id));
+const missing = kept.filter((id) => !catalogIds.includes(id));
+if (extra.length) fail(`serviceCatalog.ts lists transactions outside our products: ${extra.join(", ")} — the generic catalog was removed 2026-10-07 (add to KEPT_TX only with the product it lives in)`);
+if (missing.length) fail(`serviceCatalog.ts is missing kept transactions: ${missing.join(", ")}`);
+
+const prices = read("src/lib/servicePrices.ts");
+const priceOf = Object.fromEntries([...prices.matchAll(/^  ([a-z0-9]+): ([\d.]+)/gm)].map((m) => [m[1], Number(m[2])]));
+for (const id of kept) if (priceOf[id] !== 0) fail(`servicePrices.ts: "${id}" must be free ($0), found ${priceOf[id]}`);
+const pricedTx = Object.keys(priceOf).filter((k) => !kept.includes(k) && !["credential", "adminhealthcheck"].includes(k));
+if (pricedTx.length) fail(`servicePrices.ts prices products that no longer exist: ${pricedTx.join(", ")}`);
+
+const adminBlock = prices.slice(prices.indexOf("ADMIN_ONLY_SERVICE_IDS"));
+const adminOnly = [...adminBlock.slice(0, adminBlock.indexOf("]")).matchAll(/"([a-z0-9]+)"/g)].map((m) => m[1]);
+const builder = read("src/app/api/execute/txBuilder.ts");
+const builderIds = [...builder.matchAll(/^  ([a-z0-9]+): (?:\(|async)/gm)].map((m) => m[1]);
+for (const id of [...kept, ...adminOnly]) if (!builderIds.includes(id)) fail(`txBuilder.ts has no builder for "${id}"`);
+const strayBuilders = builderIds.filter((id) => !kept.includes(id) && !adminOnly.includes(id));
+if (strayBuilders.length) fail(`txBuilder.ts builds transactions outside our products: ${strayBuilders.join(", ")}`);
+if (exists("src/app/api/execute/serviceBuilders.ts")) fail("serviceBuilders.ts is back — the generic builders were removed 2026-10-07");
+const content = read("src/lib/serviceContent.ts");
+for (const m of content.matchAll(/\{ id:'([a-z0-9]+)'/g)) if (!kept.includes(m[1])) fail(`serviceContent.ts shows "${m[1]}" on the homepage — not one of our products`);
+for (const id of adminOnly) {
+  if (catalogIds.includes(id) || content.includes(`id:'${id}'`)) fail(`admin-only "${id}" must never be customer-visible`);
+}
+const ex = read("src/app/api/execute/route.ts");
+if (!/ADMIN_ONLY_SERVICE_IDS\.has\(productId\)\) \{\n\s*if \(!isAdmin\(req\)\)/.test(ex)) fail("src/app/api/execute/route.ts: the paid flow must be reachable only by admin-only products");
+const names = read("src/app/api/create-payment/route.ts");
+if (!/listPriceUsd\(product\) === 0/.test(names)) fail("create-payment must refuse free products (listPriceUsd(product) === 0)");
+for (const id of kept) if (new RegExp(`\\b${id}:'`).test(names.slice(names.indexOf("const NAMES"), names.indexOf("const MAX_DONATION")))) fail(`create-payment NAMES sells "${id}" — it is free`);
+
+// ── 2. retired routes + MCP ─────────────────────────────────────────────────────────────────────────────────────────
+for (const f of ["src/app/api/tx/route.ts", "src/app/api/x402/tx/route.ts", "src/app/api/x402-tx/route.ts"]) {
+  const src = read(f);
+  if (!/retiredTxResponse/.test(src)) fail(`${f} must answer 410 via retiredTxResponse (the generic catalog was removed)`);
+  if (/dualX402\(|withX402\(|serveX402Paid\(/.test(src)) fail(`${f} must never ask for a payment`);
+}
+const mcp = read("src/app/api/mcp/route.ts");
+for (const t of ["list_xrpl_services", "build_xrpl_transaction", "preview_xrpl_transaction"]) {
+  if (new RegExp(`name: '${t}'`).test(mcp)) fail(`MCP still exposes the generic transaction tool ${t}`);
+}
+if (exists("src/app/services")) fail("src/app/services is back — the per-service SEO pages were removed (next.config.ts redirects them)");
+
+// ── 3. no service counts, no catalog in public copy ──────────────────────────────────────────────────────────────────
+const COUNT = /(?<![\d,.$])\b\d{1,3}\b(?![,.]\d)\s+(?:free\s+|FREE\s+|done[- ]for[- ]you\s+|prebuilt\s+|paid\s+)*(?:XRPL\s+)?(?:transaction\s+)?(?:services|actions|transaction builders)\b/i;
+const CATALOG = /transaction catalog|services? catalog|done[- ]for[- ]you xrpl|xrpl services · done/i;
+const RETIRED_OK = /remov|retir|no longer|was removed|gone|410/i;
+const publicCopy = [
+  ...walk("src").filter((f) => /\.(ts|tsx)$/.test(f)),
+  "README.md", "../README.md", "../CLAUDE.md", "../server.json", "../plugins/plugin-xrplhub/README.md",
+].filter(exists);
+for (const f of publicCopy) {
   read(f).split("\n").forEach((line, i) => {
-    if (/SERVICE_COUNT|PRODUCTS\.length|BUILDABLE_SERVICE_IDS/.test(line) && !/\b\d{2,3}\b(?=[ `*]+(?:XRPL |paid )*(?:actions?|services?))/.test(line.replace(/\$\{[^}]*\}/g, ""))) return;
-    for (const m of line.matchAll(COUNT)) {
-      if (Number(m[1]) !== N) fail(`${f}:${i + 1}: says "${m[1]}" services/actions but the catalog has ${N}: ${line.trim().slice(0, 110)}`);
-    }
+    if (COUNT.test(line) && !/BATCH|batch|checks? (?:a|per) period|MAX_|\bslice\(/.test(line)) fail(`${f}:${i + 1}: states a service/action count: ${line.trim().slice(0, 110)}`);
+    if (CATALOG.test(line) && !RETIRED_OK.test(line)) fail(`${f}:${i + 1}: advertises a transaction catalog: ${line.trim().slice(0, 110)}`);
   });
 }
 
-// ── no AI-as-actor claims in public copy (there is no LLM in the shipped code) ──
+// ── 4. no AI claims / residue; no unsupported decision-time promise ─────────────────────────────────────────────────
 const AI_CLAIM = /\bAI[- ](?:builds|assembles|verifies|does|will build|is building|delivers|reviews|triages|evaluates|underwrit\w*|powered|delivered|generated)|\bAI-powered|\bOur AI\b|\bpowered by AI\b/i;
-for (const f of ["src/app/page.tsx", "src/app/layout.tsx", "src/app/llms.txt/route.ts", "src/app/openapi.json/route.ts", "src/app/api/execute/serviceCatalog.ts", "src/app/.well-known/x402/route.ts", "../README.md", "../server.json"]) {
-  if (!fs.existsSync(path.join(root, f))) continue;
+for (const f of ["src/app/page.tsx", "src/app/layout.tsx", "src/app/llms.txt/route.ts", "src/app/openapi.json/route.ts", "src/app/.well-known/x402/route.ts", "../README.md", "../server.json"].filter(exists)) {
   read(f).split("\n").forEach((line, i) => { if (AI_CLAIM.test(line)) fail(`${f}:${i + 1}: AI claim (there is no LLM in the shipped code): ${line.trim().slice(0, 110)}`); });
 }
-
-// ── no AI residue in config examples, the schema, the MCP surface or the account page ──
-// (The AI_CLAIM scan above only covers a handful of public-copy files and phrases. A tracked .env.example advertising
-// "AI grant review" + an Anthropic key, and a page rendering "AI: <recommendation>", both got past it.)
 const AI_RESIDUE = /ANTHROPIC_API_KEY|XAI_API_KEY|GROK_API_KEY|AI grant review|AI Underwriting|(?<!Ripple XRPL )AI Starter Kit|\bAI: \$\{|"AI" or admin/;
-for (const f of [".env.example", "prisma/schema.prisma", "src/app/api/mcp/route.ts", "src/app/account/page.tsx", "src/app/api/grants/[id]/route.ts", "src/app/donate/page.tsx"]) {
-  if (!fs.existsSync(path.join(root, f))) continue;
+for (const f of [".env.example", "prisma/schema.prisma", "src/app/api/mcp/route.ts", "src/app/account/page.tsx", "src/app/api/grants/[id]/route.ts", "src/app/donate/page.tsx"].filter(exists)) {
   read(f).split("\n").forEach((line, i) => { if (AI_RESIDUE.test(line)) fail(`${f}:${i + 1}: AI residue (there is no LLM in the shipped code): ${line.trim().slice(0, 110)}`); });
 }
-
-// ── no unsupported decision-time promise anywhere in shipped source ──
-for (const f of walk("src")) {
-  if (!/\.(ts|tsx)$/.test(f)) continue;
-  read(f).split("\n").forEach((line, i) => {
-    if (/24\s*[–-]\s*48\s*hours/i.test(line)) fail(`${f}:${i + 1}: unsupported "24–48 hours" decision time: ${line.trim().slice(0, 110)}`);
-  });
+for (const f of walk("src").filter((x) => /\.(ts|tsx)$/.test(x))) {
+  read(f).split("\n").forEach((line, i) => { if (/24\s*[–-]\s*48\s*hours/i.test(line)) fail(`${f}:${i + 1}: unsupported "24–48 hours" decision time`); });
 }
 
-// ── transactions are FREE on every path (owner decision 2026-10-05) ───────────────────────────────────────────────────
-// Structural guards so a payment step can't creep back onto a transaction:
-//  - /api/tx and the historical /api/x402/tx serve the shared free handler and carry no x402 payment wrapper;
-//  - the MCP build tool returns the txjson through the shared free builder;
-//  - the storefront execute route builds free (the paid flow there is reachable only by the admin health check);
-//  - the x402 discovery document does not list a transaction resource.
-{
-  for (const f of ["src/app/api/tx/route.ts", "src/app/api/x402/tx/route.ts"]) {
-    const src = read(f);
-    if (!/handleFreeTxRequest/.test(src)) fail(f + " must serve the free handler (handleFreeTxRequest)");
-    if (/dualX402\(|withX402\(|serveX402Paid\(/.test(src)) fail(f + " must not ask for a payment — transactions are free");
-  }
-  const mcp = read("src/app/api/mcp/route.ts");
-  if (!/buildFreeTx\(/.test(mcp)) fail("src/app/api/mcp/route.ts: build_xrpl_transaction must return the txjson via buildFreeTx (free)");
-  if (/paymentResourceUrl\(/.test(mcp)) fail("src/app/api/mcp/route.ts must not hand out a payment resource for a transaction");
-  const ex = read("src/app/api/execute/route.ts");
-  if (!/ADMIN_ONLY_SERVICE_IDS\.has\(productId\)\) \{\n\s*if \(!isAdmin\(req\)\)/.test(ex)) fail("src/app/api/execute/route.ts: the paid flow must be reachable only by admin-only products");
-  const wk = read("src/app/.well-known/x402/route.ts");
-  if (/resource: `\$\{origin\}\/api\/(x402\/)?tx`/.test(wk)) fail("src/app/.well-known/x402/route.ts lists a transaction as a paid x402 resource — transactions are free");
-}
-
-// ── one product, one price, every rail ───────────────────────────────────────────────────────────────────────────────
-// A resource payable on both x402 rails must cost the same face value on each (owner rule, 2026-09-25). The RLUSD constants live in
-// src/lib/paycall.ts and the USDC constants in src/lib/x402Base.ts; every pair must be equal. (x402Dual also fails closed per request.)
+// ── 5. x402: one product, one price, every rail ─────────────────────────────────────────────────────────────────────
 {
   const paycall = read("src/lib/paycall.ts");
   const base = read("src/lib/x402Base.ts");
   const num = (src, name) => { const m = new RegExp("export const " + name + "\\s*=\\s*([0-9.]+)").exec(src); return m ? Number(m[1]) : null; };
-  // [RLUSD constant suffix, USDC constant suffix] — the report's RLUSD price predates the pairing and is named PRODUCT.
-  for (const [rk, uk] of [["SCORE", "SCORE"], ["SCREEN", "SCREEN"], ["MPT", "MPT"], ["EXPOSURE", "EXPOSURE"], ["UNDERWRITE", "UNDERWRITE"], ["PRODUCT", "REPORT"]]) {
-    const r = num(paycall, "PRICE_PER_" + rk + "_RLUSD");
-    const u = num(base, "PRICE_PER_" + uk + "_USDC");
-    if (r === null || u === null) fail("price pair PRICE_PER_" + rk + "_RLUSD / PRICE_PER_" + uk + "_USDC not found (paycall.ts / x402Base.ts)");
+  for (const [rk, uk] of [["SCORE", "SCORE"], ["SCREEN", "SCREEN"], ["MPT", "MPT"], ["EXPOSURE", "EXPOSURE"], ["UNDERWRITE", "UNDERWRITE"], ["PRECHECK", "PRECHECK"], ["PRODUCT", "REPORT"]]) {
+    const r = num(paycall, "PRICE_PER_" + rk + "_RLUSD"), u = num(base, "PRICE_PER_" + uk + "_USDC");
+    if (r === null || u === null) fail("price pair PRICE_PER_" + rk + "_RLUSD / PRICE_PER_" + uk + "_USDC not found");
     else if (r !== u) fail("PRICE_PER_" + rk + "_RLUSD " + r + " != PRICE_PER_" + uk + "_USDC " + u + " — one product, one price, every rail");
   }
 }
-
-// ── every per-call x402 route serves BOTH rails (owner rule, 2026-10-05) ────────────────────────────────────────────
-// A paid route under /api/x402 must go through the dual-rail wrapper (dualX402 directly, or walletGetDual) — a new
-// single-rail route fails the build instead of quietly shipping. Exempt BY DESIGN: /api/checkout/usdc/* (plan purchases):
-// the XRPL rail delivers the result even when settlement then fails, and a plan's result is a live API key.
 for (const f of walk("src/app/api/x402")) {
-  if (!/route\.ts$/.test(f)) continue;
-  if (/[\\/]x402[\\/]tx[\\/]route\.ts$/.test(f)) continue; // free since 2026-10-05 (checked above)
-  const src = read(f);
-  if (!/dualX402\(|walletGetDual\(/.test(src)) fail(`${f}: paid x402 route is not dual-rail (use dualX402 / walletGetDual)`);
+  if (!/route\.ts$/.test(f) || /[\\/]x402[\\/]tx[\\/]route\.ts$/.test(f)) continue; // /api/x402/tx is retired (410, checked above)
+  if (!/dualX402\(|walletGetDual\(/.test(read(f))) fail(`${f}: paid x402 route is not dual-rail (use dualX402 / walletGetDual)`);
 }
 
 if (problems.length) {
-  console.error(`\n✖ service parity check FAILED (${problems.length} problem${problems.length === 1 ? "" : "s"}):`);
+  console.error(`\n✖ product-surface check FAILED (${problems.length} problem${problems.length === 1 ? "" : "s"}):`);
   for (const p of problems) console.error("  - " + p);
-  console.error("\nThe homepage, catalog, price table, builders and docs must describe the same services. Fix the mismatch above.\n");
+  console.error("\nXRPLHub keeps only products nobody else offers. Fix the drift above.\n");
   process.exit(1);
 }
-console.log(`✔ service parity OK — ${N} services, all free; page, catalog, prices, builders and TOP_ORDER agree; no stale counts; no AI claims.`);
+console.log(`✔ product-surface check OK — only our products' transactions (${kept.join(", ")} + admin health check), all free; retired routes 410; no catalog, no service counts, no AI claims; x402 prices match on both rails.`);

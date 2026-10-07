@@ -4,12 +4,6 @@
 // document describe the SAME thing. Every `description` here is < 480 chars.
 
 import { walletProp, SCORE_OUTPUT_SCHEMA, SCORE_OUTPUT_EXAMPLE } from "./scoreSchema";
-import { BUILDABLE_SERVICE_IDS, SERVICE_COUNT } from "@/app/api/execute/serviceCatalog";
-import { SERVICE_PRICE_USD } from "@/lib/servicePrices";
-
-const TX_PRICES = BUILDABLE_SERVICE_IDS.map((id) => SERVICE_PRICE_USD[id]).filter((n): n is number => typeof n === "number");
-const TX_MIN_USD = Math.min(...TX_PRICES);
-const TX_MAX_USD = Math.max(...TX_PRICES);
 
 export interface X402ResourceSchema {
   input: Record<string, unknown>;

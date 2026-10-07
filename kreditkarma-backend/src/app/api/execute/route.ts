@@ -26,7 +26,6 @@ import { BACKING_HARD_LINE } from '@/lib/mptBacking';
 import { buildContextFromView, confirmCopy, mptRegimeFor } from '@/lib/mptPermanence';
 import { claimBuild, deliveredHashes, parseStatus, verifyPayment, type GateCode, type PlanStep } from '@/lib/paymentGate';
 import { prismaPurchaseStore } from '@/lib/paymentStore';
-import { cautionCopyFor } from '@/lib/serviceCaution';
 import { priceUsd } from '@/lib/pricing';
 import { ADMIN_ONLY_SERVICE_IDS } from '@/lib/servicePrices';
 import { safeIdentifier } from '@/lib/xumm';
@@ -148,20 +147,6 @@ async function paidExecute(req: NextRequest, body: Record<string, unknown>) {
           confirmPrompt: copy.confirmPrompt,
         }, { status: 409 });
       }
-      const specific = cautionCopyFor(String(productId), (params || {}) as Record<string, unknown>);
-      if (specific) {
-        return NextResponse.json({
-          tier: 'caution',
-          requiresConfirmation: true,
-          label: built.label,
-          heading: specific.heading,
-          listTitle: specific.listTitle,
-          warning: specific.warning,
-          irreversible: specific.irreversible,
-          confirmPrompt: specific.confirmPrompt,
-          totalSteps: plan.length,
-        }, { status: 409 });
-      }
       return NextResponse.json({
         tier: 'caution',
         requiresConfirmation: true,
@@ -272,10 +257,9 @@ export async function POST(req: NextRequest) {
           confirmPrompt: copy.confirmPrompt,
         }, { status: 409 });
       }
-      const specific = cautionCopyFor(productId, params as Record<string, unknown>);
       return NextResponse.json({
         tier: 'caution', requiresConfirmation: true, label: built.label, totalSteps: plan.length,
-        ...(specific ?? { warning: 'This operation changes how your wallet is controlled and may be difficult or impossible to reverse. You must confirm you understand before signing.' }),
+        warning: 'This operation may be difficult or impossible to reverse. You must confirm you understand before signing.',
       }, { status: 409 });
     }
 
