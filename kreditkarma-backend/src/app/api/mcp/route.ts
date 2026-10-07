@@ -30,6 +30,8 @@
 //  17. get_lending_exposure    — free: a borrower's total XLS-66 exposure across ALL brokers + observation history
 //  18. get_lending_history     — free: every loan XRPLHub has ever observed for a borrower
 //  19. get_underwriting_inputs — paid ($0.05 USDC/Base x402): the full underwriting-inputs bundle, facts only
+//  20. precheck_payment        — paid ($0.03, x402 on Base or XRPL): returns the payment resource for the agent payment
+//                                pre-check (verdict before paying an XRPL address). NEVER runs the check for free.
 //
 // © 2026 XRPLHub.io · XRPLScore™ · All Rights Reserved
 // ═══════════════════════════════════════════════════════════════════════════
@@ -40,6 +42,9 @@ import { screenOfac, NoSnapshotError } from '@/lib/screen';
 import { SCREEN_CANON_VERSION } from '@/lib/screenCanon';
 import { isValidXrplAddress } from '@/lib/engine';
 import { runExposureQuery, priorObservation } from '@/lib/lendingExposure';
+import { PrecheckInputError, parsePrecheckInput, PRECHECK_RULES } from '@/lib/paymentPrecheck';
+import { PRICE_PER_PRECHECK_RLUSD } from '@/lib/paycall';
+import { PRICE_PER_PRECHECK_USDC } from '@/lib/x402Base';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://www.xrplhub.io';
 
@@ -56,7 +61,7 @@ const CORS = {
 // JSON-RPC surface (one source of truth for scanners like Smithery).
 export const MCP_SERVER_INFO = {
   name: 'xrplhub',
-  version: '1.15.0',
+  version: '1.16.0',
   description:
     'Free XRPL wallet creditworthiness scores · agent payment pre-check before paying an XRPL address (x402: USDC on Base ' +
     'or RLUSD on XRPL) · verifiable score ' +
@@ -402,6 +407,27 @@ export const TOOLS = [
     },
   },
   {
+    name: 'precheck_payment',
+    description:
+      "Before your agent pays an XRPL address: one verdict (block / caution / proceed) by fixed published rules — the " +
+      "destination's XRPLScore, a sanctions screen against every list XRPLHub holds (with a verifiable receipt), account age " +
+      "and ledger flags, and whether the ledger would REJECT the payment (missing destination tag, Deposit Authorization, no " +
+      "RLUSD trust line, unfunded account). This is a PAID x402 call: $0.03 in USDC on Base or RLUSD on the XRP Ledger at " +
+      "GET /api/x402/precheck. This tool returns the payment resource to call; it does not run the check. " +
+      "Params: destination (r..., required), amount, currency (XRP|RLUSD), destination_tag, from (your paying address).",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        destination: { type: 'string', description: 'The XRPL address (r...) you are about to pay' },
+        amount: { type: 'string', description: 'Optional: the amount you intend to send (plain decimal)' },
+        currency: { type: 'string', enum: ['XRP', 'RLUSD'], description: 'Optional: XRP (default when amount is given) or RLUSD' },
+        destination_tag: { type: 'integer', description: 'Optional: the destination tag you will use' },
+        from: { type: 'string', description: 'Optional: your paying address — lets the check test Deposit Authorization preauth' },
+      },
+      required: ['destination'],
+    },
+  },
+  {
     name: 'get_lending_history',
     description:
       "Every loan XRPLHub has EVER observed for a borrower, built from append-only exposure snapshots — the " +
@@ -707,6 +733,44 @@ async function toolGetUnderwritingInputs(args: Record<string, unknown>): Promise
         history: 'MCP tool get_lending_history',
       },
       amendmentGated: 'XLS-66 not yet enabled — the paid call returns 503 (with the live XRPLScore + OFAC result) until it is.',
+      discovery: `${API_URL}/.well-known/x402`,
+    },
+    null,
+    2
+  );
+}
+
+// PAID (x402, $0.03, both rails). Returns ONLY the payment resource — never the verdict: the check itself runs at
+// /api/x402/precheck after payment settles. scripts/check-service-parity.mjs fails the build if this tool ever runs it.
+function toolPrecheckPayment(args: Record<string, unknown>): string {
+  let input;
+  try {
+    input = parsePrecheckInput({
+      destination: args.destination, amount: args.amount, currency: args.currency,
+      destinationTag: args.destination_tag ?? args.destinationTag, from: args.from,
+    });
+  } catch (e) {
+    if (e instanceof PrecheckInputError) return JSON.stringify({ error: `${e.message}. Nothing was checked or charged.` });
+    throw e;
+  }
+  const q = new URLSearchParams({ destination: input.destination });
+  if (input.amount) q.set('amount', input.amount);
+  if (input.currency) q.set('currency', input.currency);
+  if (input.destinationTag != null) q.set('destinationTag', String(input.destinationTag));
+  if (input.from) q.set('from', input.from);
+  return JSON.stringify(
+    {
+      paid: true,
+      resource: `${API_URL}/api/x402/precheck?${q.toString()}`,
+      method: 'GET',
+      price: {
+        usdcOnBase: `${PRICE_PER_PRECHECK_USDC} USDC on Base (x402 v1, X-PAYMENT header)`,
+        rlusdOnXrpl: `${PRICE_PER_PRECHECK_RLUSD} RLUSD on the XRP Ledger (x402 v2, PAYMENT-SIGNATURE header)`,
+      },
+      how: 'GET the resource with no payment header to receive the 402 challenge for either rail, pay it with your own wallet, and repeat the GET with the payment header. You are charged only after the check succeeds.',
+      returns: 'verdict (block | caution | proceed), wouldFail, reasons[], xrplScore, sanctions (with a verifiable receipt), account (age + flags), the rules applied, and a disclaimer',
+      rules: PRECHECK_RULES,
+      notAdvice: "A mechanical check of public XRP Ledger data and the named sanctions lists. 'proceed' only means none of the rules fired.",
       discovery: `${API_URL}/.well-known/x402`,
     },
     null,
@@ -1101,6 +1165,8 @@ export async function POST(req: NextRequest) {
         output = await toolGetLendingHistory(toolArgs);
       } else if (toolName === 'get_underwriting_inputs') {
         output = await toolGetUnderwritingInputs(toolArgs);
+      } else if (toolName === 'precheck_payment') {
+        output = toolPrecheckPayment(toolArgs);
       } else {
         return rpcError(id, -32601, `Tool not found: ${toolName}`);
       }

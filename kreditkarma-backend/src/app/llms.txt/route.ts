@@ -161,6 +161,7 @@ MCP server (Streamable HTTP, JSON-RPC 2.0, no auth):
   - screen_address_ofac — compare one XRPL address against a vintage-pinned OFAC SDN snapshot (exact match only); returns a Merkle-anchored receipt. Attests to PROCESS, not ground truth — a "no match" is NOT "this address is clean". Param: address. Free via MCP.
   - verify_attestation — given a screening OR lending-exposure queryId, return the inclusion proof + on-ledger anchor tx + source hash so it can be verified without trusting XRPLHub. Param: query_id. Free.
   - get_lending_exposure — a borrower's total XLS-66 exposure across ALL loan brokers (outstanding by asset, defaults, impairments) + XRPLScore + observation history. The ledger keeps current exposure only and a borrower can delete their own default record — every call persists a Merkle-anchored snapshot. Param: borrower. Free via MCP. 503 (with XRPLScore) until XLS-66 activates.
+  - precheck_payment — PAID ($0.03, x402: USDC on Base or RLUSD on XRPL). Returns the payment resource for the agent payment pre-check (GET /api/x402/precheck): one verdict (block | caution | proceed) before paying an XRPL address. Never a free result. Params: destination, amount, currency, destination_tag, from.
   - get_lending_history — every loan XRPLHub has ever observed for a borrower: first/last seen, last-known status, ever-defaulted/impaired, and the ledger window a vanished loan disappeared in. Param: borrower. Free.
 
 Health: GET ${origin}/api/health  (503 when a money-path component is down; ?deep=1 for live facilitator probes)

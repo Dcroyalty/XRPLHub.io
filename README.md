@@ -75,6 +75,7 @@ XRPLHub never signs for anyone. (The generic transaction tools were removed on 2
 |---|---|---|
 | `check_xrpl_score` | 300–850 score, grade, percentile, 8-signal breakdown, tips. Param: `wallet_address`. | free |
 | `issue_score_credential` | Score certificate signed by XRPLHub (score computed fresh at issuance), with a URL where XRPLHub confirms it — XRPLHub's own attestation, not independently verifiable. 90 days. Params: `wallet_address`, `currency`, `uuid`. | 1 XRP / 1 RLUSD |
+| `precheck_payment` | Before paying an XRPL address: returns the x402 payment resource for the pre-check (verdict block / caution / proceed, score, sanctions screen, account flags, whether the ledger would reject the payment). Params: `destination`, `amount`, `currency`, `destination_tag`, `from`. | $0.03 (USDC on Base or RLUSD on XRPL, x402) |
 | `check_service_health` | Is the money path working right now — database, Xaman, both x402 facilitators, the anchor config, alerting — before you pay. No params. | free |
 
 **Credentials (XLS-70) & Permissioned Domains**

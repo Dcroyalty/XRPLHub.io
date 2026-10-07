@@ -81,6 +81,15 @@ const mcp = read("src/app/api/mcp/route.ts");
 for (const t of ["list_xrpl_services", "build_xrpl_transaction", "preview_xrpl_transaction"]) {
   if (new RegExp(`name: '${t}'`).test(mcp)) fail(`MCP still exposes the generic transaction tool ${t}`);
 }
+// precheck_payment is PAID: it may only hand back the x402 resource, never run the check (no free verdict via MCP).
+{
+  const fnStart = mcp.indexOf("function toolPrecheckPayment(");
+  const fnEnd = mcp.indexOf("\nasync function ", fnStart);
+  const body = fnStart < 0 ? "" : mcp.slice(fnStart, fnEnd < 0 ? undefined : fnEnd);
+  if (!body) fail("MCP precheck_payment handler (toolPrecheckPayment) not found");
+  else if (/runPaymentPrecheck|screenAll|computeScore|fetch\(/.test(body)) fail("MCP precheck_payment must return the x402 payment resource only — it runs the check for free");
+  if (!/name: 'precheck_payment'/.test(mcp)) fail("MCP precheck_payment tool definition missing");
+}
 if (exists("src/app/services")) fail("src/app/services is back — the per-service SEO pages were removed (next.config.ts redirects them)");
 
 // ── 3. no service counts, no catalog in public copy ──────────────────────────────────────────────────────────────────
