@@ -3,6 +3,7 @@
 // leave open, by looking at what Xaman actually signs:
 //   1. If txjson has NO LastLedgerSequence, does the signed blob (submit:false) still get one?
 //   2. If txjson has Sequence 0 + TicketSequence, does Xaman keep them, or overwrite Sequence?
+//   3. (farlls) If txjson supplies a FAR-FUTURE LastLedgerSequence, does Xaman pass it through unchanged?
 // Both payloads are submit:false — Xaman signs and returns the blob, nothing is sent to the ledger. The payment is
 // 1 drop (0.000001 XRP). The Ticket probe uses TicketSequence 1, which can never exist on a modern mainnet account
 // (tickets are taken from the account's CURRENT sequence onward), so that blob can never be applied.
@@ -24,8 +25,15 @@ const PROBES: Record<string, Record<string, unknown>> = {
 export async function POST(req: Request) {
   if (!isAdmin(req)) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const { kind } = (await req.json().catch(() => ({}))) as { kind?: string };
-  const txjson = PROBES[String(kind)];
-  if (!txjson) return NextResponse.json({ error: "kind must be ticket or plain" }, { status: 400 });
+  let txjson = PROBES[String(kind)];
+  if (kind === "farlls") {
+    // Ticket #1 (can never exist) + an explicit LastLedgerSequence ~5,000,000 ledgers (~7 months) ahead.
+    const lr = await fetch("https://s1.ripple.com:51234", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ method: "ledger", params: [{ ledger_index: "validated" }] }) });
+    const cur = Number(((await lr.json()) as { result?: { ledger_index?: number } }).result?.ledger_index ?? 0);
+    if (!cur) return NextResponse.json({ error: "could not read the ledger" }, { status: 503 });
+    txjson = { ...PROBES.ticket, LastLedgerSequence: cur + 5_000_000 };
+  }
+  if (!txjson) return NextResponse.json({ error: "kind must be ticket, plain or farlls" }, { status: 400 });
   const res = await xummFetch("https://xumm.app/api/v1/platform/payload", {
     method: "POST",
     body: JSON.stringify({
