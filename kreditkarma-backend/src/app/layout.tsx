@@ -10,8 +10,8 @@ export const metadata: Metadata = {
   // every other host (xrplhub.io, xrplhub.com, kreditkarma.us) redirects here.
   metadataBase: new URL('https://www.xrplhub.io'),
   alternates: { canonical: './' },
-  title: 'XRPLHub — XRPLScore, Spend Controls & MPT Issuer Risk',
-  description: 'XRPLScore: a 300–850 credit-style score for any XRP Ledger wallet, with monitoring and XLS-66 lending readiness · Spend Controls: budgets and subscriptions paid by XRPL checks you sign · MPT issuer-power risk · an agent payment pre-check. Works with Xaman, Crossmark and GemWallet.',
+  title: 'XRP Wallet Checker, Allowances & Recurring XRP Payments — XRPLHub',
+  description: "Check any XRP wallet's track record, set up an XRP allowance for kids or a recurring XRP payment, and check a token before you buy. Free. You approve everything in your own wallet.",
   icons: { icon: '/favicon.ico' },
 };
 
