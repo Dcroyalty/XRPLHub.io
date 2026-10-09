@@ -207,7 +207,7 @@ export async function releasableTickets(prisma: PrismaClient, plan: Plan, rpc: R
   const onLedger = await ticketsOnLedger(rpc, plan.funder);
   if (!onLedger) return null;
   const held = new Set(onLedger);
-  return rows.filter((r) => held.has(r.ticket) && (r.status === "cancelled" || r.status === "missed" || (r.status === "unsigned" && plan.autopayStatus === "ended"))).map((r) => r.ticket).sort((a, b) => a - b);
+  return rows.filter((r) => held.has(r.ticket) && (r.status === "cancelled" || r.status === "missed" || r.status === "failed" || (r.status === "unsigned" && plan.autopayStatus === "ended"))).map((r) => r.ticket).sort((a, b) => a - b);
 }
 
 /** A sign request that uses up tickets (one, or up to 8 in one Batch once Batch is verified in Xaman). */
@@ -248,6 +248,8 @@ export async function autopayRowFor(prisma: PrismaClient, planId: string, window
 export async function autopayCovers(prisma: PrismaClient, planId: string, window: { start: Date; end: Date }, now = new Date()): Promise<{ covered: boolean; failedReason: string | null }> {
   const r = await autopayRowFor(prisma, planId, window, now);
   if (!r) return { covered: false, failedReason: null };
+  // No key = the cron cannot send anything: never let a scheduled row stop the payer from being asked for a check.
+  if (!autopaySecret()) return { covered: false, failedReason: r.status === "scheduled" ? "Autopay is switched off on our side, so this payment wasn't sent." : null };
   if (LIVE.includes(r.status as RowStatus)) return { covered: true, failedReason: null };
   return { covered: false, failedReason: r.status === "failed" || r.status === "missed" ? r.reason : null };
 }
@@ -275,7 +277,13 @@ export async function autopayView(prisma: PrismaClient, plan: Plan) {
 export async function runAutopayDue(prisma: PrismaClient, opts: { budgetMs?: number; now?: Date; rpc?: Rpc; settleWaitMs?: number } = {}) {
   const out = { due: 0, paid: 0, failed: 0, missed: 0, cancelled: 0, pending: 0, waiting: 0, skipped: 0, retry: 0, sent: [] as string[], notices: [] as string[] };
   const secret = autopaySecret();
-  if (!secret) return { ...out, disabled: true };
+  if (!secret) {
+    // Never silent: if the key is gone while payments are due, the owner hears about it (the payers get checks via
+    // autopayCovers, which stops covering without a key).
+    const stuck = await prisma.spendAutopayPayment.count({ where: { status: { in: ["scheduled", "pending"] }, periodStart: { lte: opts.now ?? new Date() } } }).catch(() => 0);
+    if (stuck) out.notices.push(`autopay: SPEND_AUTOPAY_KEY is missing — ${stuck} due pre-approved payment(s) were NOT sent. Restore the original key (a new key cannot read them).`);
+    return { ...out, disabled: true };
+  }
   const started = Date.now(), budgetMs = opts.budgetMs ?? 15_000;
   try {
     const now = opts.now ?? new Date();

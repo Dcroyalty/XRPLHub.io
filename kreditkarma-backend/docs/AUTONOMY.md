@@ -37,8 +37,13 @@ pings that email you (§8); this file says what it watches and what you must sti
 | 07:00 daily | `/api/cron/index-mpts` | MPT registry refresh + anchor → **Spend Controls Autopay** (sends each due pre-approved payment, never early; failures reported, never retried) → subscription check pushes → health probe (alerts on anything red) → **watchdog (full)** → heartbeat → weekly "alive" message |
 
 **Autopay needs `SPEND_AUTOPAY_KEY`** (≥ 32 chars, Vercel production). Without it Autopay is off and fails closed. It encrypts
-the stored pre-approved payments: LOSING OR CHANGING IT makes every stored payment unreadable — each then fails once with a
-notice and the payer approves a normal check instead. Never rotate it while payments are scheduled.
+the stored pre-approved payments (sha256 of the key → AES-256-GCM). There is no backup and no second copy.
+- CHANGED: every stored payment becomes unreadable. Each fails once, in its own period (never sent, never retried): RED line
+  in the healthchecks.io ping, the payer is pushed a normal check, the payee's link shows it. Its ticket stays on the ledger
+  (0.2 XRP held) until the payer releases it from the dashboard. Putting the ORIGINAL key back restores the rows not yet failed.
+- REMOVED: the cron sends nothing, a RED line says how many due payments were not sent, and those periods stop counting
+  as covered, so payers are pushed normal checks. Restoring the original key resumes sending (within each period's window).
+Never rotate it while payments are scheduled.
 
 Both need `CRON_SECRET` (set in Vercel production). Vercel does not retry a cron invocation; each run resumes where
 the last one stopped (every long job is deadline-aware and resumable).
