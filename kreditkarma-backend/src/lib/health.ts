@@ -201,10 +201,15 @@ function checkCredentialIssuance(): Check {
     : { name: "credential-issuance", level: "warn", detail: "on-ledger credential issuance is operator-only by design (CREDENTIAL_ISSUER_SEED kept off Vercel); run it from the operator's machine" };
 }
 
+// The owner's ONLY alert channel is healthchecks.io (each cron pings HEALTHCHECK_PING_URL; "/fail" with the RED lines
+// emails at once, and missing pings email after the grace period). ERROR_WEBHOOK_URL is read by nobody — never report
+// it as "you will be told".
 function checkAlerting(): Check {
-  return alertingArmed()
-    ? { name: "alerting", level: "ok", detail: "ERROR_WEBHOOK_URL set — failures reach a webhook" }
-    : { name: "alerting", level: "warn", detail: "ERROR_WEBHOOK_URL not set — failures only reach Vercel logs (1h retention on Hobby)" };
+  const url = process.env.HEALTHCHECK_PING_URL;
+  const webhook = alertingArmed() ? " (ERROR_WEBHOOK_URL also logs failures, but nobody reads it)" : "";
+  return url && /^https:\/\//.test(url)
+    ? { name: "alerting", level: "ok", detail: `HEALTHCHECK_PING_URL set — failures email the owner through healthchecks.io (a RED ping right away; missing pings after the grace period)${webhook}` }
+    : { name: "alerting", level: "down", detail: "HEALTHCHECK_PING_URL not set — nothing emails the owner; failures only reach Vercel logs (1h retention on Hobby)" };
 }
 
 function checkCron(): Check {
