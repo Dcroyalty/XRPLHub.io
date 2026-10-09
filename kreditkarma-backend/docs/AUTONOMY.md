@@ -392,8 +392,9 @@ without re-confirming that tradeoff still holds.
   ($0.02, both rails, `PRICE_PER_PERMISSIONS_*`; the parity guard fails the build if the two rails differ). MCP tool
   `check_wallet_permissions` returns the payment resource only (guarded).
 - Free fixes: `POST /api/permissions/fix` — revoke a delegation (DelegateSet, empty Permissions) or cancel a check.
-  Re-verified on the live ledger before building; XRPLHub never signs. Whether Xaman can sign DelegateSet has NOT been
-  confirmed by a person yet; the txjson is returned for any wallet.
+  Re-verified on the live ledger before building; XRPLHub never signs. **Xaman (2026-10-09): a DelegateSet GRANT can't
+  be created at all (payload error 603, "Payload encoding error" — its codec lacks PermissionValue); the REVOKE (empty
+  Permissions) encodes fine.** Reserve: one Delegate entry = one owner object = 0.2 XRP, returned on revoke (Testnet).
 - Watchdog (full run, 07:00): `wallet-permissions` runs the real check on the credential issuer. A ledger read failure
   is a warning; a wrong report is RED (healthchecks.io email).
 - Only one page (400 objects) is read; a bigger wallet gets `truncated: true` and a note. If PermissionDelegation's
@@ -411,7 +412,8 @@ test runs on **Devnet**, not Testnet: Batch is enabled on mainnet and Devnet but
   exists or the first XRP payment is ≥ the base reserve, destination tag, Deposit Authorization, RLUSD line, sender
   balance + fee); a batch that would fail is refused with per-recipient reasons. Fee = (2 + n) × open-ledger fee.
 - The batch uses the sender's next sequence numbers: any other transaction first makes it `tefPAST_SEQ` (nobody paid).
-- Whether Xaman signs a Batch correctly has NOT been confirmed by a person (same open item as
-  `SPEND_BATCH_XAMAN_VERIFIED`). The txjson is returned for any wallet.
+- **Xaman signs Batch correctly (2026-10-09):** the owner signed 6D3AE7DA… (2 × 0.01 XRP, treasury → rmWj… + r9dQ…),
+  validated in ledger 107547781, both inner payments tesSUCCESS, every field exactly as built (Xaman added nothing).
+  /send-many says "done" only when GET /api/batch-send?uuid= reads the batch AND each inner payment from the ledger.
 - Watchdog (full run, 07:00): `batch-send` — RED if BatchV1_1 is not active; otherwise a read-only preflight between
   known accounts (nothing built or signed); a ledger read failure is a warning.
