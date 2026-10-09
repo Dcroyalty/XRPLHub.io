@@ -856,6 +856,49 @@ export async function GET(req: Request) {
         },
       },
 
+      "/api/x402/permissions": {
+        get: {
+          operationId: "walletPermissions",
+          summary: "Wallet permissions check — who can move money out of an XRPL wallet (x402, $0.02 USDC on Base or RLUSD on XRPL)",
+          description:
+            "Read live from the ledger: signing power (master key on/off, regular key, multi-sign signer list, blackholed), " +
+            "permission delegations given and received (PermissionDelegation, live on mainnet since 2026-10-08), and money " +
+            "others can pull without a new approval (checks the wallet wrote, payment channels it funds, escrows it created, " +
+            "open DEX offers, NFT sell offers, tickets). Each finding has a level (danger | warning | info | ok), the account " +
+            "holding the power, a plain-English sentence, the raw ledger facts and, where one exists, a free fix " +
+            "(revoke_delegation, cancel_check). People: free page at /permissions. No signup.",
+          tags: ["Agents"],
+          parameters: [{ name: "address", in: "query", required: true, description: "The XRPL account (r...) to check.", schema: { type: "string" } }],
+          "x-payment-info": {
+            price: { mode: "fixed", currency: "USD", amount: "0.020000" },
+            protocols: [{ x402: {} }],
+            description: "Wallet permissions check, USDC on Base (CDP) or RLUSD on XRPL (t54).",
+          },
+          responses: {
+            "200": { description: "{ address, exists, ledgerIndex, headline, canMoveMoney[{who,how}], findings[{kind,level,who,plain,detail,fix?}], truncated, notes[] }" },
+            "400": { description: "Malformed address — refused before any charge." },
+            "402": { description: "Payment Required — x402 challenge on either rail (see /api/x402/usdc/mpt/{issuanceId})." },
+          },
+        },
+      },
+
+      "/api/permissions/fix": {
+        post: {
+          operationId: "walletPermissionsFix",
+          summary: "Free fix for a permissions finding: revoke a delegation or cancel a check (unsigned transaction + Xaman request)",
+          description:
+            "Body { action: \"revoke_delegation\", account, delegate } returns a DelegateSet with an empty Permissions list; " +
+            "{ action: \"cancel_check\", account, checkId } returns a CheckCancel. The finding is re-verified on the live ledger " +
+            "first. Free. XRPLHub never signs: the account owner signs in their own wallet.",
+          tags: ["Agents"],
+          responses: {
+            "200": { description: "{ txjson, uuid, qr_png, deep_link, websocket, free: true }" },
+            "400": { description: "Bad action or address." },
+            "404": { description: "No such delegation or open check on this account." },
+          },
+        },
+      },
+
       "/api/screen/ofac": {
         get: {
           operationId: "screenOfac",

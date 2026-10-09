@@ -32,6 +32,8 @@
 //  19. get_underwriting_inputs — paid ($0.05 USDC/Base x402): the full underwriting-inputs bundle, facts only
 //  20. precheck_payment        — paid ($0.03, x402 on Base or XRPL): returns the payment resource for the agent payment
 //                                pre-check (verdict before paying an XRPL address). NEVER runs the check for free.
+//  21. check_wallet_permissions — paid ($0.02, x402 on Base or XRPL): returns the payment resource for the wallet
+//                                permissions check (who can move money out of a wallet). NEVER runs the check for free.
 //
 // © 2026 XRPLHub.io · XRPLScore™ · All Rights Reserved
 // ═══════════════════════════════════════════════════════════════════════════
@@ -43,8 +45,8 @@ import { SCREEN_CANON_VERSION } from '@/lib/screenCanon';
 import { isValidXrplAddress } from '@/lib/engine';
 import { runExposureQuery, priorObservation } from '@/lib/lendingExposure';
 import { PrecheckInputError, parsePrecheckInput, PRECHECK_RULES } from '@/lib/paymentPrecheck';
-import { PRICE_PER_PRECHECK_RLUSD } from '@/lib/paycall';
-import { PRICE_PER_PRECHECK_USDC } from '@/lib/x402Base';
+import { PRICE_PER_PERMISSIONS_RLUSD, PRICE_PER_PRECHECK_RLUSD } from '@/lib/paycall';
+import { PRICE_PER_PERMISSIONS_USDC, PRICE_PER_PRECHECK_USDC } from '@/lib/x402Base';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://www.xrplhub.io';
 
@@ -61,10 +63,11 @@ const CORS = {
 // JSON-RPC surface (one source of truth for scanners like Smithery).
 export const MCP_SERVER_INFO = {
   name: 'xrplhub',
-  version: '1.16.0',
+  version: '1.17.0',
   description:
     'Free XRPL wallet creditworthiness scores · agent payment pre-check before paying an XRPL address (x402: USDC on Base ' +
-    'or RLUSD on XRPL) · verifiable score ' +
+    'or RLUSD on XRPL) · wallet permissions check (who can move money out of a wallet: keys, signer lists, delegations, ' +
+    'checks) · verifiable score ' +
     'credential · credential + permissioned domain explorer · MPT issuer risk + backing declarations · ' +
     'OFAC SDN screening attestation (process, not ground truth) · XLS-66 cross-broker lending exposure & ' +
     'underwriting inputs (attested, facts only) · community micro-grants · donations. UNSIGNED ONLY: XRPLHub builds ' +
@@ -428,6 +431,21 @@ export const TOOLS = [
     },
   },
   {
+    name: 'check_wallet_permissions',
+    description:
+      "Who can move money out of an XRPL wallet: its master key, a regular key, a multi-sign signer list, permission " +
+      "delegations (given and received — live on mainnet since 2026-10-08), and money others can pull without a new " +
+      "approval (checks, payment channels, escrows, open DEX and NFT offers, tickets). One plain-English sentence per " +
+      "finding plus the raw ledger facts. This is a PAID x402 call: $0.02 in USDC on Base or RLUSD on the XRP Ledger at " +
+      "GET /api/x402/permissions?address=r.... This tool returns the payment resource to call; it does not run the check. " +
+      "People can use the free page at https://www.xrplhub.io/permissions.",
+    inputSchema: {
+      type: 'object',
+      properties: { address: { type: 'string', description: 'The XRPL account (r...) to check' } },
+      required: ['address'],
+    },
+  },
+  {
     name: 'get_lending_history',
     description:
       "Every loan XRPLHub has EVER observed for a borrower, built from append-only exposure snapshots — the " +
@@ -733,6 +751,30 @@ async function toolGetUnderwritingInputs(args: Record<string, unknown>): Promise
         history: 'MCP tool get_lending_history',
       },
       amendmentGated: 'XLS-66 not yet enabled — the paid call returns 503 (with the live XRPLScore + OFAC result) until it is.',
+      discovery: `${API_URL}/.well-known/x402`,
+    },
+    null,
+    2
+  );
+}
+
+// PAID (x402, $0.02, both rails). Returns ONLY the payment resource — never the report: the check runs at
+// /api/x402/permissions after payment settles. scripts/check-service-parity.mjs fails the build if this tool ever runs it.
+function toolCheckWalletPermissions(args: Record<string, unknown>): string {
+  const address = String(args.address ?? '').trim();
+  if (!isValidXrplAddress(address)) return JSON.stringify({ error: 'address must be a valid XRPL address (r...). Nothing was checked or charged.' });
+  return JSON.stringify(
+    {
+      paid: true,
+      resource: `${API_URL}/api/x402/permissions?address=${address}`,
+      method: 'GET',
+      price: {
+        usdcOnBase: `${PRICE_PER_PERMISSIONS_USDC} USDC on Base (x402 v1, X-PAYMENT header)`,
+        rlusdOnXrpl: `${PRICE_PER_PERMISSIONS_RLUSD} RLUSD on the XRP Ledger (x402 v2, PAYMENT-SIGNATURE header)`,
+      },
+      how: 'GET the resource with no payment header to receive the 402 challenge for either rail, pay it with your own wallet, and repeat the GET with the payment header. You are charged only after the check succeeds.',
+      returns: 'headline, canMoveMoney[] (who + how), findings[] (kind, level danger|warning|info|ok, who, plain sentence, raw detail, optional free fix), ledgerIndex',
+      freeForPeople: `${API_URL}/permissions`,
       discovery: `${API_URL}/.well-known/x402`,
     },
     null,
@@ -1167,6 +1209,8 @@ export async function POST(req: NextRequest) {
         output = await toolGetUnderwritingInputs(toolArgs);
       } else if (toolName === 'precheck_payment') {
         output = toolPrecheckPayment(toolArgs);
+      } else if (toolName === 'check_wallet_permissions') {
+        output = toolCheckWalletPermissions(toolArgs);
       } else {
         return rpcError(id, -32601, `Tool not found: ${toolName}`);
       }

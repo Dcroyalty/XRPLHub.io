@@ -161,6 +161,7 @@ MCP server (Streamable HTTP, JSON-RPC 2.0, no auth):
   - screen_address_ofac — compare one XRPL address against a vintage-pinned OFAC SDN snapshot (exact match only); returns a Merkle-anchored receipt. Attests to PROCESS, not ground truth — a "no match" is NOT "this address is clean". Param: address. Free via MCP.
   - verify_attestation — given a screening OR lending-exposure queryId, return the inclusion proof + on-ledger anchor tx + source hash so it can be verified without trusting XRPLHub. Param: query_id. Free.
   - get_lending_exposure — a borrower's total XLS-66 exposure across ALL loan brokers (outstanding by asset, defaults, impairments) + XRPLScore + observation history. The ledger keeps current exposure only and a borrower can delete their own default record — every call persists a Merkle-anchored snapshot. Param: borrower. Free via MCP. 503 (with XRPLScore) until XLS-66 activates.
+  - check_wallet_permissions — PAID ($0.02, x402: USDC on Base or RLUSD on XRPL). Returns the payment resource for the wallet permissions check (GET /api/x402/permissions): who can move money out of a wallet — keys, signer list, delegations, checks, channels, escrows, offers, tickets. Never a free result. Param: address.
   - precheck_payment — PAID ($0.03, x402: USDC on Base or RLUSD on XRPL). Returns the payment resource for the agent payment pre-check (GET /api/x402/precheck): one verdict (block | caution | proceed) before paying an XRPL address. Never a free result. Params: destination, amount, currency, destination_tag, from.
   - get_lending_history — every loan XRPLHub has ever observed for a borrower: first/last seen, last-known status, ever-defaulted/impaired, and the ledger window a vanished loan disappeared in. Param: borrower. Free.
 
@@ -183,6 +184,11 @@ More x402 pay-per-call routes (both rails, same price):
   one verdict (block | caution | proceed) by fixed published rules before you pay an XRPL address — XRPLScore, sanctions screen against
   every list held (anchored receipt), account age + ledger flags, and wouldFail when the ledger would reject the payment (missing
   destination tag, Deposit Authorization, no RLUSD trust line, unfunded account). The rules come back in every response. Not advice.
+- GET ${origin}/api/x402/permissions?address=r... — WALLET PERMISSIONS CHECK, $0.02: who can move money out of an XRPL wallet —
+  master key, regular key, signer list, permission delegations given/received (live since 2026-10-08), and money others can pull
+  (checks, payment channels, escrows, open offers, tickets). Each finding: level, who, a plain sentence, raw facts, optional free fix.
+  Free fixes (unsigned tx + Xaman request): POST ${origin}/api/permissions/fix {action:"revoke_delegation",account,delegate} or
+  {action:"cancel_check",account,checkId}. People: free page ${origin}/permissions.
 - POST ${origin}/api/x402/usdc/score — 300-850 score, $0.02 (body {"wallet":"r..."}; same product and price as GET /api/x402/score)
 - GET ${origin}/api/x402/usdc/mpt/<48-hex id> — full MPT issuer risk, $0.01
 - GET ${origin}/api/x402/screen/ofac?address=r... — OFAC SDN screening attestation, $0.01 (process not ground truth; see the screening section above)

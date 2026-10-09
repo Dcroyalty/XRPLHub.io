@@ -43,6 +43,7 @@ export const PRICE_PER_MPT_USDC = 0.01; // full MPT issuer risk view
 export const PRICE_PER_SCREEN_USDC = 0.01; // one OFAC SDN screening attestation
 export const PRICE_PER_EXPOSURE_USDC = 0.01; // full XLS-66 cross-broker lending exposure
 export const PRICE_PER_UNDERWRITE_USDC = 0.05; // the full underwriting-inputs bundle (exposure + score + OFAC + attestation)
+export const PRICE_PER_PERMISSIONS_USDC = 0.02; // wallet permissions check; identical to PRICE_PER_PERMISSIONS_RLUSD (paycall.ts)
 export const PRICE_PER_PRECHECK_USDC = 0.03; // agent payment pre-check; identical to PRICE_PER_PRECHECK_RLUSD (paycall.ts)
 export const PRICE_PER_REPORT_USDC = 0.08; // full wallet risk report; identical to PRICE_PER_PRODUCT_RLUSD (paycall.ts)
 

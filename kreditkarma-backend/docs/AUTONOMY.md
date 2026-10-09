@@ -381,3 +381,20 @@ Their peer dependency range (`xrpl >=4.0.0 <5.0.0`) matches this project's pinne
 **incompatible with the Batch transaction type** (needs `xrpl.js` 5.1.0+, sec 11) -- building MPP for real
 forecloses Batch and vice versa on the current dependency graph. Don't start wiring the real SDK in
 without re-confirming that tradeoff still holds.
+
+## 18. Wallet Permissions Check (2026-10-09)
+
+"Who can move money out of this wallet?" — `src/lib/walletPermissions.ts` (no local imports; Testnet test:
+`node scripts/test-permissions-testnet.ts`, 19/19). Read-only: one `account_info` (with signer lists) + one page of
+`account_objects` per check, through the normal node pool. Nothing runs on a schedule.
+
+- People: `/permissions` → `GET /api/permissions/:address` (free, 12/min per IP). Agents: `GET /api/x402/permissions`
+  ($0.02, both rails, `PRICE_PER_PERMISSIONS_*`; the parity guard fails the build if the two rails differ). MCP tool
+  `check_wallet_permissions` returns the payment resource only (guarded).
+- Free fixes: `POST /api/permissions/fix` — revoke a delegation (DelegateSet, empty Permissions) or cancel a check.
+  Re-verified on the live ledger before building; XRPLHub never signs. Whether Xaman can sign DelegateSet has NOT been
+  confirmed by a person yet; the txjson is returned for any wallet.
+- Watchdog (full run, 07:00): `wallet-permissions` runs the real check on the credential issuer. A ledger read failure
+  is a warning; a wrong report is RED (healthchecks.io email).
+- Only one page (400 objects) is read; a bigger wallet gets `truncated: true` and a note. If PermissionDelegation's
+  JSON shape changes, unknown permission names are still shown (named by type) — never dropped.

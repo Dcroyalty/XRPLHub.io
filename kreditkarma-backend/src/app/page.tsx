@@ -1503,7 +1503,7 @@ function FAQModal({ show, onClose }: { show:boolean; onClose:()=>void }) {
   const faqs:[string,string][] = [
     ['Do I need to know crypto?','No. If you have an XRP wallet like Xaman, you can use everything here.'],
     ['Does XRPLHub ever hold my money?','No. Your money stays in your wallet, and you approve every payment yourself. We never see your keys.'],
-    ["What's free?",'The wallet score, Spend Controls and Token Check are free. Business tools are paid.'],
+    ["What's free?",'The wallet score, Spend Controls, Token Check and the wallet permissions check are free. Business tools are paid.'],
     ['What is the Wallet Score?',"A score from 300 to 850 for any XRP wallet, like a credit score, but built only from that wallet's public history: how old it is, how it's been used, how much it keeps on hand. It can be up to 15 minutes old. It scores a wallet, not a person. It isn't a credit check and doesn't use your name, ID or any credit bureau."],
     ['How does Spend Controls work?',"You pick who can be paid and how much, each week or month. Each payment is a check you approve in your own wallet, and the person you pay cashes it, up to the amount you set. We only ever make this week's or this month's payment, never one ahead. You can cancel any payment that hasn't been cashed."],
     ['How do grants work?',"People donate XRP or RLUSD to a public grants wallet anyone can see on XRPScan. Applications are paused until it is funded. When they reopen, anyone in need can apply for $25–$100. A person reads every application and decides, and approved money goes straight to the person's XRP wallet."],
@@ -2070,6 +2070,14 @@ export default function XRPLHubHome() {
               <MptPowerCheck />
             </div>
           </div>
+          <a href="/permissions" style={{ display:'flex',alignItems:'center',justifyContent:'space-between',gap:14,flexWrap:'wrap',marginTop:18,padding:'18px 22px',borderRadius:18,border:'1px solid rgba(239,68,68,.3)',background:'linear-gradient(135deg,rgba(239,68,68,.08),rgba(6,6,22,.85))',color:'#fff',textDecoration:'none' }}>
+            <span>
+              <span style={{ display:'block',fontSize:10,fontWeight:700,color:'#f87171',letterSpacing:'.13em',textTransform:'uppercase',marginBottom:4,fontFamily:"'IBM Plex Mono',monospace" }}>New · free</span>
+              <span style={{ display:'block',fontSize:18,fontWeight:900,marginBottom:4 }}>Who can move money from my wallet?</span>
+              <span style={{ display:'block',fontSize:13,color:'rgba(255,255,255,.55)',lineHeight:1.6 }}>See everyone who can take money out of an XRP wallet — a second key, signers, someone you gave permission to, a check — and remove the ones you don&apos;t want.</span>
+            </span>
+            <span style={{ padding:'11px 18px',borderRadius:99,background:'#f87171',color:'#000',fontWeight:800,fontSize:13,whiteSpace:'nowrap' }}>Check my wallet →</span>
+          </a>
         </section>
 
         {/* XRPLSCORE — anonymous pitch + checker (or personalized credit report when wallet connected) */}
@@ -2196,7 +2204,7 @@ export default function XRPLHubHome() {
             {[
               ['Do I need to know crypto?','No. If you have an XRP wallet like Xaman, you can use everything here.'],
               ['Does XRPLHub ever hold my money?','No. Your money stays in your wallet, and you approve every payment yourself. We never see your keys.'],
-              ['What\'s free?','The wallet score, Spend Controls and Token Check are free. Business tools are paid.'],
+              ['What\'s free?','The wallet score, Spend Controls, Token Check and the wallet permissions check are free. Business tools are paid.'],
             ].map(([q,a])=>(
               <div key={q} style={{ background:'rgba(255,255,255,.03)',border:'1px solid rgba(255,255,255,.08)',borderRadius:14,padding:'16px 18px' }}>
                 <div style={{ fontSize:15,fontWeight:800,marginBottom:6 }}>{q}</div>

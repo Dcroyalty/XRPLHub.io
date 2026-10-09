@@ -22,6 +22,7 @@
 // you. Persistent red/warn findings re-alert every 3 / 7 days; a recovery sends one message.
 
 import tls from "tls";
+import { checkWalletPermissions } from "./walletPermissions";
 import { LIST_NAMES, currentSnapshot, lastChecked } from "./sanctionLists";
 import type { PrismaClient } from "@prisma/client";
 import { notifyError, notifyInfo, pingHealthcheck } from "./notify";
@@ -140,6 +141,25 @@ async function checkAmendments(prisma: PrismaClient): Promise<Finding> {
     }
   }
   return { key: "amendment-reader", level: "ok", message: `LendingProtocol ${s.LendingProtocol.state}, SingleAssetVault ${s.SingleAssetVault.state}` };
+}
+
+// The Wallet Permissions Check (/permissions, /api/x402/permissions) runs end to end against a known account: our own
+// credential issuer must come back as an existing wallet. A ledger read failure is a warning (xrpl-nodes covers nodes);
+// a wrong answer is RED.
+async function checkWalletPermissionsProbe(): Promise<Finding> {
+  const rpc = async (method: string, params: Record<string, unknown>) => {
+    const r = await xrplRpc(method, params);
+    return r.ok ? (((r.body as { result?: Record<string, unknown> }).result) ?? null) : null;
+  };
+  try {
+    const rep = await checkWalletPermissions(rpc, EXPECTED_ISSUER);
+    if (!rep.exists || !rep.headline || !rep.findings.some((f) => f.kind === "master_key")) {
+      return { key: "wallet-permissions", level: "red", message: `the wallet permissions check returned a wrong report for ${EXPECTED_ISSUER} (exists=${rep.exists}, findings=${rep.findings.length})` };
+    }
+    return { key: "wallet-permissions", level: "ok", message: `wallet permissions check OK (${rep.findings.length} findings for the credential issuer)` };
+  } catch (e) {
+    return { key: "wallet-permissions", level: "warn", message: `wallet permissions check could not read the ledger: ${e instanceof Error ? e.message : String(e)}` };
+  }
 }
 
 async function checkCredentialExpiry(): Promise<Finding> {
@@ -495,6 +515,7 @@ export async function runWatchdog(prisma: PrismaClient, opts: WatchdogOptions = 
   if (opts.full) {
     add("anchor-wallet", checkAnchorWallet);
     add("credential-expiry", checkCredentialExpiry);
+    add("wallet-permissions", checkWalletPermissionsProbe, 9000);
     add("credential-issuer-reserve", checkCredentialIssuerReserve);
     add("credential-queue-backlog", () => checkCredentialQueueBacklog(prisma));
     add("credential-anomaly", () => checkCredentialAnomaly(prisma), 10000);

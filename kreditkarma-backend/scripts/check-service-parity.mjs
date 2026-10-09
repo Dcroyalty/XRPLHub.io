@@ -90,6 +90,15 @@ for (const t of ["list_xrpl_services", "build_xrpl_transaction", "preview_xrpl_t
   else if (/runPaymentPrecheck|screenAll|computeScore|fetch\(/.test(body)) fail("MCP precheck_payment must return the x402 payment resource only — it runs the check for free");
   if (!/name: 'precheck_payment'/.test(mcp)) fail("MCP precheck_payment tool definition missing");
 }
+// check_wallet_permissions is PAID too: it may only hand back the x402 resource, never run the check.
+{
+  const fnStart = mcp.indexOf("function toolCheckWalletPermissions(");
+  const fnEnd = mcp.indexOf("function toolPrecheckPayment(", fnStart);
+  const body = fnStart < 0 ? "" : mcp.slice(fnStart, fnEnd < 0 ? undefined : fnEnd);
+  if (!body) fail("MCP check_wallet_permissions handler (toolCheckWalletPermissions) not found");
+  else if (/checkWalletPermissions|mainnetRpc|xrplRpc|fetch\(/.test(body)) fail("MCP check_wallet_permissions must return the x402 payment resource only — it runs the check for free");
+  if (!/name: 'check_wallet_permissions'/.test(mcp)) fail("MCP check_wallet_permissions tool definition missing");
+}
 if (exists("src/app/services")) fail("src/app/services is back — the per-service SEO pages were removed (next.config.ts redirects them)");
 
 // ── 3. no service counts, no catalog in public copy ──────────────────────────────────────────────────────────────────
@@ -125,7 +134,7 @@ for (const f of walk("src").filter((x) => /\.(ts|tsx)$/.test(x))) {
   const paycall = read("src/lib/paycall.ts");
   const base = read("src/lib/x402Base.ts");
   const num = (src, name) => { const m = new RegExp("export const " + name + "\\s*=\\s*([0-9.]+)").exec(src); return m ? Number(m[1]) : null; };
-  for (const [rk, uk] of [["SCORE", "SCORE"], ["SCREEN", "SCREEN"], ["MPT", "MPT"], ["EXPOSURE", "EXPOSURE"], ["UNDERWRITE", "UNDERWRITE"], ["PRECHECK", "PRECHECK"], ["PRODUCT", "REPORT"]]) {
+  for (const [rk, uk] of [["SCORE", "SCORE"], ["SCREEN", "SCREEN"], ["MPT", "MPT"], ["EXPOSURE", "EXPOSURE"], ["UNDERWRITE", "UNDERWRITE"], ["PRECHECK", "PRECHECK"], ["PERMISSIONS", "PERMISSIONS"], ["PRODUCT", "REPORT"]]) {
     const r = num(paycall, "PRICE_PER_" + rk + "_RLUSD"), u = num(base, "PRICE_PER_" + uk + "_USDC");
     if (r === null || u === null) fail("price pair PRICE_PER_" + rk + "_RLUSD / PRICE_PER_" + uk + "_USDC not found");
     else if (r !== u) fail("PRICE_PER_" + rk + "_RLUSD " + r + " != PRICE_PER_" + uk + "_USDC " + u + " — one product, one price, every rail");

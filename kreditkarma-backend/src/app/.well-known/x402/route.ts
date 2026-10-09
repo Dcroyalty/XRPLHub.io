@@ -30,10 +30,12 @@ import {
   PRICE_PER_EXPOSURE_RLUSD,
   PRICE_PER_UNDERWRITE_RLUSD,
   PRICE_PER_PRECHECK_RLUSD,
+  PRICE_PER_PERMISSIONS_RLUSD,
   TREASURY_ADDRESS,
 } from "@/lib/paycall";
 import { PRECHECK_INPUT_SCHEMA, PRECHECK_OUTPUT_SCHEMA } from "@/lib/paymentPrecheck";
-import { BASE_PAY_TO, BASE_NETWORK, USDC_BASE_ASSET, CDP_FACILITATOR_URL, PRICE_PER_SCORE_USDC, PRICE_PER_MPT_USDC, PRICE_PER_SCREEN_USDC, PRICE_PER_EXPOSURE_USDC, PRICE_PER_UNDERWRITE_USDC, PRICE_PER_REPORT_USDC, PRICE_PER_PRECHECK_USDC } from "@/lib/x402Base";
+import { PERMISSIONS_INPUT_SCHEMA, PERMISSIONS_OUTPUT_SCHEMA } from "@/lib/walletPermissions";
+import { BASE_PAY_TO, BASE_NETWORK, USDC_BASE_ASSET, CDP_FACILITATOR_URL, PRICE_PER_SCORE_USDC, PRICE_PER_MPT_USDC, PRICE_PER_SCREEN_USDC, PRICE_PER_EXPOSURE_USDC, PRICE_PER_UNDERWRITE_USDC, PRICE_PER_REPORT_USDC, PRICE_PER_PRECHECK_USDC, PRICE_PER_PERMISSIONS_USDC } from "@/lib/x402Base";
 import { UNDERWRITE_DISCLAIMER } from "@/lib/underwriteCanon";
 import {
   SCREEN_OFAC_DESCRIPTION,
@@ -272,6 +274,31 @@ const PRECHECK_DESCRIPTION =
   "Agent payment pre-check: before paying an XRPL address, one verdict (block / caution / proceed) by fixed published " +
   "rules — XRPLScore, a sanctions screen against every list held (anchored receipt), account age and ledger flags, and " +
   "whether the ledger would reject the payment (missing tag, deposit auth, no trust line, unfunded account). Not advice.";
+// Wallet permissions check — who can move money out of an XRPL wallet (src/lib/walletPermissions.ts).
+const PERMISSIONS_DESCRIPTION =
+  "Wallet permissions check: who can move money out of an XRPL wallet — master key, regular key, signer list, permission " +
+  "delegations (given and received), and money others can pull (checks, payment channels, escrows, open offers, tickets), " +
+  "each with a plain-English sentence and the raw ledger facts. Read live from the ledger.";
+function usdcPermissionsResource(origin: string) {
+  return {
+    resource: `${origin}/api/x402/permissions`,
+    method: "GET",
+    name: "Wallet permissions check — pay per call in USDC on Base",
+    description: PERMISSIONS_DESCRIPTION + " $0.02 USDC on Base.",
+    x402Version: 1,
+    scheme: "exact",
+    network: BASE_NETWORK,
+    asset: USDC_BASE_ASSET,
+    assetSymbol: "USDC",
+    payTo: BASE_PAY_TO,
+    maxTimeoutSeconds: 300,
+    facilitator: CDP_FACILITATOR_URL,
+    noSignup: true,
+    amount: PRICE_PER_PERMISSIONS_USDC.toFixed(6),
+    inputSchema: PERMISSIONS_INPUT_SCHEMA,
+    outputSchema: PERMISSIONS_OUTPUT_SCHEMA,
+  };
+}
 function usdcPrecheckResource(origin: string) {
   return {
     resource: `${origin}/api/x402/precheck`,
@@ -421,6 +448,16 @@ export async function GET(req: Request) {
           outputSchema: PRECHECK_OUTPUT_SCHEMA,
         },
         {
+          resource: `${origin}/api/x402/permissions`,
+          method: "GET",
+          name: "Wallet permissions check",
+          description: PERMISSIONS_DESCRIPTION,
+          ...common,
+          amount: PRICE_PER_PERMISSIONS_RLUSD.toFixed(6),
+          inputSchema: PERMISSIONS_INPUT_SCHEMA,
+          outputSchema: PERMISSIONS_OUTPUT_SCHEMA,
+        },
+        {
           resource: `${origin}/api/x402/usdc/mpt/{mptokenIssuanceID}`,
           method: "GET",
           name: "MPT issuer risk (full)",
@@ -504,6 +541,7 @@ export async function GET(req: Request) {
         usdcExposureResource(origin),
         usdcUnderwriteResource(origin),
         usdcPrecheckResource(origin),
+        usdcPermissionsResource(origin),
         usdcPlanResource(origin, "starter"),
         usdcPlanResource(origin, "growth"),
         usdcPlanResource(origin, "scale"),

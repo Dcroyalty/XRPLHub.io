@@ -170,7 +170,7 @@ export async function checkWalletPermissions(rpc: Rpc, address: string, now = ne
           f.push({ kind: "delegation_given", level, who: other, plain: `${short(other)} can send transactions for this wallet without asking: ${what}.`, detail: { delegate: other, permissions: perms.map((p) => p.name), objectId: o.index }, fix: { action: "revoke_delegation", params: { account: address, delegate: other } } });
           if (level === "danger") movers.push({ who: other, how: `delegation: ${perms.filter((p) => p.level === "danger").map((p) => p.name).join(", ")}` });
         } else {
-          f.push({ kind: "delegation_received", level: "info", who: other, plain: `This wallet can act for ${short(other)}: ${what}.`, detail: { delegator: other, permissions: perms.map((p) => p.name), objectId: o.index } });
+          f.push({ kind: "delegation_received", level: "info", who: other, plain: `This wallet can act for ${short(other)}: ${what.replace(/this wallet/g, "their wallet")}.`, detail: { delegator: other, permissions: perms.map((p) => p.name), objectId: o.index } });
         }
         break;
       }

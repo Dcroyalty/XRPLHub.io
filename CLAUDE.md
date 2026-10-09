@@ -55,6 +55,10 @@ The live production app is a single Next.js project in **`kreditkarma-backend/`*
 - **B2B API** — the scoring/report API sold to businesses, **billed in RLUSD**
   (see `src/lib/rlusd.ts`, x402 payment flow in `src/lib/x402.ts`).
 
+- **Wallet Permissions Check** (`src/lib/walletPermissions.ts`, `/permissions`, 2026-10-09) — who can move money out of a
+  wallet (keys, signer list, delegations, checks, channels, escrows, offers, tickets). Free page; agents pay $0.02 via
+  x402. Its free fixes (DelegateSet revoke, CheckCancel) are the only other transactions we build. See docs/HUB-GAPS.md.
+
 - **Continuous monitoring** — `/api/monitor/*`: watched wallets, HMAC-signed webhooks, sparse attested
   observations (canon `monitor-observation-v1`). Layered on top of underwriting, never a replacement; no default
   probability, no default score-drop threshold, consumer-use (FCRA/ECOA) acknowledgement required. See
