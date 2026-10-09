@@ -2,8 +2,8 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.Dcroyalty/xrplhub",
   "title": "XRPLHub — XRPLScore, MPT issuer risk & payment pre-checks",
-  "description": "XRPL wallet scores, wallet permissions, MPT issuer risk, screening, pre-checks. Never signs.",
-  "version": "1.17.0",
+  "description": "XRPL wallet scores, wallet permissions, batch send, MPT risk, screening, pre-checks. Never signs.",
+  "version": "1.18.0",
   "repository": {
     "url": "https://github.com/Dcroyalty/XRPLHub.io",
     "source": "github",

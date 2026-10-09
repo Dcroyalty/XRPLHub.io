@@ -398,3 +398,20 @@ without re-confirming that tradeoff still holds.
   is a warning; a wrong report is RED (healthchecks.io email).
 - Only one page (400 objects) is read; a bigger wallet gets `truncated: true` and a note. If PermissionDelegation's
   JSON shape changes, unknown permission names are still shown (named by type) — never dropped.
+
+## 19. Batch Send (2026-10-09)
+
+"Pay up to 8 people with one approval — everyone or no one." `src/lib/batchSend.ts` (no local imports). Money-moving
+test runs on **Devnet**, not Testnet: Batch is enabled on mainnet and Devnet but Testnet answers `temDISABLED`
+(`node scripts/test-batch-send-devnet.ts`, 18/18).
+
+- People: `/send-many` → `POST /api/batch-send` (free, 20/min per IP). Agents: MCP `prepare_batch_send` (free). Both
+  return an UNSIGNED single-account Batch (tfAllOrNothing), one Payment per recipient; XRPLHub never signs.
+- Gated on `BatchV1_1` at request time (503 if inactive). Every payment is preflighted on the live ledger (destination
+  exists or the first XRP payment is ≥ the base reserve, destination tag, Deposit Authorization, RLUSD line, sender
+  balance + fee); a batch that would fail is refused with per-recipient reasons. Fee = (2 + n) × open-ledger fee.
+- The batch uses the sender's next sequence numbers: any other transaction first makes it `tefPAST_SEQ` (nobody paid).
+- Whether Xaman signs a Batch correctly has NOT been confirmed by a person (same open item as
+  `SPEND_BATCH_XAMAN_VERIFIED`). The txjson is returned for any wallet.
+- Watchdog (full run, 07:00): `batch-send` — RED if BatchV1_1 is not active; otherwise a read-only preflight between
+  known accounts (nothing built or signed); a ledger read failure is a warning.

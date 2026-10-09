@@ -899,6 +899,27 @@ export async function GET(req: Request) {
         },
       },
 
+      "/api/batch-send": {
+        post: {
+          operationId: "batchSend",
+          summary: "Batch Send — pay 2 to 8 addresses with one signature, all or nothing (free; unsigned Batch + Xaman request)",
+          description:
+            "Body { from, recipients: [{ address, amount, currency: XRP|RLUSD, destinationTag? }] }. Every payment is checked on " +
+            "the live ledger first (destination exists or will be created, destination tag, Deposit Authorization, RLUSD trust " +
+            "line, sender balance + fee); a batch that would fail is refused (422) with per-recipient problems. Returns ONE " +
+            "unsigned XRPL Batch (tfAllOrNothing) with one Payment per recipient, plus a Xaman sign request. Outer fee = (2 + n) " +
+            "× the open-ledger fee. Sign before any other transaction from the sender (it uses the next sequence numbers). Free; " +
+            "XRPLHub never signs. Amendment-gated on BatchV1_1 at request time.",
+          tags: ["Agents"],
+          responses: {
+            "200": { description: "{ txjson, uuid, qr_png, deep_link, websocket, totals { xrp, rlusd }, networkFeeXrp, payments, mode: all_or_nothing, free: true }" },
+            "400": { description: "Invalid input (fewer than 2 or more than 8 recipients, bad address or amount) with problems[]." },
+            "422": { description: "A payment would fail on the ledger — nothing built. problems[] says which and why." },
+            "503": { description: "Ledger unreadable, or Batch not active." },
+          },
+        },
+      },
+
       "/api/screen/ofac": {
         get: {
           operationId: "screenOfac",

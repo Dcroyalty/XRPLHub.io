@@ -23,6 +23,8 @@
 
 import tls from "tls";
 import { checkWalletPermissions } from "./walletPermissions";
+import { preflightBatch } from "./batchSend";
+import { getAmendmentStatus } from "./amendments";
 import { LIST_NAMES, currentSnapshot, lastChecked } from "./sanctionLists";
 import type { PrismaClient } from "@prisma/client";
 import { notifyError, notifyInfo, pingHealthcheck } from "./notify";
@@ -159,6 +161,28 @@ async function checkWalletPermissionsProbe(): Promise<Finding> {
     return { key: "wallet-permissions", level: "ok", message: `wallet permissions check OK (${rep.findings.length} findings for the credential issuer)` };
   } catch (e) {
     return { key: "wallet-permissions", level: "warn", message: `wallet permissions check could not read the ledger: ${e instanceof Error ? e.message : String(e)}` };
+  }
+}
+
+// Batch Send (/send-many, /api/batch-send): Batch must still be active, and the read-only preflight must work. It runs
+// for the credential issuer paying 1 drop to the genesis account and the treasury — nothing is built, signed or sent.
+async function checkBatchSendProbe(): Promise<Finding> {
+  const a = await getAmendmentStatus("BatchV1_1");
+  if (a.state === "unknown") return { key: "batch-send", level: "warn", message: "could not read the Amendments object — Batch Send availability unknown" };
+  if (a.state !== "active") return { key: "batch-send", level: "red", message: "BatchV1_1 is NOT active — /api/batch-send refuses every request (503)" };
+  const rpc = async (method: string, params: Record<string, unknown>) => {
+    const r = await xrplRpc(method, params);
+    return r.ok ? (((r.body as { result?: Record<string, unknown> }).result) ?? null) : null;
+  };
+  try {
+    const pf = await preflightBatch(rpc, EXPECTED_ISSUER, [
+      { address: "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh", amount: "0.000001", currency: "XRP" },
+      { address: "rs59g3amo5iT6T64Cg96XXMAWuw3WPQcLF", amount: "0.000001", currency: "XRP" },
+    ], { issuer: "rMxCKbEDwqr76QuheSUMdEGf4B9xJ8m5De", hex: "524C555344000000000000000000000000000000" });
+    if (!("sequence" in pf) || !pf.sequence || !pf.feeDrops) return { key: "batch-send", level: "red", message: "Batch Send preflight returned no sequence/fee for a known account" };
+    return { key: "batch-send", level: "ok", message: `Batch active; preflight OK (fee ${pf.feeDrops} drops for 2 payments)` };
+  } catch (e) {
+    return { key: "batch-send", level: "warn", message: `Batch Send preflight could not read the ledger: ${e instanceof Error ? e.message : String(e)}` };
   }
 }
 
@@ -516,6 +540,7 @@ export async function runWatchdog(prisma: PrismaClient, opts: WatchdogOptions = 
     add("anchor-wallet", checkAnchorWallet);
     add("credential-expiry", checkCredentialExpiry);
     add("wallet-permissions", checkWalletPermissionsProbe, 9000);
+    add("batch-send", checkBatchSendProbe, 9000);
     add("credential-issuer-reserve", checkCredentialIssuerReserve);
     add("credential-queue-backlog", () => checkCredentialQueueBacklog(prisma));
     add("credential-anomaly", () => checkCredentialAnomaly(prisma), 10000);

@@ -162,8 +162,13 @@ MCP server (Streamable HTTP, JSON-RPC 2.0, no auth):
   - verify_attestation — given a screening OR lending-exposure queryId, return the inclusion proof + on-ledger anchor tx + source hash so it can be verified without trusting XRPLHub. Param: query_id. Free.
   - get_lending_exposure — a borrower's total XLS-66 exposure across ALL loan brokers (outstanding by asset, defaults, impairments) + XRPLScore + observation history. The ledger keeps current exposure only and a borrower can delete their own default record — every call persists a Merkle-anchored snapshot. Param: borrower. Free via MCP. 503 (with XRPLScore) until XLS-66 activates.
   - check_wallet_permissions — PAID ($0.02, x402: USDC on Base or RLUSD on XRPL). Returns the payment resource for the wallet permissions check (GET /api/x402/permissions): who can move money out of a wallet — keys, signer list, delegations, checks, channels, escrows, offers, tickets. Never a free result. Param: address.
+  - prepare_batch_send — FREE. Pay 2–8 XRPL addresses with ONE signature, all or nothing (XRPL Batch, live since 2026-10-09). Checks every payment on the live ledger first and refuses a batch that would fail; returns the UNSIGNED Batch. Params: from, recipients[{address, amount, currency XRP|RLUSD, destinationTag}].
   - precheck_payment — PAID ($0.03, x402: USDC on Base or RLUSD on XRPL). Returns the payment resource for the agent payment pre-check (GET /api/x402/precheck): one verdict (block | caution | proceed) before paying an XRPL address. Never a free result. Params: destination, amount, currency, destination_tag, from.
   - get_lending_history — every loan XRPLHub has ever observed for a borrower: first/last seen, last-known status, ever-defaulted/impaired, and the ledger window a vanished loan disappeared in. Param: borrower. Free.
+
+Batch Send (free, people: ${origin}/send-many): POST ${origin}/api/batch-send {from, recipients:[{address, amount, currency, destinationTag?}]}
+  — 2 to 8 payments in ONE all-or-nothing Batch: everyone gets paid or nobody does. Preflighted on the live ledger (422 + problems[] when
+  a payment would fail). Returns the unsigned Batch + a Xaman request. Sign before any other transaction from the sender.
 
 Health: GET ${origin}/api/health  (503 when a money-path component is down; ?deep=1 for live facilitator probes)
 

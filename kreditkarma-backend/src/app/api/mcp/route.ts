@@ -34,6 +34,8 @@
 //                                pre-check (verdict before paying an XRPL address). NEVER runs the check for free.
 //  21. check_wallet_permissions — paid ($0.02, x402 on Base or XRPL): returns the payment resource for the wallet
 //                                permissions check (who can move money out of a wallet). NEVER runs the check for free.
+//  22. prepare_batch_send      — FREE: checks 2–8 payments on the live ledger and returns ONE unsigned all-or-nothing
+//                                Batch (one Payment each) + a Xaman link. The sender signs; XRPLHub never signs.
 //
 // © 2026 XRPLHub.io · XRPLScore™ · All Rights Reserved
 // ═══════════════════════════════════════════════════════════════════════════
@@ -46,6 +48,10 @@ import { isValidXrplAddress } from '@/lib/engine';
 import { runExposureQuery, priorObservation } from '@/lib/lendingExposure';
 import { PrecheckInputError, parsePrecheckInput, PRECHECK_RULES } from '@/lib/paymentPrecheck';
 import { PRICE_PER_PERMISSIONS_RLUSD, PRICE_PER_PRECHECK_RLUSD } from '@/lib/paycall';
+import { buildBatchSend, preflightBatch, validateRecipients } from '@/lib/batchSend';
+import { mainnetRpc } from '@/lib/spendAutopay';
+import { getAmendmentStatus } from '@/lib/amendments';
+import { RLUSD_HEX, RLUSD_ISSUER } from '@/lib/pricing';
 import { PRICE_PER_PERMISSIONS_USDC, PRICE_PER_PRECHECK_USDC } from '@/lib/x402Base';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://www.xrplhub.io';
@@ -63,11 +69,11 @@ const CORS = {
 // JSON-RPC surface (one source of truth for scanners like Smithery).
 export const MCP_SERVER_INFO = {
   name: 'xrplhub',
-  version: '1.17.0',
+  version: '1.18.0',
   description:
     'Free XRPL wallet creditworthiness scores · agent payment pre-check before paying an XRPL address (x402: USDC on Base ' +
     'or RLUSD on XRPL) · wallet permissions check (who can move money out of a wallet: keys, signer lists, delegations, ' +
-    'checks) · verifiable score ' +
+    'checks) · batch send (pay up to 8 people with one approval, all or nothing) · verifiable score ' +
     'credential · credential + permissioned domain explorer · MPT issuer risk + backing declarations · ' +
     'OFAC SDN screening attestation (process, not ground truth) · XLS-66 cross-broker lending exposure & ' +
     'underwriting inputs (attested, facts only) · community micro-grants · donations. UNSIGNED ONLY: XRPLHub builds ' +
@@ -446,6 +452,33 @@ export const TOOLS = [
     },
   },
   {
+    name: 'prepare_batch_send',
+    description:
+      "Pay 2 to 8 XRPL addresses with ONE signature, all or nothing (XRPL Batch, tfAllOrNothing — live on mainnet since " +
+      "2026-10-09). Checks every payment on the live ledger first (destination exists or will be created, destination tag, " +
+      "Deposit Authorization, RLUSD trust line, sender balance + fee) and refuses a batch that would fail. Returns the " +
+      "UNSIGNED Batch transaction and a Xaman sign link. FREE. XRPLHub never signs: the sender signs with its own wallet, " +
+      "before sending any other transaction from that account (the batch uses the next sequence numbers).",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        from: { type: 'string', description: 'The paying XRPL account (r...)' },
+        recipients: {
+          type: 'array', minItems: 2, maxItems: 8,
+          items: {
+            type: 'object',
+            properties: {
+              address: { type: 'string' }, amount: { type: 'string', description: 'Plain decimal, e.g. "10" or "2.5"' },
+              currency: { type: 'string', enum: ['XRP', 'RLUSD'] }, destinationTag: { type: 'integer' },
+            },
+            required: ['address', 'amount'],
+          },
+        },
+      },
+      required: ['from', 'recipients'],
+    },
+  },
+  {
     name: 'get_lending_history',
     description:
       "Every loan XRPLHub has EVER observed for a borrower, built from append-only exposure snapshots — the " +
@@ -756,6 +789,24 @@ async function toolGetUnderwritingInputs(args: Record<string, unknown>): Promise
     null,
     2
   );
+}
+
+// FREE. Batch Send (src/lib/batchSend.ts): validate + preflight on the live ledger, then the unsigned all-or-nothing Batch.
+async function toolPrepareBatchSend(args: Record<string, unknown>): Promise<string> {
+  const from = String(args.from ?? '').trim();
+  const v = validateRecipients(from, args.recipients);
+  if (!v.ok) return JSON.stringify({ error: v.error ?? 'Some payments are invalid. Nothing was built.', problems: v.problems });
+  const batch = await getAmendmentStatus('BatchV1_1');
+  if (batch.state !== 'active') return JSON.stringify({ error: 'Batch is not active on the XRP Ledger right now (or the ledger could not be read). Nothing was built.' });
+  const RLUSD = { issuer: RLUSD_ISSUER, hex: RLUSD_HEX };
+  const pf = await preflightBatch(mainnetRpc, from, v.recipients, RLUSD);
+  if (!pf.ok) return JSON.stringify({ error: ('error' in pf && pf.error) || 'Some payments would fail on the ledger. Nothing was built.', problems: pf.problems });
+  const txjson = buildBatchSend(from, v.recipients, pf.sequence, pf.feeDrops, RLUSD);
+  return JSON.stringify({
+    free: true, unsigned: true, mode: 'all_or_nothing', txjson, totals: pf.totals, networkFeeXrp: pf.feeDrops / 1e6,
+    sign: 'Sign txjson with the sending account and submit it, before any other transaction from that account. For a Xaman QR/deep link, POST the same body to ' + API_URL + '/api/batch-send.',
+    page: API_URL + '/send-many',
+  }, null, 2);
 }
 
 // PAID (x402, $0.02, both rails). Returns ONLY the payment resource — never the report: the check runs at
@@ -1211,6 +1262,8 @@ export async function POST(req: NextRequest) {
         output = toolPrecheckPayment(toolArgs);
       } else if (toolName === 'check_wallet_permissions') {
         output = toolCheckWalletPermissions(toolArgs);
+      } else if (toolName === 'prepare_batch_send') {
+        output = await toolPrepareBatchSend(toolArgs);
       } else {
         return rpcError(id, -32601, `Tool not found: ${toolName}`);
       }

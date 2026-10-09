@@ -57,7 +57,9 @@ The live production app is a single Next.js project in **`kreditkarma-backend/`*
 
 - **Wallet Permissions Check** (`src/lib/walletPermissions.ts`, `/permissions`, 2026-10-09) — who can move money out of a
   wallet (keys, signer list, delegations, checks, channels, escrows, offers, tickets). Free page; agents pay $0.02 via
-  x402. Its free fixes (DelegateSet revoke, CheckCancel) are the only other transactions we build. See docs/HUB-GAPS.md.
+  x402. Its free fixes (DelegateSet revoke, CheckCancel) are other transactions we build. See docs/HUB-GAPS.md.
+- **Batch Send** (`src/lib/batchSend.ts`, `/send-many`, `POST /api/batch-send`, MCP `prepare_batch_send`, 2026-10-09) — pay
+  2–8 people with one all-or-nothing XRPL Batch. Free, preflighted, amendment-gated. Tested on Devnet (Testnet has no Batch).
 
 - **Continuous monitoring** — `/api/monitor/*`: watched wallets, HMAC-signed webhooks, sparse attested
   observations (canon `monitor-observation-v1`). Layered on top of underwriting, never a replacement; no default
