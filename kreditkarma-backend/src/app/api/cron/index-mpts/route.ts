@@ -53,7 +53,7 @@ export async function GET(req: Request) {
       await notifyError("cron/index-mpts autopay", e);
       return null;
     });
-    const subscriptions = await promptSubscriptions(prisma, pushSignRequest, { budgetMs: 6_000, autopay: (planId, start) => autopayCovers(prisma, planId, start) }).catch(async (e) => {
+    const subscriptions = await promptSubscriptions(prisma, pushSignRequest, { budgetMs: 6_000, autopay: (planId, window) => autopayCovers(prisma, planId, window) }).catch(async (e) => {
       await notifyError("cron/index-mpts subscriptions", e);
       return null;
     });
@@ -79,7 +79,8 @@ export async function GET(req: Request) {
       return null;
     });
     // healthchecks.io is the alert channel: /fail on any open RED (watchdog or money-path health), else success.
-    await pingHealthcheckForRun(prisma, "cron/index-mpts", watchdog, health.reds.map((r) => `health ${r.name} DOWN: ${r.detail}`));
+    // Autopay failures are customer-facing: they go out as RED lines so healthchecks.io emails the owner today.
+    await pingHealthcheckForRun(prisma, "cron/index-mpts", watchdog, [...health.reds.map((r) => `health ${r.name} DOWN: ${r.detail}`), ...(autopay?.notices ?? [])]);
 
     return NextResponse.json({ ...progress, anchor, autopay, subscriptions, health: { overall: health.overall, reds: health.reds, ambers: health.ambers }, watchdog: watchdog ? { alerted: watchdog.alerted, recovered: watchdog.recovered, weeklySent: watchdog.weeklySent, open: watchdog.findings.filter((f) => f.level !== "ok").map((f) => ({ key: f.key, level: f.level, message: f.message })) } : null });
   } catch (err) {

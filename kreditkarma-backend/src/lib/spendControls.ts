@@ -330,7 +330,7 @@ export async function promptSubscriptions(
   opts: {
     max?: number; budgetMs?: number;
     /** Autopay (spendAutopay.autopayCovers): a covered period gets no check; a failed one gets a check with the reason. */
-    autopay?: (planId: string, periodStart: Date) => Promise<{ covered: boolean; failedReason: string | null }>;
+    autopay?: (planId: string, window: { start: Date; end: Date }) => Promise<{ covered: boolean; failedReason: string | null }>;
   } = {}
 ): Promise<{ plans: number; pushed: number; alreadySigned: number; skipped: number; failed: number }> {
   const max = opts.max ?? 40, budgetMs = opts.budgetMs ?? 15_000, started = Date.now();
@@ -345,7 +345,7 @@ export async function promptSubscriptions(
       out.plans++;
       await syncPlanChecks(prisma, plan.id, plan.funder).catch(() => null);
       const rows = await ensurePeriodChecks(prisma, plan);
-      const ap = opts.autopay ? await opts.autopay(plan.id, periodWindow(plan.period as Period).start).catch(() => null) : null;
+      const ap = opts.autopay ? await opts.autopay(plan.id, periodWindow(plan.period as Period)).catch(() => null) : null;
       if (ap?.covered) { out.skipped++; await prisma.spendPlan.update({ where: { id: plan.id }, data: { updatedAt: new Date() } }); continue; }
       for (const row of rows) {
         if (row.status !== "unsigned") { out.alreadySigned++; continue; }

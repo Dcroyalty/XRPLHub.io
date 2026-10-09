@@ -48,7 +48,7 @@ export function AutopayCard({ planId, view, currency, period, onChange }: { plan
 
   const start = async () => {
     const j = await post({ action: "start", periods: n });
-    if (j) setSign({ title: `Approve Autopay setup: ${n} ticket${n === 1 ? "" : "s"} (sets aside ${j.reserveXrp} XRP until used)`, data: j, after: async () => { await confirmTickets(); } });
+    if (j) setSign({ title: `Approve Autopay setup for ${n} payment${n === 1 ? "" : "s"} (holds ${j.reserveXrp} XRP until used or released)`, data: j, after: async () => { await confirmTickets(); } });
   };
   const approveNext = async () => {
     const j = await post({ action: "sign" });
@@ -66,7 +66,7 @@ export function AutopayCard({ planId, view, currency, period, onChange }: { plan
   };
   const release = async (t: number) => {
     const j = await post({ action: "release", tickets: [t] });
-    if (j) setSign({ title: `Release ticket ${t} (cancels its payment for good, returns its XRP)`, data: j, after: async () => {} });
+    if (j) setSign({ title: `Release this payment (cancels it for good, returns its ${view.reservePerTicketXrp} XRP)`, data: j, after: async () => {} });
   };
 
   const st = view.status;
@@ -80,7 +80,7 @@ export function AutopayCard({ planId, view, currency, period, onChange }: { plan
 
       {view.available && (st === "off" || st === "ended") && (
         <>
-          <p style={{ fontSize: 14, margin: "0 0 8px" }}>Approve the next payments now, all at once, and we send each one at the start of its {unit}. No more approving every {unit}.</p>
+          <p style={{ fontSize: 14, margin: "0 0 8px" }}>Approve the next payments now, all at once. XRPLHub decides when each one is sent: one at the start of each {unit}, never early. No more approving every {unit}.</p>
           <label style={s.label}>How many {unit}s ahead</label>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <select style={{ ...s.input, width: 120 }} value={n} onChange={(e) => setN(Number(e.target.value))}>
@@ -88,7 +88,7 @@ export function AutopayCard({ planId, view, currency, period, onChange }: { plan
             </select>
             <button type="button" style={s.btn} disabled={busy} onClick={start}>Set up Autopay →</button>
           </div>
-          <p style={{ ...s.small, marginTop: 6 }}>Sets aside {Number((view.reservePerTicketXrp * n).toFixed(6))} XRP in your wallet ({view.reservePerTicketXrp} XRP per {unit}) until each payment is sent or cancelled. Starts next {unit}; this {unit} is paid the usual way.</p>
+          <p style={{ ...s.small, marginTop: 6 }}>Each pre-approved payment holds {view.reservePerTicketXrp} XRP in your wallet until it&apos;s used or released ({Number((view.reservePerTicketXrp * n).toFixed(6))} XRP for {n}). Starts next {unit}; this {unit} is paid the usual way.</p>
         </>
       )}
 
@@ -127,8 +127,8 @@ export function AutopayCard({ planId, view, currency, period, onChange }: { plan
 
       {!!view.releasableTickets?.length && (
         <div style={{ marginTop: 12 }}>
-          <p style={{ fontSize: 14, margin: "0 0 6px" }}><strong>Release your tickets</strong> to make the cancelled payments impossible to send, by anyone, and get {view.reservePerTicketXrp} XRP back for each.</p>
-          {view.releasableTickets.map((t) => <button key={t} type="button" style={{ ...s.btnGhost, marginRight: 6, marginBottom: 6 }} disabled={busy} onClick={() => release(t)}>Release ticket {t}</button>)}
+          <p style={{ fontSize: 14, margin: "0 0 6px" }}><strong>Release the cancelled payments</strong> to make them impossible to send, by anyone, and get {view.reservePerTicketXrp} XRP back for each.</p>
+          {view.releasableTickets.map((t) => { const p = view.payments.find((x) => x.ticket === t); return <button key={t} type="button" style={{ ...s.btnGhost, marginRight: 6, marginBottom: 6 }} disabled={busy} onClick={() => release(t)}>Release {p ? `the ${fmtDate(p.periodStart)} payment` : `payment #${t}`}</button>; })}
         </div>
       )}
 

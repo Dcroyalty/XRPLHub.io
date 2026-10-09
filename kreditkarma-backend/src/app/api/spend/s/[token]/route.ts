@@ -7,6 +7,7 @@ import { prisma } from "@/lib/xrplscore-db";
 import { rateLimit, rateLimited } from "@/lib/rateLimit";
 import { fromRipple, funderBalance, periodWindow, syncPlanChecks, type Period, type PlanCurrency } from "@/lib/spendControls";
 import { SPEND_DISCLOSURE, spendErr, spendJson } from "@/lib/spendApi";
+import { autopayRowFor } from "@/lib/spendAutopay";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -31,7 +32,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ token: string }
     const { start, end } = periodWindow(plan.period as Period);
     const row = await prisma.spendCheck.findFirst({ where: { planId: plan.id, periodStart: start }, orderBy: { seq: "asc" } });
     // Autopay rows for this period (a pre-approved payment, not a check): it answers "paid?" directly.
-    const ap = await prisma.spendAutopayPayment.findFirst({ where: { planId: plan.id, periodStart: start, status: { not: "cancelled" } }, orderBy: { createdAt: "desc" } });
+    const ap = await autopayRowFor(prisma, plan.id, { start, end });
     const apState = ap && (!row || row.status === "unsigned")
       ? ap.status === "paid" ? "autopay_paid" : ap.status === "failed" || ap.status === "missed" ? "autopay_failed" : ap.status === "scheduled" || ap.status === "pending" ? "autopay_scheduled" : null
       : null;

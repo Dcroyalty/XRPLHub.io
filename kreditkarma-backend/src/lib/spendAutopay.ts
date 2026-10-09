@@ -102,21 +102,27 @@ export async function confirmTickets(prisma: PrismaClient, plan: Plan, now = new
     await prisma.spendPlan.update({ where: { id: plan.id }, data: { autopayStatus: "off", autopayTicketUuid: null } });
     return fail(422, "tickets_failed", `The ticket setup didn't work: ${tk.error}.`);
   }
-  const ledger = await validatedLedger(mainnetRpc);
-  if (!ledger) return { ok: true as const, state: "confirming" };
-  const periods = autopayPeriods(plan.period as AutopayPeriod, now, tk.tickets.length);
+  const made = await createAutopayRows(prisma, plan, tk.tickets, autopayPeriods(plan.period as AutopayPeriod, now, tk.tickets.length), mainnetRpc, st.userToken ?? null);
+  return made ? { ok: true as const, state: "ready", tickets: tk.tickets.length } : { ok: true as const, state: "confirming" };
+}
+
+/** One unsigned row per (ticket, period). Production periods come from autopayPeriods (weekly / monthly only); the
+ *  Testnet cycle test passes minutes-long periods here. false = the ledger couldn't be read (try again). */
+export async function createAutopayRows(prisma: PrismaClient, plan: Plan, tickets: number[], periods: { start: Date; end: Date }[], rpc: Rpc = mainnetRpc, userToken: string | null = null): Promise<boolean> {
+  const ledger = await validatedLedger(rpc);
+  if (!ledger) return false;
   const amount = payeeOf(plan).budget;
   await prisma.$transaction([
     prisma.spendAutopayPayment.createMany({
-      data: periods.map((p, k) => ({
-        planId: plan.id, periodStart: p.start, periodEnd: p.end, ticket: tk.tickets[k], amount,
+      data: periods.slice(0, tickets.length).map((p, k) => ({
+        planId: plan.id, periodStart: p.start, periodEnd: p.end, ticket: tickets[k], amount,
         lastLedger: lastLedgerFor(new Date(p.end.getTime() + AUTOPAY_GRACE_S * 1000), ledger),
       })),
       skipDuplicates: true,
     }),
-    prisma.spendPlan.update({ where: { id: plan.id }, data: { autopayStatus: "signing", autopayTicketUuid: null, ...(st.userToken ? { xamanUserToken: st.userToken } : {}) } }),
+    prisma.spendPlan.update({ where: { id: plan.id }, data: { autopayStatus: "signing", autopayTicketUuid: null, ...(userToken ? { xamanUserToken: userToken } : {}) } }),
   ]);
-  return { ok: true as const, state: "ready", tickets: tk.tickets.length };
+  return true;
 }
 
 // ── sign: pre-approve the next payment ─────────────────────────────────────────────────────────────────────────────
@@ -161,16 +167,27 @@ export async function acceptSigned(prisma: PrismaClient, plan: Plan, uuid: strin
   if (st.state !== "signed") return { ok: true as const, state: st.state };
   if (st.signer !== plan.funder) return fail(403, "wrong_signer", "That request was signed by a different account than this plan's payer.");
   if (!st.hex) return fail(502, "no_blob", "Xaman didn't return the approved payment. Approve it again.");
-  const acc = acceptSignedBlob(st.hex, txFor(plan, row));
+  const stored = await storeApproved(prisma, plan, row, st.hex, secret);
+  if (!stored.ok) return stored;
+  if (st.userToken && st.userToken !== plan.xamanUserToken) await prisma.spendPlan.update({ where: { id: plan.id }, data: { xamanUserToken: st.userToken } });
+  return { ok: true as const, state: "scheduled", periodStart: row.periodStart };
+}
+
+/** Check a signed blob is EXACTLY this row's payment, then encrypt and schedule it. (Xaman hands us the blob in
+ *  production; the Testnet cycle test signs with a faucet wallet and calls this directly.) */
+export async function storeApproved(prisma: PrismaClient, plan: Plan, row: SpendAutopayPayment, hex: string, secret: string) {
+  const acc = acceptSignedBlob(hex, txFor(plan, row));
   if (!acc.ok) {
     await notifyError("spend autopay acceptSigned", new Error(acc.error), { planId: plan.id, row: row.id });
     return fail(422, "blob_mismatch", `That approval can't be used: ${acc.error}. Approve it again.`);
   }
-  await prisma.spendAutopayPayment.update({ where: { id: row.id }, data: { status: "scheduled", blobEnc: encryptBlob(st.hex, secret, row.id), txHash: acc.hash } });
-  if (st.userToken && st.userToken !== plan.xamanUserToken) await prisma.spendPlan.update({ where: { id: plan.id }, data: { xamanUserToken: st.userToken } });
+  await prisma.spendAutopayPayment.update({ where: { id: row.id }, data: { status: "scheduled", blobEnc: encryptBlob(hex, secret, row.id), txHash: acc.hash } });
   await finishSigning(prisma, plan.id);
-  return { ok: true as const, state: "scheduled", periodStart: row.periodStart };
+  return { ok: true as const };
 }
+
+/** The txjson a row's payer pre-approves (exported for the Testnet cycle test). */
+export const autopayTxFor = (plan: Plan, row: Pick<SpendAutopayPayment, "ticket" | "amount" | "lastLedger">) => txFor(plan, row);
 
 // ── cancel + release ───────────────────────────────────────────────────────────────────────────────────────────────
 /** Stop at once: nothing unsigned or scheduled will ever be sent by us. A payment already sent can't be pulled back. */
@@ -184,10 +201,10 @@ export async function cancelAutopay(prisma: PrismaClient, plan: Plan) {
 }
 
 /** Our tickets still on the ledger whose payment will never be sent (cancelled / never approved / plan ended). */
-export async function releasableTickets(prisma: PrismaClient, plan: Plan): Promise<number[] | null> {
+export async function releasableTickets(prisma: PrismaClient, plan: Plan, rpc: Rpc = mainnetRpc): Promise<number[] | null> {
   const rows = await prisma.spendAutopayPayment.findMany({ where: { planId: plan.id }, select: { ticket: true, status: true } });
   if (!rows.length) return [];
-  const onLedger = await ticketsOnLedger(mainnetRpc, plan.funder);
+  const onLedger = await ticketsOnLedger(rpc, plan.funder);
   if (!onLedger) return null;
   const held = new Set(onLedger);
   return rows.filter((r) => held.has(r.ticket) && (r.status === "cancelled" || r.status === "missed" || (r.status === "unsigned" && plan.autopayStatus === "ended"))).map((r) => r.ticket).sort((a, b) => a - b);
@@ -218,12 +235,21 @@ export async function releaseRequest(prisma: PrismaClient, plan: Plan, ticketsRa
 }
 
 // ── what the dashboard / share link / check flow need ──────────────────────────────────────────────────────────────
+/** The Autopay row that answers "is this period paid?": the latest non-cancelled row starting inside the window that
+ *  has already started. (Production rows start exactly at the window's start; the Testnet test's rows are shorter.) */
+export async function autopayRowFor(prisma: PrismaClient, planId: string, window: { start: Date; end: Date }, now = new Date()) {
+  return prisma.spendAutopayPayment.findFirst({
+    where: { planId, status: { not: "cancelled" }, periodStart: { gte: window.start, lt: window.end, lte: now } },
+    orderBy: { periodStart: "desc" },
+  });
+}
+
 /** Is this period paid by Autopay (so no check should be pushed or signed for it)? Failed/missed rows don't cover. */
-export async function autopayCovers(prisma: PrismaClient, planId: string, periodStart: Date): Promise<{ covered: boolean; failedReason: string | null }> {
-  const rows = await prisma.spendAutopayPayment.findMany({ where: { planId, periodStart } });
-  if (rows.some((r) => LIVE.includes(r.status as RowStatus))) return { covered: true, failedReason: null };
-  const f = rows.find((r) => r.status === "failed" || r.status === "missed");
-  return { covered: false, failedReason: f?.reason ?? null };
+export async function autopayCovers(prisma: PrismaClient, planId: string, window: { start: Date; end: Date }, now = new Date()): Promise<{ covered: boolean; failedReason: string | null }> {
+  const r = await autopayRowFor(prisma, planId, window, now);
+  if (!r) return { covered: false, failedReason: null };
+  if (LIVE.includes(r.status as RowStatus)) return { covered: true, failedReason: null };
+  return { covered: false, failedReason: r.status === "failed" || r.status === "missed" ? r.reason : null };
 }
 
 export async function autopayView(prisma: PrismaClient, plan: Plan) {
@@ -246,8 +272,8 @@ export async function autopayView(prisma: PrismaClient, plan: Plan) {
 
 // ── cron ───────────────────────────────────────────────────────────────────────────────────────────────────────────
 /** Send every due Autopay payment (period started, still in its window). Bounded; never throws. */
-export async function runAutopayDue(prisma: PrismaClient, opts: { budgetMs?: number; now?: Date } = {}) {
-  const out = { due: 0, paid: 0, failed: 0, missed: 0, cancelled: 0, pending: 0, waiting: 0, skipped: 0, retry: 0 };
+export async function runAutopayDue(prisma: PrismaClient, opts: { budgetMs?: number; now?: Date; rpc?: Rpc; settleWaitMs?: number } = {}) {
+  const out = { due: 0, paid: 0, failed: 0, missed: 0, cancelled: 0, pending: 0, waiting: 0, skipped: 0, retry: 0, sent: [] as string[], notices: [] as string[] };
   const secret = autopaySecret();
   if (!secret) return { ...out, disabled: true };
   const started = Date.now(), budgetMs = opts.budgetMs ?? 15_000;
@@ -264,17 +290,23 @@ export async function runAutopayDue(prisma: PrismaClient, opts: { budgetMs?: num
       const o = await processRow(
         { id: row.id, periodStart: row.periodStart, periodEnd: row.periodEnd, status: row.status as RowStatus, blobEnc: row.blobEnc, txHash: row.txHash, attempts: row.attempts },
         {
-          rpc: mainnetRpc, now, secret, settleWaitMs: 8_000,
+          rpc: opts.rpc ?? mainnetRpc, now, secret, settleWaitMs: opts.settleWaitMs ?? 8_000,
           update: async (id, patch) => { await prisma.spendAutopayPayment.update({ where: { id }, data: patch }); },
           // Payer: the subscription prompt that runs right after this pushes a normal check to their Xaman app with the
-          // reason (autopayCovers → failedReason). Payee: their share link shows the failure. Owner: an alert.
+          // reason (autopayCovers → failedReason). Payee: their share link shows the failure. Owner: `notices` go into
+          // the cron's healthchecks.io ping as RED lines — that is the channel that emails the owner (ERROR_WEBHOOK_URL
+          // is not read by anyone).
           notify: async (id, kind, reason) => {
             await prisma.spendAutopayPayment.update({ where: { id }, data: { notifiedAt: new Date() } });
-            await notifyInfo("spend autopay", `Autopay payment ${kind}: ${reason}`, { planId: row.plan.id, row: id, amount: `${row.amount} ${row.plan.currency}`, payee: row.plan.payees[0]?.label ?? null });
+            const line = `autopay ${kind}: plan ${row.plan.id} (${row.plan.name ?? "subscription"}), ${row.amount} ${row.plan.currency} to ${row.plan.payees[0]?.label ?? "payee"} — ${reason} No retry; the payer is sent a normal check.`;
+            out.notices.push(line);
+            await notifyInfo("spend autopay", line);
           },
         }
       ).catch(async (e) => { await notifyError("spend autopay processRow", e, { row: row.id }); return "retry" as const; });
-      if (o === "submitted") out.pending++; else if (o in out) (out as Record<string, number>)[o]++;
+      if (o === "submitted" || o === "paid") out.sent.push(row.id);
+      if (o === "submitted") out.pending++;
+      else if (o === "paid" || o === "failed" || o === "missed" || o === "cancelled" || o === "waiting" || o === "skipped" || o === "retry") out[o]++;
     }
     // A plan whose every payment is final has nothing left on Autopay.
     const onPlans = await prisma.spendPlan.findMany({ where: { autopayStatus: "on" }, select: { id: true }, take: 200 });

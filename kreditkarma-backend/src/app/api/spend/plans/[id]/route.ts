@@ -35,7 +35,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
     prisma.spendPlanPayment.findMany({ where: { planId: plan.id }, orderBy: { paidAt: "desc" } }),
   ]);
   const sub = plan.kind === "subscription";
-  const [autopay, covers] = sub ? await Promise.all([autopayView(prisma, plan), autopayCovers(prisma, plan.id, start)]) : [null, null];
+  const [autopay, covers] = sub ? await Promise.all([autopayView(prisma, plan), autopayCovers(prisma, plan.id, { start, end })]) : [null, null];
   const holding = rows.filter((r) => r.status === "open" || r.status === "expired").length;
   const current = rows.filter((r) => r.periodStart.getTime() === start.getTime());
   const view = (r: (typeof rows)[number]) => {

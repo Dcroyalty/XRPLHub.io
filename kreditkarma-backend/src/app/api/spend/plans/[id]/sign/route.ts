@@ -24,7 +24,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   const body = (await req.json().catch(() => ({}))) as { invoiceId?: unknown; batch?: unknown };
 
   // A period Autopay already pays never gets a check too (that would pay it twice).
-  if (plan.kind === "subscription" && (await autopayCovers(prisma, plan.id, periodWindow(plan.period as Period).start)).covered) {
+  if (plan.kind === "subscription" && (await autopayCovers(prisma, plan.id, periodWindow(plan.period as Period))).covered) {
     return spendErr(409, "autopay_covers", "Autopay already pays this period, so there is no check to approve.");
   }
   const rows = (await ensurePeriodChecks(prisma, plan)).filter((r) => r.status === "unsigned");

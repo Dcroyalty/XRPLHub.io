@@ -349,11 +349,11 @@ async function settle(row: DueRow, code: string, ctx: { now: Date; update: (id: 
 /** Shown wherever Autopay is offered (plain words; owner spec item 5). */
 export function autopayDisclosure(reservePerTicketXrp: number, payeeLabel: string, amount: string, currency: string): string[] {
   return [
-    `Autopay uses XRP Ledger "tickets". Each ticket sets aside ${reservePerTicketXrp} XRP in your wallet until its payment is sent or you cancel. You get it back then.`,
-    "You approve every payment now, ahead of time. XRPLHub keeps them encrypted and sends exactly one at the start of each week or month, never early. XRPLHub decides when each one is sent.",
+    "XRPLHub decides when each pre-approved payment is sent. We send exactly one at the start of each week or month, never early. You approve them all now, ahead of time, and we keep them encrypted.",
+    `Each pre-approved payment holds ${reservePerTicketXrp} XRP in your wallet until it's used or released. You get the ${reservePerTicketXrp} XRP back then.`,
     `Each approved payment can only pay ${payeeLabel} exactly ${amount} ${currency}. It can't be changed or used for anything else.`,
     "Keep enough money in your wallet. If a payment fails (for example, not enough money), we don't try it again: we tell you and the person you pay, and send you a normal check to approve instead.",
-    "To cancel, press Cancel: we stop sending at once. Then approve one small transaction per remaining ticket. That makes the remaining payments impossible to send, by anyone, and gives you your XRP back.",
+    "To cancel, press Cancel: we stop sending at once. Then release each remaining payment (one small approval each). That makes it impossible to send, by anyone, and gives you back its XRP.",
     "Autopay is free. Each payment costs only the XRP Ledger's network fee (0.00002 XRP), paid from your wallet.",
   ];
 }
