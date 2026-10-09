@@ -37,7 +37,7 @@ export default function DonatePage() {
       <section className="hero" style={{ paddingTop: 80, paddingBottom: 32 }}>
         <div className="container">
           <h1>Donate to the Treasury</h1>
-          <p>Donations go to the public treasury address below. Every payment is a public XRPL transaction you can check yourself.</p>
+          <p>Donations go to the public grants wallet below. Every payment is public, so you can check it yourself.</p>
         </div>
       </section>
 
@@ -73,9 +73,9 @@ export default function DonatePage() {
           <div style={{ marginTop: 32, padding: 24, background: 'var(--bg)', borderRadius: 8 }}>
             <h3 style={{ marginBottom: 12, fontSize: 18 }}>How to Donate</h3>
             <ol style={{ paddingLeft: 20, color: 'var(--text-muted)', lineHeight: 2 }}>
-              <li>Open your XRPL wallet (Xaman, or any XRPL wallet)</li>
+              <li>Open your XRP wallet (Xaman, or any XRP wallet)</li>
               <li>Send XRP or RLUSD to the treasury address above</li>
-              <li>Your payment shows up on the public ledger — you can see it on XRPScan</li>
+              <li>Your payment shows up publicly — you can see it on XRPScan</li>
               <li>Grants are approved by a person and paid from the treasury when it holds enough to pay them</li>
             </ol>
           </div>

@@ -74,63 +74,63 @@ export default function SpendPage() {
         {xapp ? <a href="/xapp/spend" style={s.small}>← My plans</a> : <Link href="/" style={s.small}>← XRPLHub</Link>}
         <h1 style={s.h1}>Spend Controls</h1>
         <p style={s.sub}>
-          A spending plan for someone you support — only at places you approve, up to amounts you set, paid by XRPL checks in RLUSD.
-          You sign every check in your own wallet; the merchant cashes it in theirs. Free — no plan fee, no prepay; merchants cash free.
+          Give money with rules. An allowance someone can only spend at places you pick, up to amounts you set, paid in RLUSD (a digital US dollar).
+          Or pay one bill every week or month in XRP or RLUSD. You approve every payment in your own wallet. Free: no fee, nothing to pay up front.
         </p>
         <Disclosure lines={preview?.disclosure ?? [
-          "XRPLHub is not a bank and not a money transmitter. It never holds your funds or your keys.",
-          "You sign everything: the funder signs each check, and the merchant signs to cash it, each in their own wallet.",
-          "Checks do not lock funds. Keep your allowance in your wallet — a check can only be cashed while the money is there.",
-          "RLUSD can't be held in escrow yet (its issuer hasn't enabled token escrow), which is why this uses checks.",
+          "XRPLHub is not a bank and doesn't send money for you. We never hold your money or your keys.",
+          "You approve everything in your own wallet: you approve each check, and the person being paid approves cashing it.",
+          "A check doesn't set money aside. Keep enough in your wallet — a check can only be cashed while the money is there.",
+          "We use checks because RLUSD can't be locked up in advance on the XRP Ledger yet.",
         ]} />
 
         <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
           {(["budget", "subscription"] as const).map((k) => (
             <button key={k} type="button" onClick={() => setKind(k)} style={kind === k ? s.btn : s.btnGhost}>
-              {k === "budget" ? "Budget — approved places, a limit each" : "Subscription — pay one payee every period"}
+              {k === "budget" ? "Allowance — places you pick, a limit for each" : "Recurring payment — pay one bill every week or month"}
             </button>
           ))}
         </div>
         {sub && (
           <div style={{ ...s.card, background: "#eef8f6", borderColor: "#99d5cc" }}>
-            <p style={{ ...s.h2, fontSize: 14 }}>How subscriptions work</p>
-            <p style={{ ...s.small, color: "#334" }}>One check per period for the amount you set. A check can be cashed as soon as it exists, so the next period&apos;s check is never created early: when a new period starts we send its sign request to your Xaman app (after your first signature). Until you sign it, that period is unpaid. Stop any time — just don&apos;t sign, or cancel an open check before it&apos;s cashed.</p>
+            <p style={{ ...s.h2, fontSize: 14 }}>How recurring payments work</p>
+            <p style={{ ...s.small, color: "#334" }}>One check each week or month for the amount you set. A check can be cashed as soon as it exists, so we never make next month&apos;s early. When a new week or month starts, we send that payment to your Xaman app to approve (after you approve the first one). Until you approve it, that period isn&apos;t paid. Stop anytime: just don&apos;t approve it, or cancel a check before it&apos;s cashed.</p>
           </div>
         )}
 
         <div style={s.card}>
-          <p style={s.h2}>1. The {sub ? "subscription" : "plan"}</p>
-          <label style={s.label}>Your XRPL account (the funder — you&apos;ll sign the checks from it)</label>
+          <p style={s.h2}>1. The {sub ? "payment" : "allowance"}</p>
+          <label style={s.label}>Your XRP wallet address (you&apos;ll pay from it and approve each check there)</label>
           <input style={{ ...s.input, ...s.mono, ...(xapp ? { background: "#f4f4f2" } : {}) }} value={funder} readOnly={!!xapp} onChange={(e) => setFunder(e.target.value)} placeholder="r…" />
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
             <div style={{ flex: "1 1 180px" }}><label style={s.label}>Name (optional)</label><input style={s.input} value={name} onChange={(e) => setName(e.target.value)} placeholder={sub ? "Gym membership" : "Sam's allowance"} /></div>
-            <div style={{ flex: "1 1 120px" }}><label style={s.label}>Period</label>
-              <select style={s.input} value={period} onChange={(e) => setPeriod(e.target.value as "weekly" | "monthly")}><option value="weekly">Weekly (Mon–Sun, UTC)</option><option value="monthly">Monthly (calendar, UTC)</option></select></div>
+            <div style={{ flex: "1 1 120px" }}><label style={s.label}>How often</label>
+              <select style={s.input} value={period} onChange={(e) => setPeriod(e.target.value as "weekly" | "monthly")}><option value="weekly">Every week (Mon–Sun, UTC time)</option><option value="monthly">Every month (UTC time)</option></select></div>
             {sub
               ? <div style={{ flex: "1 1 120px" }}><label style={s.label}>Currency</label><select style={s.input} value={currency} onChange={(e) => setCurrency(e.target.value as "RLUSD" | "XRP")}><option value="RLUSD">RLUSD</option><option value="XRP">XRP</option></select></div>
-              : <div style={{ flex: "1 1 120px" }}><label style={s.label}>Check size (RLUSD)</label><input style={s.input} value={checkSize} onChange={(e) => setCheckSize(e.target.value)} inputMode="decimal" /></div>}
+              : <div style={{ flex: "1 1 120px" }}><label style={s.label}>Size of each check (RLUSD)</label><input style={s.input} value={checkSize} onChange={(e) => setCheckSize(e.target.value)} inputMode="decimal" /></div>}
           </div>
-          {!sub && <p style={{ ...s.small, marginTop: 6 }}>Each payee&apos;s budget is split into checks of this size, so a merchant can be paid several times a period. A check pays once.</p>}
+          {!sub && <p style={{ ...s.small, marginTop: 6 }}>Each place&apos;s limit is split into checks of this size, so it can be paid several times a week or month. Each check can be used once.</p>}
         </div>
 
         <div style={s.card}>
-          <p style={s.h2}>{sub ? "2. Who you pay" : "2. Approved payees (up to 10)"}</p>
+          <p style={s.h2}>{sub ? "2. Who you pay" : "2. Places they can spend (up to 10)"}</p>
           {(sub ? payees.slice(0, 1) : payees).map((p, i) => (
             <div key={i} style={{ borderTop: i ? "1px solid #eee" : "none", paddingTop: i ? 10 : 0, marginTop: i ? 10 : 0 }}>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <div style={{ flex: "2 1 220px" }}><label style={s.label}>Merchant&apos;s XRPL address</label><input style={{ ...s.input, ...s.mono }} value={p.address} onChange={(e) => setP(i, "address", e.target.value)} placeholder="r…" /></div>
+                <div style={{ flex: "2 1 220px" }}><label style={s.label}>Their XRP wallet address</label><input style={{ ...s.input, ...s.mono }} value={p.address} onChange={(e) => setP(i, "address", e.target.value)} placeholder="r…" /></div>
                 <div style={{ flex: "1 1 140px" }}><label style={s.label}>Name</label><input style={s.input} value={p.label} onChange={(e) => setP(i, "label", e.target.value)} placeholder="Joe's Market" /></div>
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
                 <div style={{ flex: "1 1 120px" }}><label style={s.label}>Category</label><select style={s.input} value={p.category} onChange={(e) => setP(i, "category", e.target.value)}>{CATEGORIES.map((c) => <option key={c}>{c}</option>)}</select></div>
-                <div style={{ flex: "1 1 120px" }}><label style={s.label}>{sub ? `Amount per period (${cur})` : "Budget per period (RLUSD)"}</label><input style={s.input} value={p.budget} onChange={(e) => setP(i, "budget", e.target.value)} inputMode="decimal" placeholder="50" /></div>
-                <div style={{ flex: "1 1 120px" }}><label style={s.label}>Destination tag (if required)</label><input style={s.input} value={p.destinationTag} onChange={(e) => setP(i, "destinationTag", e.target.value)} inputMode="numeric" /></div>
+                <div style={{ flex: "1 1 120px" }}><label style={s.label}>{sub ? `Amount each time (${cur})` : "Limit each week or month (RLUSD)"}</label><input style={s.input} value={p.budget} onChange={(e) => setP(i, "budget", e.target.value)} inputMode="decimal" placeholder="50" /></div>
+                <div style={{ flex: "1 1 120px" }}><label style={s.label}>Destination tag (only if they gave you one)</label><input style={s.input} value={p.destinationTag} onChange={(e) => setP(i, "destinationTag", e.target.value)} inputMode="numeric" /></div>
               </div>
               {!sub && payees.length > 1 && <button type="button" style={{ ...s.btnGhost, marginTop: 6 }} onClick={() => setPayees((ps) => ps.filter((_, j) => j !== i))}>Remove</button>}
               {preview?.payeeProblems?.filter((x) => x.payee === i).map((x) => <p key={x.error} style={s.err}>{x.error}</p>)}
             </div>
           ))}
-          {!sub && payees.length < 10 && <button type="button" style={{ ...s.btnGhost, marginTop: 10 }} onClick={() => setPayees((ps) => [...ps, blank()])}>+ Add a payee</button>}
+          {!sub && payees.length < 10 && <button type="button" style={{ ...s.btnGhost, marginTop: 10 }} onClick={() => setPayees((ps) => [...ps, blank()])}>+ Add a place</button>}
         </div>
 
         {preview && (
@@ -140,16 +140,16 @@ export default function SpendPage() {
               {preview.payees.map((p) => <tr key={p.label}><td style={s.td}>{p.label}</td><td style={s.td}>{p.budget} {cur}</td><td style={s.td}>{p.checks.length} check{p.checks.length === 1 ? "" : "s"}: {p.checks.join(" + ")}</td></tr>)}
             </tbody></table>
             <p style={{ marginTop: 10, fontSize: 14 }}><strong>{preview.checksPerPeriod} check{preview.checksPerPeriod === 1 ? "" : "s"}, {preview.totalPerPeriod} {cur} per period.</strong></p>
-            <p style={{ fontSize: 14, margin: "6px 0" }}><strong>XRP reserve that locks up front: {preview.reserve.upFrontXrp} XRP</strong> ({preview.reserve.perCheckXrp} XRP per open check). {preview.reserve.note}</p>
+            <p style={{ fontSize: 14, margin: "6px 0" }}><strong>XRP set aside in your wallet while checks are open: {preview.reserve.upFrontXrp} XRP</strong> ({preview.reserve.perCheckXrp} XRP per open check). {preview.reserve.note}</p>
             <p style={preview.funded === false ? s.err : s.small}>{preview.fundingNote}</p>
-            <p style={s.small}>{sub ? "Free — no fee. One signature per period, in your own wallet." : "Free — no plan fee. One signature per check (one signature for all of them once the XRPL Batch amendment is live and verified in Xaman)."}</p>
+            <p style={s.small}>{sub ? "Free, no fee. You approve once each week or month, in your own wallet." : "Free, no fee. You approve each check in your own wallet (later, one approval may cover them all)."}</p>
           </div>
         )}
         {error && <p style={s.err}>{error}</p>}
         <button type="button" style={{ ...s.btn, opacity: busy || !preview || preview.payeeProblems.length ? 0.5 : 1 }} disabled={busy || !preview || !!preview.payeeProblems.length} onClick={create}>
-          {busy ? "Creating…" : sub ? "Create the subscription →" : "Create the plan →"}
+          {busy ? "Creating…" : sub ? "Set up the payment →" : "Set up the allowance →"}
         </button>
-        <p style={{ ...s.small, marginTop: 8 }}>Next you sign the checks from this account — no payment to XRPLHub.</p>
+        <p style={{ ...s.small, marginTop: 8 }}>Next you approve the checks in your wallet. You never pay XRPLHub.</p>
       </main>
     </div>
   );

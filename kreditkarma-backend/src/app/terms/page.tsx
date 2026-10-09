@@ -25,6 +25,17 @@ export default function TermsPage() {
           <p style={{ fontSize:13, color:'rgba(255,255,255,.55)', lineHeight:1.8 }}>By accessing or using xrplhub.io, you agree to be bound by these Terms of Service in full. If you do not agree, do not use the platform.</p>
         </div>
 
+        <div style={{ background:'rgba(255,255,255,.03)', border:'1px solid rgba(255,255,255,.1)', borderRadius:16, padding:'20px 24px', marginBottom:36 }}>
+          <div style={{ fontWeight:800, fontSize:14, marginBottom:8 }}>In plain English</div>
+          <ul style={{ fontSize:13, color:'rgba(255,255,255,.6)', lineHeight:1.8, paddingLeft:18 }}>
+            <li>We are not a bank. We never hold your money or your keys.</li>
+            <li>You approve every payment yourself, in your own wallet. Payments on the XRP Ledger can&apos;t be undone.</li>
+            <li>The wallet score rates a wallet, not a person. It isn&apos;t a credit check and isn&apos;t financial advice.</li>
+            <li>Business tools are paid, and those fees aren&apos;t refundable.</li>
+            <li>This summary doesn&apos;t replace the full terms below. If they differ, the full terms apply.</li>
+          </ul>
+        </div>
+
         <span style={H}>1. Who We Are</span>
         <p style={P}>XRPLHub.io is a financial technology platform built on the XRP Ledger. We provide XRPLScore (with monitoring and lending data), Spend Controls, MPT issuer-risk data, an agent payment pre-check, a paid B2B scoring API, and a community grant program. We are not a bank, broker-dealer, investment advisor, mortgage lender, credit bureau, consumer reporting agency, insurer, or FDIC-insured institution. Nothing on this platform constitutes financial, legal, or investment advice.</p>
 

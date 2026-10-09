@@ -30,21 +30,21 @@ export default function CashPage() {
     <div style={s.shell}>
       <main style={s.page}>
         <h1 style={s.h1}>Cash this check</h1>
-        {!c && !err && <p>Reading the check from the XRP Ledger…</p>}
+        {!c && !err && <p>Loading the check…</p>}
         {c && (
           <div style={s.card}>
             <p style={{ fontSize: 15 }}>Up to <strong>{c.upTo} {c.currency}</strong>, payable to <span style={s.mono}>{c.to}</span></p>
             <p style={s.small}>From <span style={s.mono}>{c.from}</span> · expires {fmtDate(c.expires)}</p>
             {c.expired && <p style={s.err}>This check has expired and can no longer be cashed.</p>}
-            {c.coverable === false && <p style={s.err}>The writer&apos;s wallet holds {c.writerHolds} {c.currency} right now — less than this check. Cashing fails unless the money is there.</p>}
+            {c.coverable === false && <p style={s.err}>The payer&apos;s wallet holds {c.writerHolds} {c.currency} right now, less than this check. Cashing won&apos;t work unless the money is there.</p>}
             {!c.expired && (
               <>
-                <label style={{ ...s.label, marginTop: 10 }}>Sale amount ({c.currency})</label>
+                <label style={{ ...s.label, marginTop: 10 }}>Amount to cash ({c.currency})</label>
                 <div style={{ display: "flex", gap: 8 }}>
                   <input style={s.input} value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" />
                   <button style={s.btn} onClick={cash}>Cash it</button>
                 </div>
-                <p style={s.small}>Sign with the wallet of the address above — only it can cash this check.</p>
+                <p style={s.small}>Approve it in the wallet with the address above. Only that wallet can cash this check.</p>
               </>
             )}
             <ul style={{ fontSize: 12, color: "#555", paddingLeft: 18 }}>{c.notes.map((n) => <li key={n}>{n}</li>)}</ul>

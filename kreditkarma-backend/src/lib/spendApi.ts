@@ -38,10 +38,10 @@ export async function pushSignRequest(txjson: Record<string, unknown>, label: st
 
 /** Shown on every Spend Controls surface (owner copy rules, 2026-10-05). */
 export const SPEND_DISCLOSURE = [
-  "XRPLHub is not a bank and not a money transmitter. It never holds your funds or your keys.",
-  "You sign everything: the funder signs each check, and the merchant signs to cash it, each in their own wallet.",
-  "Checks do not lock funds. Keep your allowance in your wallet — a check can only be cashed while the money is there.",
-  "Each open check holds 0.2 XRP of the funder's reserve; it comes back when the check is cashed or cancelled.",
-  "RLUSD can't be held in escrow yet (its issuer hasn't enabled token escrow), which is why this uses checks.",
-  "Subscriptions are one check per period, created only when that period starts — never ahead, because a check can be cashed as soon as it exists. Unsigned means unpaid.",
+  "XRPLHub is not a bank and doesn't send money for you. We never hold your money or your keys.",
+  "You approve everything in your own wallet: the payer approves each check, and the person being paid approves cashing it.",
+  "A check doesn't set money aside. Keep enough in your wallet — a check can only be cashed while the money is there.",
+  "Each open check sets aside 0.2 XRP in the payer's wallet (the XRP Ledger's reserve). You get it back when the check is cashed or cancelled.",
+  "We use checks because RLUSD can't be locked up in advance on the XRP Ledger yet.",
+  "Monthly or weekly payments are one check per period, made only when that period starts — never ahead, because a check can be cashed as soon as it exists. If you don't approve it, it isn't paid.",
 ];

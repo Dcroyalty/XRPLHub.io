@@ -20,7 +20,7 @@ export default function SupportPage() {
         {/* Contact cards */}
         <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(240px,1fr))', gap:16, marginBottom:56 }}>
           {[
-            { emoji:'📧', title:'General Support', email:'support@xrplhub.io', desc:'Questions about your account, XRPLScore, or any service.' },
+            { emoji:'📧', title:'General Support', email:'support@xrplhub.io', desc:'Questions about your wallet score, Spend Controls, Token Check or anything else.' },
             { emoji:'⚖️', title:'Legal & Compliance', email:'legal@xrplhub.io', desc:'Terms of service, compliance inquiries, XRPL service disclosures.' },
             { emoji:'🔒', title:'Privacy & Data', email:'privacy@xrplhub.io', desc:'Data access, correction, and deletion requests.' },
             { emoji:'🤝', title:'Institutional Partnerships', email:'partners@xrplhub.io', desc:'B2B API access, data licensing, grant program partnerships.' },
@@ -51,12 +51,13 @@ export default function SupportPage() {
         <div style={{ fontSize:11, fontWeight:700, color:'#10b981', letterSpacing:'.14em', textTransform:'uppercase', marginBottom:24 }}>Common Questions</div>
         <div style={{ display:'flex', flexDirection:'column', gap:12, marginBottom:52 }}>
           {[
-            ['How does payment work?', 'Service payments are made from a supported XRPL wallet such as Xaman. After you sign, we verify the transaction on XRPL mainnet and activate the service. XRPL transactions are final and irrevocable, and fees paid are non-refundable.'],
-            ['What is XRPLScore?', 'XRPLScore is a 300–850 on-chain rating computed live from public XRP Ledger wallet data. It analyzes 8 signals including account age, transaction activity, financial health, token and DEX activity, AMM positions, security configuration, and NFT activity. It is not a FICO score, a consumer credit report, or an NRSRO rating, and has no affiliation with any credit bureau. It is informational only.'],
-            ['How do I connect my wallet?', 'Tap "Connect Wallet" on the homepage, then approve the sign-in request in your wallet. No transaction is sent and no funds leave your wallet. Your wallet address is stored locally in your browser.'],
-            ['My payment went through but the service didn\'t activate — what do I do?', 'Email support@xrplhub.io with your transaction hash (from your wallet\'s history). We\'ll verify it on-chain and activate your service, typically within 24 hours.'],
-            ['Is XRPLHub a bank?', 'No. XRPLHub.io is a financial technology platform on the XRP Ledger. We are not a bank, broker-dealer, investment advisor, credit bureau, insurer, or FDIC-insured institution.'],
-            ['I need emergency help — how do I apply for a grant?', 'Grant applications are currently paused until the treasury is funded (see the homepage for status). When they reopen, use "Apply for Grant" on the homepage with your XRPL wallet address and a description of your need. A person reviews every application and makes every decision; no decision time is promised. Approved funds go directly to your wallet.'],
+            ['What\'s free?', 'The wallet score, Spend Controls and Token Check are free. Business tools are paid.'],
+            ['How do I pay for a business tool?', 'You pay from your XRP wallet, such as Xaman. After you approve the payment, we check it on the XRP Ledger and turn the tool on. Payments on the XRP Ledger are final and can\'t be reversed, and fees are non-refundable.'],
+            ['What is the Wallet Score (XRPLScore)?', 'A score from 300 to 850 for any XRP wallet, built only from that wallet\'s public history: how old it is, how it\'s been used, what it holds and how it\'s set up. It scores a wallet, not a person. It is not a FICO score or a credit report, isn\'t linked to any credit bureau, and is for information only.'],
+            ['How do I connect my wallet?', 'Tap "Connect" on the homepage, then approve the sign-in request in your wallet. Signing in sends nothing and no money leaves your wallet. Your wallet address is saved only in your browser.'],
+            ['I paid but the tool didn\'t turn on. What do I do?', 'Email support@xrplhub.io with the transaction ID from your wallet\'s history. We\'ll look it up on the XRP Ledger and turn the tool on, usually within 24 hours.'],
+            ['Is XRPLHub a bank?', 'No. We are not a bank, broker, investment advisor, credit bureau or insurer, and your money is not FDIC insured. We never hold your money or your keys.'],
+            ['I need emergency help. How do I apply for a grant?', 'Grant applications are paused until the grants wallet is funded (see the homepage). When they reopen, use "Apply for Grant" on the homepage with your XRP wallet address and what you need. A person reads every application and decides; we can\'t promise how long it takes. Approved money goes straight to your wallet.'],
           ].map(([q, a]) => (
             <div key={q} style={{ background:'rgba(255,255,255,.03)', border:'1px solid rgba(255,255,255,.07)', borderRadius:14, padding:'18px 20px' }}>
               <div style={{ fontWeight:700, fontSize:14, marginBottom:8 }}>{q}</div>
@@ -69,7 +70,7 @@ export default function SupportPage() {
         <div style={{ background:'linear-gradient(135deg,rgba(16,185,129,.1),rgba(6,6,22,.8))', border:'1px solid rgba(16,185,129,.25)', borderRadius:18, padding:'28px 24px', marginBottom:40, textAlign:'center' as const }}>
           <div style={{ fontSize:32, marginBottom:12 }}>📲</div>
           <h3 style={{ fontSize:20, fontWeight:900, marginBottom:8 }}>Need an XRPL Wallet?</h3>
-          <p style={{ fontSize:13, color:'rgba(255,255,255,.5)', marginBottom:18, lineHeight:1.65 }}>Most XRPLHub services work with a supported XRPL wallet such as Xaman. It&apos;s free on iOS and Android.</p>
+          <p style={{ fontSize:13, color:'rgba(255,255,255,.5)', marginBottom:18, lineHeight:1.65 }}>Everything here works with an XRP wallet such as Xaman. It&apos;s free on iPhone and Android.</p>
           <a href="https://xaman.app/" target="_blank" rel="noopener noreferrer" style={{ display:'inline-flex', alignItems:'center', gap:8, background:'#10b981', color:'#000', fontWeight:800, fontSize:14, padding:'12px 28px', borderRadius:99, textDecoration:'none' }}>Download Xaman — Free →</a>
         </div>
 

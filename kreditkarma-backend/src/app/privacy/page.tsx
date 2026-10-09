@@ -25,6 +25,17 @@ export default function PrivacyPage() {
           <p style={{ fontSize:13, color:'rgba(255,255,255,.55)', lineHeight:1.8 }}>Your privacy is fundamental to how we built XRPLHub. This policy explains exactly what we collect, why, and how we protect it. We do not sell your data. We never will.</p>
         </div>
 
+        <div style={{ background:'rgba(255,255,255,.03)', border:'1px solid rgba(255,255,255,.1)', borderRadius:16, padding:'20px 24px', marginBottom:36 }}>
+          <div style={{ fontWeight:800, fontSize:14, marginBottom:8 }}>In plain English</div>
+          <ul style={{ fontSize:13, color:'rgba(255,255,255,.6)', lineHeight:1.8, paddingLeft:18 }}>
+            <li>We read public wallet history from the XRP Ledger. Anyone can see that history.</li>
+            <li>We keep what you give us (like an email address or a grant application) and basic visit stats: pages viewed, device type, country.</li>
+            <li>We never ask for your Social Security number or any ID, and we never see your wallet keys.</li>
+            <li>We don&apos;t sell your data. You can ask us to see, fix or delete it.</li>
+            <li>This summary doesn&apos;t replace the full policy below. If they differ, the full policy applies.</li>
+          </ul>
+        </div>
+
         <span style={H}>1. What We Collect</span>
         <p style={P}>We collect information you provide directly: name (optional), email address, phone number (optional), XRPL wallet address, and grant application details. We also read public on-chain data from the XRP Ledger to compute XRPLScore — this data is publicly visible on the blockchain by design. Standard web analytics (page views, device type, country) are collected to improve the platform. We do not collect Social Security Numbers or any government identifiers.</p>
 

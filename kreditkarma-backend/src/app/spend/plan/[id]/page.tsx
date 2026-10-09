@@ -19,7 +19,7 @@ type Dash = {
   disclosure: string[];
 };
 
-const STATUS: Record<string, string> = { unsigned: "Not created yet", open: "Open — can be cashed", expired: "Expired — cancel to free the reserve", closed: "Closed" };
+const STATUS: Record<string, string> = { unsigned: "Not approved yet", open: "Ready — can be cashed", expired: "Expired — cancel it to get your 0.2 XRP back", closed: "Closed" };
 
 export default function PlanDashboard() {
   const { id } = useParams<{ id: string }>();
@@ -59,7 +59,7 @@ export default function PlanDashboard() {
   const signBatch = async () => { const j = await post("sign", { batch: true }); if (j) setSign({ title: `Sign once: ${j.count} checks`, data: j }); };
   const cancel = async (c: Check) => { const j = await post("cancel", { checkId: c.checkId }); if (j) setSign({ title: `Cancel the check to ${c.payee} (${c.amount} ${cur})`, data: j }); };
 
-  if (!d) return <div style={s.shell}><main style={s.page}>{err ? <p style={s.err}>{err}</p> : <p>Loading the plan from the ledger…</p>}</main></div>;
+  if (!d) return <div style={s.shell}><main style={s.page}>{err ? <p style={s.err}>{err}</p> : <p>Loading…</p>}</main></div>;
   const share = typeof window !== "undefined" ? `${window.location.origin}${d.plan.shareLink}` : d.plan.shareLink;
   const unsigned = d.current.filter((c) => c.status === "unsigned");
   const sub = d.plan.kind === "subscription";
@@ -68,14 +68,14 @@ export default function PlanDashboard() {
     <div style={s.shell}>
       <main style={s.page}>
         {xapp ? <a href="/xapp/spend" style={s.small}>← My plans</a> : <a href="/spend" style={s.small}>← Spend Controls</a>}
-        <h1 style={s.h1}>{d.plan.name ?? (sub ? "Subscription" : "Spending plan")}</h1>
-        <p style={s.sub}>{sub ? "Subscription" : "Budget"} · funder <span style={s.mono}>{d.plan.funder}</span> · {d.plan.period} · {sub ? `${d.plan.checkSize} ${cur} per period` : `checks of ${d.plan.checkSize} ${cur}`}</p>
+        <h1 style={s.h1}>{d.plan.name ?? (sub ? "Recurring payment" : "Allowance")}</h1>
+        <p style={s.sub}>{sub ? "Recurring payment" : "Allowance"} · paid from <span style={s.mono}>{d.plan.funder}</span> · {d.plan.period} · {sub ? `${d.plan.checkSize} ${cur} each time` : `checks of ${d.plan.checkSize} ${cur}`}</p>
         {sub && (
           <div style={{ ...s.card, background: d.pushReady ? "#eef8f6" : "#fffbea" }}>
             <p style={{ ...s.small, color: "#333", margin: 0 }}>
               {d.pushReady
-                ? "Reminders on: when a new period starts, its check is sent to your Xaman app to sign. Nothing is created ahead of time."
-                : "Sign this period's check in Xaman once to turn on reminders — after that, each new period's check is sent to your Xaman app. Nothing is created ahead of time."}
+                ? "Reminders on: when a new week or month starts, that payment is sent to your Xaman app to approve. Nothing is made ahead of time."
+                : "Approve this period's check in Xaman once to turn on reminders. After that, each new payment is sent to your Xaman app. Nothing is made ahead of time."}
             </p>
           </div>
         )}
@@ -85,8 +85,8 @@ export default function PlanDashboard() {
         {err && <p style={s.err}>{err}</p>}
 
         <div style={s.card}>
-          <p style={s.h2}>{sub ? "Share with the payee" : "Share with the person you support"}</p>
-          <p style={s.small}>{sub ? "They see whether this period is paid, and cash the check with their own wallet." : "They see where they can spend and how much is available."} No account, no keys, no funds.</p>
+          <p style={s.h2}>{sub ? "Share with the person you pay" : "Share with the person you support"}</p>
+          <p style={s.small}>{sub ? "They see whether this period is paid, and cash the check with their own wallet." : "They see where they can spend and how much is available."} They don&apos;t need an account.</p>
           <p style={{ ...s.mono, background: "#f4f4f2", padding: 8, borderRadius: 6 }}>{share}</p>
           <button style={s.btnGhost} onClick={() => navigator.clipboard?.writeText(share)}>Copy link</button>
         </div>
@@ -95,12 +95,12 @@ export default function PlanDashboard() {
           <p style={s.h2}>This {d.plan.period === "weekly" ? "week" : "month"}: {fmtDate(d.period.start)} → {fmtDate(d.period.end)}</p>
           {d.paid && unsigned.length > 0 && (
             <p style={s.small}>
-              {unsigned.length} check{unsigned.length === 1 ? "" : "s"} to create — sign each one below.{" "}
-              {d.batch.available ? <button style={s.btnGhost} onClick={signBatch}>Create up to 8 in one signature</button> : <>One signature for all of them comes once XRPL Batch is live and verified in Xaman ({d.batch.reason}).</>}
+              {unsigned.length} check{unsigned.length === 1 ? "" : "s"} to approve — approve each one below.{" "}
+              {d.batch.available ? <button style={s.btnGhost} onClick={signBatch}>Approve up to 8 at once</button> : <>Approving them all at once isn&apos;t available yet ({d.batch.reason}).</>}
             </p>
           )}
           <table style={s.table}>
-            <thead><tr><th style={s.th}>Payee</th><th style={s.th}>Up to</th><th style={s.th}>Expires</th><th style={s.th}>Status</th><th style={s.th}></th></tr></thead>
+            <thead><tr><th style={s.th}>Paid to</th><th style={s.th}>Up to</th><th style={s.th}>Expires</th><th style={s.th}>Status</th><th style={s.th}></th></tr></thead>
             <tbody>
               {d.current.map((c) => (
                 <tr key={c.invoiceId}>
@@ -109,21 +109,21 @@ export default function PlanDashboard() {
                   <td style={s.td}>{fmtDate(c.expires)}</td>
                   <td style={s.td}>{STATUS[c.status] ?? c.status}{c.closedHow ? ` (${c.closedHow})` : ""}</td>
                   <td style={s.td}>
-                    {c.status === "unsigned" && d.paid && <button style={s.btnGhost} onClick={() => signOne(c)}>Sign</button>}
+                    {c.status === "unsigned" && d.paid && <button style={s.btnGhost} onClick={() => signOne(c)}>Approve</button>}
                     {(c.status === "open" || c.status === "expired") && c.checkId && <button style={s.btnGhost} onClick={() => cancel(c)}>Cancel</button>}
                   </td>
                 </tr>
               ))}
-              {!d.current.length && <tr><td style={s.td} colSpan={5}>No checks this period.</td></tr>}
+              {!d.current.length && <tr><td style={s.td} colSpan={5}>No checks this week or month.</td></tr>}
             </tbody>
           </table>
         </div>
 
         <div style={s.card}>
-          <p style={s.h2}>Reserve and funds</p>
-          <p style={{ fontSize: 14 }}><strong>{d.reserve.heldNowXrp} XRP</strong> of your reserve is held by {d.reserve.openChecks} open or expired check{d.reserve.openChecks === 1 ? "" : "s"} ({d.reserve.perCheckXrp} XRP each). {d.reserve.note}</p>
-          <p style={s.small}>Your wallet holds {d.funderBalance ?? d.funderRlusd ?? "?"} {cur}{cur === "XRP" ? " above its reserve" : ""}. Checks don&apos;t lock funds — keep enough there for the open checks.</p>
-          {!d.ledgerSynced && <p style={s.err}>Could not reach the ledger just now; statuses may be stale. Refresh in a moment.</p>}
+          <p style={s.h2}>Your wallet</p>
+          <p style={{ fontSize: 14 }}><strong>{d.reserve.heldNowXrp} XRP</strong> is set aside in your wallet by {d.reserve.openChecks} open or expired check{d.reserve.openChecks === 1 ? "" : "s"} ({d.reserve.perCheckXrp} XRP each). {d.reserve.note}</p>
+          <p style={s.small}>Your wallet holds {d.funderBalance ?? d.funderRlusd ?? "?"} {cur}{cur === "XRP" ? " above its reserve" : ""}. Checks don&apos;t set money aside, so keep enough there to cover them.</p>
+          {!d.ledgerSynced && <p style={s.err}>Could not get the latest status just now. Refresh in a moment.</p>}
         </div>
 
         {d.history.length > 0 && (
@@ -138,7 +138,7 @@ export default function PlanDashboard() {
           </div>
         )}
         <Disclosure lines={d.disclosure} />
-        <button style={s.btnGhost} onClick={() => void load()}>Refresh from the ledger</button>
+        <button style={s.btnGhost} onClick={() => void load()}>Refresh</button>
       </main>
     </div>
   );
