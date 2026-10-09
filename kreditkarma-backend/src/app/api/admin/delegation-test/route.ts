@@ -14,8 +14,8 @@ export const dynamic = "force-dynamic";
 const TREASURY = "rs59g3amo5iT6T64Cg96XXMAWuw3WPQcLF";
 const DELEGATE = "rmWjCGeLtuLGerEuvHDkrsr46ej2Ni13f";
 
-async function tryPayload(permission: string | number) {
-  const txjson = { TransactionType: "DelegateSet", Account: TREASURY, Authorize: DELEGATE, Permissions: [{ Permission: { PermissionValue: permission } }] };
+async function tryPayload(permission: string | number | null) {
+  const txjson = { TransactionType: "DelegateSet", Account: TREASURY, Authorize: DELEGATE, Permissions: permission === null ? [] : [{ Permission: { PermissionValue: permission } }] };
   const res = await xummFetch("https://xumm.app/api/v1/platform/payload", {
     method: "POST",
     body: JSON.stringify({
@@ -33,6 +33,13 @@ async function tryPayload(permission: string | number) {
 
 export async function POST(req: Request) {
   if (!isAdmin(req)) return Response.json({ error: "unauthorized" }, { status: 401 });
+  if (new URL(req.url).searchParams.get("probe") === "revoke") {
+    // Encoding probe only: create the empty-Permissions (revoke) request, then cancel it at once. Never signed.
+    const p = await tryPayload(null);
+    let cancelled: unknown = null;
+    if (p.uuid) cancelled = await (await xummFetch(`https://xumm.app/api/v1/platform/payload/${p.uuid}`, { method: "DELETE" })).json().catch(() => null);
+    return Response.json({ revokeEncodes: !!p.uuid, status: p.status, error: p.error, cancelled });
+  }
   const byName = await tryPayload("AccountEmailHashSet");
   if (byName.uuid) return Response.json(byName);
   const byNumber = await tryPayload(65541);
