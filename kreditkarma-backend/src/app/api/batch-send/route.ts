@@ -10,7 +10,7 @@ import { RLUSD_HEX, RLUSD_ISSUER } from "@/lib/pricing";
 import { buildBatchSend, preflightBatch, validateRecipients } from "@/lib/batchSend";
 import { mainnetRpc } from "@/lib/spendAutopay";
 import { getAmendmentStatus } from "@/lib/amendments";
-import { createPayload, safeIdentifier, xummConfigured } from "@/lib/xumm";
+import { createPayload, getPayloadStatus, safeIdentifier, xummConfigured } from "@/lib/xumm";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -49,4 +49,36 @@ export async function POST(req: Request) {
     totals: pf.totals, networkFeeXrp: pf.feeDrops / 1e6, payments: v.recipients.length, mode: "all_or_nothing", free: true,
     note: "Sign it before sending anything else from this wallet — it is tied to your next sequence numbers. If any payment can't go through, none of them is sent.",
   });
+}
+
+// GET ?uuid=<the Xaman request> — what happened to a Batch Send, read from the LEDGER (never from Xaman's word alone):
+//   waiting_signature | declined | expired | pending_ledger | done (every payment applied) | failed (nothing applied)
+// Inner payments are matched by the sender's sequence numbers in the batch's own ledger.
+export async function GET(req: Request) {
+  const rl = rateLimit(req, "batch-send-status", 60, 60_000);
+  if (!rl.ok) return rateLimited(rl);
+  const uuid = new URL(req.url).searchParams.get("uuid") ?? "";
+  if (!/^[0-9a-f-]{36}$/i.test(uuid)) return json({ error: "bad_request", message: "uuid is the Xaman request id." }, 400);
+  const st = await getPayloadStatus(uuid).catch(() => null);
+  if (!st) return json({ state: "unknown", message: "Couldn't reach Xaman just now." }, 503);
+  if (!st.identifier?.startsWith("xrplhub_batch_")) return json({ error: "not_found", message: "That isn't a Batch Send request." }, 404);
+  if (st.state === "pending") return json({ state: "waiting_signature" });
+  if (st.state === "rejected") return json({ state: "declined" });
+  if (st.state === "expired" || st.state === "not_found") return json({ state: "expired" });
+  if (!st.txid) return json({ state: "pending_ledger" });
+
+  const t = await mainnetRpc("tx", { transaction: st.txid });
+  if (!t || t.error || !t.validated) return json({ state: "pending_ledger", txHash: st.txid });
+  const outer = String((t.meta as { TransactionResult?: string } | undefined)?.TransactionResult ?? "");
+  const tx = ((t.tx_json ?? t) as { Account?: string; RawTransactions?: { RawTransaction: { Sequence?: number; Destination?: string; Amount?: unknown } }[] });
+  const ledger = Number(t.ledger_index ?? 0);
+  const at = await mainnetRpc("account_tx", { account: tx.Account, ledger_index_min: ledger, ledger_index_max: ledger, limit: 50 });
+  const rows = ((at?.transactions as { tx?: Record<string, unknown>; tx_json?: Record<string, unknown>; meta?: { TransactionResult?: string; delivered_amount?: unknown }; hash?: string }[]) ?? []);
+  const payments = (tx.RawTransactions ?? []).map(({ RawTransaction: r }) => {
+    const hit = rows.find((x) => { const j = (x.tx_json ?? x.tx) as { Sequence?: number; TransactionType?: string } | undefined; return j?.TransactionType === "Payment" && j.Sequence === r.Sequence; });
+    const j = (hit?.tx_json ?? hit?.tx) as { hash?: string } | undefined;
+    return { destination: r.Destination, amount: r.Amount, applied: hit?.meta?.TransactionResult === "tesSUCCESS", result: hit?.meta?.TransactionResult ?? "not applied", delivered: hit?.meta?.delivered_amount ?? null, txHash: hit?.hash ?? j?.hash ?? null };
+  });
+  const all = payments.length > 0 && payments.every((p) => p.applied);
+  return json({ state: outer === "tesSUCCESS" && all ? "done" : "failed", txHash: st.txid, ledgerIndex: ledger, batchResult: outer, payments });
 }

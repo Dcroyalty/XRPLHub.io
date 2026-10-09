@@ -21,8 +21,8 @@ which is weaker evidence than a positive source and is labelled as such.
 |---|---|---|
 | 1 | **Wallet Permissions Check** — "who can move money from this wallet?" | **PASSES all gates → BUILD** |
 | 2 | **Batch Send** — "pay up to 8 people with one approval" | **PASSES all gates → BUILD** (one wallet test needs you, see below) |
-| 3 | Payroll / recurring invoices for teams | fails UNIQUE (strict) → your decision |
-| 4 | Wallet inheritance ("dead man's switch") | technically limited + needs policy decisions → your decision |
+| 3 | Payroll / recurring invoices for teams | **SKIPPED** (owner decision 2026-10-09) |
+| 4 | Wallet inheritance ("dead man's switch") | **PARKED** (owner decision 2026-10-09) |
 | 5 | XRPLScore as an on-ledger credit oracle | fails DEMAND + needs treasury money → rejected |
 | 6 | Consumer wallet activity alerts | fails AUTONOMOUS + UNIQUE → rejected |
 | 7 | Team treasury / multi-approver wallet (Safe-like) | fails UNIQUE → rejected |
@@ -84,14 +84,27 @@ Only two candidates pass every gate. I did not force a third.
 
 **Size:** small.
 
-## 3. Payroll and recurring invoices — YOUR DECISION (fails strict UNIQUE)
+## 3. Payroll and recurring invoices — SKIPPED (owner decision, 2026-10-09)
+
+**Decision:** skip. Ripple sells enterprise RLUSD payroll and payouts, and Ripple is the company we'd want to acquire
+us — we don't compete with Ripple. Paying several people on a schedule is already covered by Spend Controls budgets
+(and one-off by Batch Send). Reopen only if Ripple's position changes.
+
+Research kept for the record:
 
 - **Demand is real:** Request Finance had paid $200M+ in crypto invoices for 2,000+ Web3 operations by June 2022 ([newsletter](https://email.mg2.substack.com/c/eJwlUcuO5CAM_JrmlggISdMHDnPZ34gImDSaBLLgTJT9-jXTEsJW-VF22VmENZfbHLkia9-M9wEmwVU3QITCzgpljt4oKZ7Dc2LkeaFHzWKdQwHYbdwMlhPYcS5bdBZjTq1ASiE1exuwQmluZfBhDKOQk7PWaxdsUFJNyn9o7ekjJAcGfqDcOQFzed8hYWvFNvNGPOpj-HrIP_Su6-qPe09Ye0ojoA1MJqYfqNjKOizWfUMhUHIpyRT4e1KwCzFZIurWkq-Y1s5DPSJC58p9YO4Io7W7YmOF2o2tOYum9eCTEIIPWrz6oeeODwufrFYyTHpUD8X3Vfb1XCoScRuLFVMgWcwUWyD9IzL7i5NQc9vuTBHvmVKWDfxHQ_xc4lfVeYUEhS7kZ4tGTKN6qeElNX_pj2akzKj1c1BaMyL2maqSwXesF8B3TKGt4t7_AToPpvE), [coincodex](https://coincodex.com/review/12722/request-finance-review-manage-your-crypto-payments-and-invoices-with-ease)). PaymentX offers crypto payroll and invoices on other chains ([alternativeto](https://alternativeto.net/software/paymentx/about/)).
 - **Not unique on XRPL:** Ripple itself sells crypto payroll and stablecoin payouts in RLUSD ([ripple.com/use-case/global-payouts](https://ripple.com/use-case/global-payouts/)). That is enterprise and fiat-connected; ours would be self-serve and non-custodial.
 - **Build size if you say yes:** medium. Multi-payee Autopay on the infrastructure we already tested (one pre-approved payment per employee per period, on tickets).
 - **Your call:** is "Ripple does enterprise payouts" close enough to block us?
 
-## 4. Wallet inheritance — YOUR DECISION
+## 4. Wallet inheritance — PARKED (owner decision, 2026-10-09)
+
+**Decision:** parked, for three reasons:
+1. **Weak demand:** only a community amendment idea (not an XLS spec, not on any ledger) and multi-chain products elsewhere.
+2. **Legal exposure:** it would move a possibly-living person's money after silence; it is not a will.
+3. **The full sweep failed** on Testnet (below): a pre-signed AccountDelete burned its ticket and can't pass trust lines.
+
+Reopen only with real demand evidence AND a legal review. Research kept for the record:
 
 - **Demand:** a community "dead man's switch" amendment idea (Kris Dangerfield, Nov 2024; resurfaced Sept 2025) for automatic transfer to a beneficiary after inactivity. It is not an XLS spec or on mainnet ([MEXC News](https://www.mexc.com/news/496976), [MEXC News](https://www.mexc.com/news/498179)). Multi-chain inheritance products exist: Vault12 ([Substack](https://vault12.substack.com/p/how-it-works-vault12-digital-inheritance)), Bron (launched 2026-03-02, [BusinessWire](https://www.businesswire.com/news/home/20260302944689/en)), Casa ([CB Insights](https://www.cbinsights.com/company/vault12/alternatives-competitors)).
 - **Feasibility tested on XRPL Testnet (2026-10-09):** a pre-signed AccountDelete on a ticket (the only way to sweep *all* XRP) returned `tecTOO_SOON`, and that failure **used up the ticket**. Re-submitting returned `tefNO_TICKET`. AccountDelete is also blocked by trust lines that hold tokens ([xrpl.org: Deleting Accounts](https://xrpl.org/docs/concepts/accounts/deleting-accounts)), so it can't sweep a typical holder's wallet. The workable form is a pre-signed *fixed-amount* payment (our Autopay mechanics), plus a "proof of life" sign-in to reset the timer.

@@ -302,16 +302,22 @@ export async function buildChecksBatch(funder: string, inner: Record<string, unk
   const info = await rpc("account_info", { account: funder });
   const seq = Number((info?.account_data as { Sequence?: number } | undefined)?.Sequence ?? 0);
   if (!seq) return { ok: false, error: "could not read the funder's account sequence" };
+  // Outer fee = (2 + n) × the open-ledger fee — set by us, exactly like Batch Send's batch that Xaman signed and the
+  // ledger accepted on 2026-10-09 (6D3AE7DA…). Never leave it for the wallet to guess.
+  const fees = await xrplRpc("fee", {});
+  const drops = (fees.ok ? (fees.body.result as { drops?: { open_ledger_fee?: string; base_fee?: string } })?.drops : undefined) ?? {};
+  const unit = Math.max(Number(drops.base_fee ?? 10) || 10, Number(drops.open_ledger_fee ?? 10) || 10);
   const txjson = {
     TransactionType: "Batch",
     Account: funder,
     Flags: 0x00010000, // tfAllOrNothing
     Sequence: seq,
+    Fee: String(unit * (2 + inner.length)),
     RawTransactions: inner.map((t, k) => ({ RawTransaction: { ...t, Flags: 0x40000000, Sequence: seq + 1 + k, Fee: "0", SigningPubKey: "" } })),
   };
   try {
     const { validate } = await import("xrpl");
-    validate({ ...txjson, Fee: "12" } as Parameters<typeof validate>[0]);
+    validate(txjson as Parameters<typeof validate>[0]);
   } catch (e) {
     return { ok: false, error: `batch failed validation: ${e instanceof Error ? e.message : String(e)}` };
   }

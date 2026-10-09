@@ -148,3 +148,85 @@ function WebSignPanel({ data, title, onDone, onSigned, approveOnly }: { data: Si
 }
 
 export const fmtDate = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "—");
+
+// ── Sign in with Xaman (no transaction, no funds move) — the same SignIn flow as the homepage ───────────────────────
+// Proves which wallet is yours so no page asks you to type your own address. The verified address is remembered in
+// localStorage "xh_wallet" (shared with the homepage). Inside the Xaman xApp, the xApp session's account is used.
+const WALLET_KEY = "xh_wallet";
+export function readSavedWallet(): string | null {
+  try { const w = window.localStorage.getItem(WALLET_KEY); return w && /^r[1-9A-HJ-NP-Za-km-z]{24,34}$/.test(w) ? w : null; } catch { return null; }
+}
+/** null until mounted; then the signed-in wallet (xApp account first) or "" when nobody is signed in. */
+export function useSignedInWallet(): [string | null, (w: string | null) => void] {
+  const xapp = useXapp();
+  const [w, setW] = useState<string | null>(null);
+  useEffect(() => {
+    if (xapp === null) return;
+    setW(xapp ? xapp.account : (readSavedWallet() ?? "")); // eslint-disable-line react-hooks/set-state-in-effect
+  }, [xapp]);
+  const set = (v: string | null) => {
+    try { if (v) window.localStorage.setItem(WALLET_KEY, v); else window.localStorage.removeItem(WALLET_KEY); } catch { /* fine */ }
+    setW(v ?? "");
+  };
+  return [w, set];
+}
+
+export function ConnectXaman({ wallet, onChange, purpose }: { wallet: string | null; onChange: (w: string | null) => void; purpose: string }) {
+  const xapp = useXapp();
+  const [req, setReq] = useState<{ uuid: string; qr_png: string; deep_link: string } | null>(null);
+  const [state, setState] = useState<"idle" | "creating" | "waiting" | "error">("idle");
+  const [err, setErr] = useState("");
+  useEffect(() => {
+    if (!req) return;
+    let stop = false;
+    const check = async () => {
+      try {
+        const r = await fetch(`${API}/api/check-wallet?uuid=${req.uuid}`);
+        const d = await r.json();
+        if (stop) return;
+        if (d.status === "connected" && d.address) { onChange(d.address); setReq(null); setState("idle"); }
+        else if (d.status === "expired" || d.status === "rejected") { setReq(null); setState("error"); setErr(d.status === "expired" ? "That sign-in expired. Try again." : "You declined it in Xaman."); }
+      } catch { /* the watcher will retry */ }
+    };
+    // The status websocket resolves it; REST is only the slow fallback (xw.delay(): 45 s with a healthy socket, 15 s without).
+    let t: ReturnType<typeof setTimeout> | null = null;
+    const loop = async () => { await check(); if (!stop) t = setTimeout(loop, xw.delay()); };
+    const xw = watchXaman(req.uuid, () => { if (t) clearTimeout(t); void check(); });
+    t = setTimeout(loop, xw.delay());
+    return () => { stop = true; xw.stop(); if (t) clearTimeout(t); };
+  }, [req]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (wallet === null) return null;
+  if (wallet) {
+    return (
+      <div style={{ ...s.card, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap", background: "#f2fbf8", borderColor: "#99d5cc" }}>
+        <span style={{ fontSize: 14 }}>Signed in with <strong>{wallet.slice(0, 6)}…{wallet.slice(-4)}</strong> <span style={s.small}>({purpose})</span></span>
+        {!xapp && <button type="button" style={s.btnGhost} onClick={() => onChange(null)}>Use a different wallet</button>}
+      </div>
+    );
+  }
+  const start = async () => {
+    setState("creating"); setErr("");
+    try {
+      const r = await fetch(`${API}/api/connect-wallet`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+      const d = await r.json();
+      if (!r.ok || !d.uuid) throw new Error(d.error ?? "Couldn't reach Xaman.");
+      setReq(d); setState("waiting");
+    } catch (e) { setState("error"); setErr(e instanceof Error ? e.message : "Couldn't reach Xaman."); }
+  };
+  return (
+    <div style={{ ...s.card, borderColor: "#99d5cc" }}>
+      <p style={{ ...s.h2, fontSize: 15 }}>First, sign in with Xaman</p>
+      <p style={{ ...s.small, marginTop: -4 }}>So you don&apos;t have to type your wallet address ({purpose}). Signing in sends nothing and moves no money.</p>
+      {state !== "waiting" && <button type="button" style={s.btn} disabled={state === "creating"} onClick={start}>{state === "creating" ? "Opening Xaman…" : "Sign in with Xaman →"}</button>}
+      {state === "waiting" && req && (
+        <div style={{ textAlign: "center" }}>
+          <img src={req.qr_png} alt="Scan with Xaman to sign in" style={{ width: 170, height: 170, display: "block", margin: "4px auto 6px" }} />
+          <a href={req.deep_link} target="_blank" rel="noreferrer">Open in Xaman →</a>
+          <p style={s.small}>Waiting for you to approve the sign-in in Xaman…</p>
+        </div>
+      )}
+      {err && <p style={s.err}>{err}</p>}
+    </div>
+  );
+}

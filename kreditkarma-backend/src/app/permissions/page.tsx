@@ -5,7 +5,7 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import { API, SignPanel, s, type SignData } from "../spend/ui";
+import { API, ConnectXaman, SignPanel, s, useSignedInWallet, type SignData } from "../spend/ui";
 
 type Finding = { kind: string; level: "danger" | "warning" | "info" | "ok"; who: string | null; plain: string; detail: Record<string, unknown>; fix?: { action: string; params: Record<string, string> } };
 type Report = { address: string; exists: boolean; headline: string; canMoveMoney: { who: string; how: string }[]; findings: Finding[]; truncated: boolean; notes: string[]; ledgerIndex: number | null };
@@ -24,6 +24,7 @@ export default function PermissionsPage() {
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
   const [sign, setSign] = useState<{ title: string; data: SignData } | null>(null);
+  const [wallet, setWallet] = useSignedInWallet();
 
   const run = async (a = address) => {
     const v = a.trim();
@@ -39,9 +40,10 @@ export default function PermissionsPage() {
     finally { setBusy(false); }
   };
   useEffect(() => {
-    const a = new URLSearchParams(window.location.search).get("address");
+    if (wallet === null) return; // not mounted yet
+    const a = new URLSearchParams(window.location.search).get("address") || wallet;
     if (a) { setAddress(a); void run(a); } // eslint-disable-line react-hooks/set-state-in-effect
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [wallet]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fix = async (f: Finding) => {
     if (!f.fix) return;
@@ -63,6 +65,8 @@ export default function PermissionsPage() {
           ones you don&apos;t want. Free, no sign-up. We never see your keys.
         </p>
 
+        <ConnectXaman wallet={wallet} onChange={setWallet} purpose="we check your own wallet" />
+        <p style={{ ...s.small, margin: "0 0 6px" }}>{wallet ? "Or check any other wallet:" : "Or paste any wallet address:"}</p>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
           <input style={{ ...s.input, ...s.mono, flex: "1 1 260px" }} value={address} onChange={(e) => setAddress(e.target.value)} onKeyDown={(e) => e.key === "Enter" && run()} placeholder="Paste an XRP wallet address (starts with r)…" />
           <button type="button" style={s.btn} disabled={busy} onClick={() => run()}>{busy ? "Checking…" : "Check →"}</button>
