@@ -94,7 +94,7 @@ export default function SpendPage() {
         {sub && (
           <div style={{ ...s.card, background: "#eef8f6", borderColor: "#99d5cc" }}>
             <p style={{ ...s.h2, fontSize: 14 }}>How recurring payments work</p>
-            <p style={{ ...s.small, color: "#334" }}>One check each week or month for the amount you set. A check can be cashed as soon as it exists, so we never make next month&apos;s early. When a new week or month starts, we send that payment to your Xaman app to approve (after you approve the first one). Until you approve it, that period isn&apos;t paid. Stop anytime: just don&apos;t approve it, or cancel a check before it&apos;s cashed.</p>
+            <p style={{ ...s.small, color: "#334" }}>One check each week or month for the amount you set. A check can be cashed as soon as it exists, so we never make next month&apos;s early. When a new week or month starts, we send that payment to your Xaman app to approve (after you approve the first one). Until you approve it, that period isn&apos;t paid. Stop anytime: just don&apos;t approve it, or cancel a check before it&apos;s cashed. Tired of approving every month? Turn on Autopay on your dashboard after you set this up: approve the next payments at once, and we send one at the start of each period.</p>
           </div>
         )}
 

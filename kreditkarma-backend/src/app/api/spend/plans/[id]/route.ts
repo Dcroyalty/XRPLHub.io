@@ -8,6 +8,7 @@ import { prisma } from "@/lib/xrplscore-db";
 import { rateLimit, rateLimited } from "@/lib/rateLimit";
 import { batchAvailability, checkCreateFor, ensurePeriodChecks, fromRipple, funderBalance, ownerReserveXrp, periodWindow, syncPlanChecks, type PlanCurrency, type Period } from "@/lib/spendControls";
 import { SPEND_DISCLOSURE, loadPlan, spendErr, spendJson } from "@/lib/spendApi";
+import { autopayCovers, autopayView } from "@/lib/spendAutopay";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -33,14 +34,17 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
     batchAvailability(),
     prisma.spendPlanPayment.findMany({ where: { planId: plan.id }, orderBy: { paidAt: "desc" } }),
   ]);
+  const sub = plan.kind === "subscription";
+  const [autopay, covers] = sub ? await Promise.all([autopayView(prisma, plan), autopayCovers(prisma, plan.id, start)]) : [null, null];
   const holding = rows.filter((r) => r.status === "open" || r.status === "expired").length;
   const current = rows.filter((r) => r.periodStart.getTime() === start.getTime());
   const view = (r: (typeof rows)[number]) => {
-    const tx = r.status === "unsigned" && paid ? checkCreateFor(plan.funder, r, plan.currency) : null;
+    const coveredByAutopay = !!covers?.covered && r.periodStart.getTime() === start.getTime();
+    const tx = r.status === "unsigned" && paid && !coveredByAutopay ? checkCreateFor(plan.funder, r, plan.currency) : null;
     return {
       invoiceId: r.invoiceId, checkId: r.checkId, payee: r.payee.label, payeeAddress: r.payee.address, category: r.payee.category,
       seq: r.seq, amount: r.amount, currency: plan.currency, expires: fromRipple(r.expiration).toISOString(),
-      status: r.status, closedHow: r.closedHow, txjson: tx && tx.ok ? tx.txjson : null,
+      status: coveredByAutopay && r.status === "unsigned" ? "autopay" : r.status, closedHow: r.closedHow, txjson: tx && tx.ok ? tx.txjson : null,
     };
   };
   return spendJson({
@@ -61,5 +65,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
     batch,
     payments: payments.map((p) => ({ txHash: p.txHash, months: p.months, amount: p.amount, paidAt: p.paidAt })),
     disclosure: SPEND_DISCLOSURE,
+    // Subscriptions only: Autopay status, schedule and releasable tickets. Signed payments themselves are never returned.
+    autopay,
   });
 }

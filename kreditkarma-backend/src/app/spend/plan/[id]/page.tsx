@@ -5,6 +5,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { API, Disclosure, SignPanel, fmtDate, s, useXapp, type SignData } from "../../ui";
+import { AutopayCard, type AutopayView } from "./AutopayCard";
 
 type Check = { invoiceId: string; checkId: string | null; payee: string; category: string; seq: number; amount: string; currency: string; expires: string; status: string; closedHow: string | null };
 type Dash = {
@@ -17,9 +18,10 @@ type Dash = {
   funderRlusd: number | null; ledgerSynced: boolean;
   batch: { available: boolean; reason: string };
   disclosure: string[];
+  autopay: AutopayView | null;
 };
 
-const STATUS: Record<string, string> = { unsigned: "Not approved yet", open: "Ready — can be cashed", expired: "Expired — cancel it to get your 0.2 XRP back", closed: "Closed" };
+const STATUS: Record<string, string> = { unsigned: "Not approved yet", open: "Ready — can be cashed", expired: "Expired — cancel it to get your 0.2 XRP back", closed: "Closed", autopay: "Paid by Autopay" };
 
 export default function PlanDashboard() {
   const { id } = useParams<{ id: string }>();
@@ -118,6 +120,8 @@ export default function PlanDashboard() {
             </tbody>
           </table>
         </div>
+
+        {sub && d.autopay && <AutopayCard planId={d.plan.id} view={d.autopay} currency={cur} period={d.plan.period} onChange={() => void load()} />}
 
         <div style={s.card}>
           <p style={s.h2}>Your wallet</p>

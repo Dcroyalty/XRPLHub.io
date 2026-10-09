@@ -881,6 +881,10 @@ model SpendPlan {
   payees      SpendPayee[]
   checks      SpendCheck[]
   payments    SpendPlanPayment[]
+  autopay     SpendAutopayPayment[]
+  autopayStatus  String  @default("off") // off | tickets (TicketCreate requested) | signing (pre-approving payments) | on | ended
+  autopayTicketUuid String? // the Xaman TicketCreate request being waited on
+  autopayPeriods Int?      // how many periods the payer asked for
 
   @@index([funder])
 }
@@ -931,4 +935,33 @@ model SpendPlanPayment {
   paidAt  DateTime @default(now())
 
   @@index([planId])
+}
+
+// Spend Controls AUTOPAY (2026-10-09): one pre-signed Payment per future subscription period, each on its own ticket.
+// src/lib/autopay.ts is the ledger core; src/lib/spendAutopay.ts the glue. The signed blob is AES-256-GCM encrypted
+// (SPEND_AUTOPAY_KEY, bound to the row id) and NEVER returned by any API. Submitted at/after periodStart, never early.
+model SpendAutopayPayment {
+  id          String    @id @default(cuid())
+  planId      String
+  plan        SpendPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  periodStart DateTime
+  periodEnd   DateTime
+  ticket      Int
+  amount      String
+  lastLedger  Int
+  status      String    @default("unsigned") // unsigned | scheduled | pending | paid | failed | missed | cancelled
+  blobEnc     String?   // encrypted signed blob — never returned
+  txHash      String?   // hash of the signed blob (known before submission)
+  signUuid    String?   // the Xaman request that pre-approves this payment
+  result      String?   // last engine / validated result code
+  reason      String?   // plain-English failure reason shown to payer and payee
+  attempts    Int       @default(0)
+  submittedAt DateTime?
+  settledAt   DateTime?
+  notifiedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([planId, ticket])
+  @@index([status, periodStart])
 }

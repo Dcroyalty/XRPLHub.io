@@ -43,5 +43,5 @@ export const SPEND_DISCLOSURE = [
   "A check doesn't set money aside. Keep enough in your wallet — a check can only be cashed while the money is there.",
   "Each open check sets aside 0.2 XRP in the payer's wallet (the XRP Ledger's reserve). You get it back when the check is cashed or cancelled.",
   "We use checks because RLUSD can't be locked up in advance on the XRP Ledger yet.",
-  "Monthly or weekly payments are one check per period, made only when that period starts — never ahead, because a check can be cashed as soon as it exists. If you don't approve it, it isn't paid.",
+  "Monthly or weekly payments are one check per period, made only when that period starts — never ahead, because a check can be cashed as soon as it exists. If you don't approve it, it isn't paid — unless you turn on Autopay, which sends payments you approved ahead of time, one at the start of each period.",
 ];

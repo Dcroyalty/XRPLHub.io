@@ -39,7 +39,12 @@ The live production app is a single Next.js project in **`kreditkarma-backend/`*
 - **Spend Controls** (`src/lib/spendControls.ts`) — budgets (RLUSD) and SUBSCRIPTIONS (one payee, RLUSD or XRP). NEVER
   create a future period's check: a check is cashable the moment it exists. The daily MPT cron pushes this period's
   unsigned subscription check to the payer's Xaman app (`xamanUserToken`, never returned by an API). Checks, not
-  escrow, even for XRP (escrow locks funds and can't be cancelled before CancelAfter). The **xApp** (`/xapp/spend`)
+  escrow, even for XRP (escrow locks funds and can't be cancelled before CancelAfter).
+  **AUTOPAY** (`src/lib/autopay.ts` core, `src/lib/spendAutopay.ts` glue, 2026-10-09): the payer pre-signs one Payment per
+  FUTURE period on its own Ticket with a far-future LastLedgerSequence WE set (Xaman keeps it: probe 427afc24). Blobs are
+  encrypted (`SPEND_AUTOPAY_KEY`), never returned, sent one per period by the 07:00 cron, never early, never retried after
+  a tec. Cancel = stop + payer burns the remaining tickets. Starts the period AFTER the current one, so it never overlaps a
+  check. Testnet E2E: `node scripts/test-autopay-testnet.ts`. The **xApp** (`/xapp/spend`)
   shows ONLY Spend Controls and signs with `xumm-xapp-sdk` `openSignRequest` — never add the catalog, DEX or anything
   Xaman does itself to it.
 - **Focus (competitive map, 2026-10-06):** lead with XRPLScore + monitoring + lending readiness, Spend Controls, MPT

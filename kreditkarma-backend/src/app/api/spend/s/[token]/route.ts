@@ -30,13 +30,19 @@ export async function GET(req: Request, ctx: { params: Promise<{ token: string }
   if (plan.kind === "subscription") {
     const { start, end } = periodWindow(plan.period as Period);
     const row = await prisma.spendCheck.findFirst({ where: { planId: plan.id, periodStart: start }, orderBy: { seq: "asc" } });
-    const state = !row || row.status === "unsigned" ? "not_signed_yet"
+    // Autopay rows for this period (a pre-approved payment, not a check): it answers "paid?" directly.
+    const ap = await prisma.spendAutopayPayment.findFirst({ where: { planId: plan.id, periodStart: start, status: { not: "cancelled" } }, orderBy: { createdAt: "desc" } });
+    const apState = ap && (!row || row.status === "unsigned")
+      ? ap.status === "paid" ? "autopay_paid" : ap.status === "failed" || ap.status === "missed" ? "autopay_failed" : ap.status === "scheduled" || ap.status === "pending" ? "autopay_scheduled" : null
+      : null;
+    const state = apState ? apState : !row || row.status === "unsigned" ? "not_signed_yet"
       : row.status === "open" ? "ready_to_cash"
       : row.status === "expired" ? "expired"
       : row.closedHow === "cashed" ? "cashed"
       : row.closedHow === "cancelled" ? "cancelled_by_payer" : "closed";
     thisPeriod = {
-      periodStart: start, periodEnd: end, amount: row?.amount ?? plan.payees[0]?.budget ?? null, state,
+      periodStart: start, periodEnd: end, amount: row?.amount ?? ap?.amount ?? plan.payees[0]?.budget ?? null, state,
+      ...(apState ? { autopay: { reason: ap!.reason, txHash: ap!.status === "paid" || ap!.status === "failed" ? ap!.txHash : null } } : {}),
       cashLink: row?.status === "open" && row.checkId ? `/spend/cash/${row.checkId}` : null,
     };
   }

@@ -63,7 +63,7 @@ export function useXapp(): XappState | false | null {
 
 /** Inside Xaman: open the sign request with the xApp SDK (an in-app overlay, no QR, no deep link) and wait for its
  *  `payload` event. XRPLHub created the payload server-side with the same Xaman app; the user signs in Xaman. */
-function XappSignPanel({ data, title, onDone, onSigned }: { data: SignData; title: string; onDone?: () => void; onSigned?: (uuid: string) => void }) {
+function XappSignPanel({ data, title, onDone, onSigned }: { data: SignData; title: string; onDone?: () => void; onSigned?: (uuid: string) => void; approveOnly?: boolean }) {
   const [state, setState] = useState<"opening" | "waiting" | "signed" | "rejected" | "error">("opening");
   const [sdk, setSdk] = useState<{ openSignRequest: (o: { uuid: string }) => unknown } | null>(null);
   useEffect(() => {
@@ -105,15 +105,17 @@ function XappSignPanel({ data, title, onDone, onSigned }: { data: SignData; titl
 
 /** Shows how to sign: Xaman QR / deep link, or the raw transaction for any other wallet. XRPLHub never signs.
  *  Inside the Xaman xApp it hands off to XappSignPanel (SDK sign requests). */
-export function SignPanel(props: { data: SignData; title: string; onDone?: () => void; onSigned?: (uuid: string) => void }) {
+/** approveOnly: an Autopay pre-approval (Xaman signs WITHOUT sending). Never offer its raw transaction to another
+ *  wallet — most wallets would send it at once, i.e. pay early. */
+export function SignPanel(props: { data: SignData; title: string; onDone?: () => void; onSigned?: (uuid: string) => void; approveOnly?: boolean }) {
   const x = useXapp();
   if (x) return <XappSignPanel {...props} />;
   if (x === null) return null;
   return <WebSignPanel {...props} />;
 }
 
-function WebSignPanel({ data, title, onDone, onSigned }: { data: SignData; title: string; onDone?: () => void; onSigned?: (uuid: string) => void }) {
-  const [showJson, setShowJson] = useState(!data.qr_png && !data.deep_link);
+function WebSignPanel({ data, title, onDone, onSigned, approveOnly }: { data: SignData; title: string; onDone?: () => void; onSigned?: (uuid: string) => void; approveOnly?: boolean }) {
+  const [showJson, setShowJson] = useState(!approveOnly && !data.qr_png && !data.deep_link);
   const [state, setState] = useState<"waiting" | "signed" | "rejected" | "expired">("waiting");
   // Xaman pushes the result over its status websocket (no polling). On a signature, tell the caller (which records the
   // push token for subscriptions) and refresh from the ledger.
@@ -132,9 +134,11 @@ function WebSignPanel({ data, title, onDone, onSigned }: { data: SignData; title
       <p style={s.h2}>{title}</p>
       {data.qr_png && <img src={data.qr_png} alt="Scan with Xaman to sign" style={{ width: 180, height: 180, display: "block", margin: "0 auto 8px" }} />}
       {data.deep_link && <p style={{ textAlign: "center", margin: "4px 0 10px" }}><a href={data.deep_link} target="_blank" rel="noreferrer">Open in Xaman →</a></p>}
-      <button type="button" style={s.btnGhost} onClick={() => setShowJson((v) => !v)}>{showJson ? "Hide" : "Show"} the transaction (to sign in another wallet)</button>
-      {showJson && data.txjson && <pre style={{ ...s.mono, background: "#f4f4f2", padding: 10, borderRadius: 8, marginTop: 8, whiteSpace: "pre-wrap" }}>{JSON.stringify(data.txjson, null, 2)}</pre>}
-      {state === "signed" && <p style={s.ok}>Signed in Xaman — updating from the ledger…</p>}
+      {approveOnly
+        ? <p style={s.small}>Approve this in Xaman only. Approving does not send it: XRPLHub sends it at the start of its week or month.</p>
+        : <button type="button" style={s.btnGhost} onClick={() => setShowJson((v) => !v)}>{showJson ? "Hide" : "Show"} the transaction (to sign in another wallet)</button>}
+      {!approveOnly && showJson && data.txjson && <pre style={{ ...s.mono, background: "#f4f4f2", padding: 10, borderRadius: 8, marginTop: 8, whiteSpace: "pre-wrap" }}>{JSON.stringify(data.txjson, null, 2)}</pre>}
+      {state === "signed" && <p style={s.ok}>{approveOnly ? "Approved in Xaman. Nothing was sent." : "Signed in Xaman — updating from the ledger…"}</p>}
       {state === "rejected" && <p style={s.err}>Rejected in Xaman. Nothing was sent.</p>}
       {state === "expired" && <p style={s.err}>This sign request expired. Start again.</p>}
       <p style={{ ...s.small, marginTop: 8 }}>You sign in your own wallet. XRPLHub never holds keys or funds.</p>

@@ -210,6 +210,8 @@ export interface PayloadStatus {
   identifier: string | null; // custom_meta.identifier we set at create time
   /** application.issued_user_token — present once signed; lets us push later requests to this user. */
   userToken?: string | null;
+  /** The signed transaction blob (response.hex) — what a submit:false request returns. */
+  hex?: string | null;
 }
 
 export async function getPayloadStatus(uuid: string): Promise<PayloadStatus> {
@@ -239,5 +241,9 @@ export async function getPayloadStatus(uuid: string): Promise<PayloadStatus> {
 
   const userToken =
     (data?.application?.issued_user_token as string | undefined) ?? null;
-  return { state: "signed", txid, signer, identifier, userToken };
+  const hex =
+    (data?.response?.hex as string | undefined) ??
+    (data?.payload?.response?.hex as string | undefined) ??
+    null;
+  return { state: "signed", txid, signer, identifier, userToken, hex };
 }

@@ -34,7 +34,11 @@ pings that email you (§8); this file says what it watches and what you must sti
 | When (UTC) | Route | Does |
 |---|---|---|
 | 06:00 daily | `/api/cron/index-credentials` | sanctions-list refresh (OFAC SDN, EU FSF, UK Sanctions List — each independent, each integrity-gated) → **continuous-monitoring pass** (checks, observations, webhook delivery) → XLS-66 borrower sweep (no-op until activation) → daily Merkle anchors (OFAC screening, lending, underwrite, monitoring) → heartbeat → cross-check of the other cron |
-| 07:00 daily | `/api/cron/index-mpts` | MPT registry refresh + anchor → health probe (alerts on anything red) → **watchdog (full)** → heartbeat → weekly "alive" message |
+| 07:00 daily | `/api/cron/index-mpts` | MPT registry refresh + anchor → **Spend Controls Autopay** (sends each due pre-approved payment, never early; failures reported, never retried) → subscription check pushes → health probe (alerts on anything red) → **watchdog (full)** → heartbeat → weekly "alive" message |
+
+**Autopay needs `SPEND_AUTOPAY_KEY`** (≥ 32 chars, Vercel production). Without it Autopay is off and fails closed. It encrypts
+the stored pre-approved payments: LOSING OR CHANGING IT makes every stored payment unreadable — each then fails once with a
+notice and the payer approves a normal check instead. Never rotate it while payments are scheduled.
 
 Both need `CRON_SECRET` (set in Vercel production). Vercel does not retry a cron invocation; each run resumes where
 the last one stopped (every long job is deadline-aware and resumable).
