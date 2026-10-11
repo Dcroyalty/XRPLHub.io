@@ -9,6 +9,7 @@
 // POST /api/attest/anchor) would produce hourly trees with no code change.
 // `force` skips the interval gate (admin/manual only).
 
+import { isLedgerRetry } from "./ledgerSubmit";
 import type { PrismaClient } from "@prisma/client";
 import { submitMemoAnchor, anchorSigningKeyPresent } from "./anchorMemo";
 import { SCREEN_CANON_VERSION, merkleRootFromLeafHashes } from "./screenCanon";
@@ -144,9 +145,9 @@ export async function maybeAnchorScreeningReceipts(
     const misconfig = /ANCHOR_WALLET_SEED|REFUSING:|derives .* expected/i.test(msg);
     await prisma.screeningAnchor.update({
       where: { id: row.id },
-      data: { status: misconfig ? "misconfigured" : "failed", error: msg },
+      data: { status: misconfig ? "misconfigured" : isLedgerRetry(err) ? "paused" : "failed", error: msg },
     });
-    await notifyError("cron screening-anchor", err, {
+    if (!isLedgerRetry(err)) await notifyError("cron screening-anchor", err, {
       faultClass: misconfig ? "misconfigured" : "transient",
       merkleRoot,
     });

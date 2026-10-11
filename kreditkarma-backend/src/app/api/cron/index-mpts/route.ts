@@ -7,6 +7,7 @@
 // Auth: Vercel's cron dispatcher sends `Authorization: Bearer $CRON_SECRET`
 // automatically once CRON_SECRET is set. No secret set => this route 401s and
 // does nothing (fails closed). The admin token also works for a manual kick.
+import { ledgerStatus } from "@/lib/xrplNodes";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/xrplscore-db";
 import { runMptIndexerPass, maybeAnchor } from "@/lib/mptIndexer";
@@ -49,11 +50,15 @@ export async function GET(req: Request) {
     // a check is cashable the moment it exists). Bounded at 6 s; the indexer gave up 4 s for it (it is resumable).
     // Autopay first: send this period's pre-approved payments (never early). A failure is then picked up by the
     // subscription prompt below, which pushes a normal check to the payer with the reason.
-    const autopay = await runAutopayDue(prisma, { budgetMs: 10_000 }).catch(async (e) => {
+    // HALT: if the XRP Ledger isn't closing ledgers, Spend Controls pauses — no Autopay submissions, no sign requests
+    // pushed to payers (a check approved during a halt can't land). Both just run again next time; nothing is lost.
+    const ledger = await ledgerStatus(0);
+    const spendPaused = ledger.state === "halted" || ledger.state === "unreachable";
+    const autopay = spendPaused ? null : await runAutopayDue(prisma, { budgetMs: 10_000 }).catch(async (e) => {
       await notifyError("cron/index-mpts autopay", e);
       return null;
     });
-    const subscriptions = await promptSubscriptions(prisma, pushSignRequest, { budgetMs: 6_000, autopay: (planId, window) => autopayCovers(prisma, planId, window) }).catch(async (e) => {
+    const subscriptions = spendPaused ? { paused: ledger.state } : await promptSubscriptions(prisma, pushSignRequest, { budgetMs: 6_000, autopay: (planId, window) => autopayCovers(prisma, planId, window) }).catch(async (e) => {
       await notifyError("cron/index-mpts subscriptions", e);
       return null;
     });
@@ -80,7 +85,7 @@ export async function GET(req: Request) {
     });
     // healthchecks.io is the alert channel: /fail on any open RED (watchdog or money-path health), else success.
     // Autopay failures are customer-facing: they go out as RED lines so healthchecks.io emails the owner today.
-    await pingHealthcheckForRun(prisma, "cron/index-mpts", watchdog, [...health.reds.map((r) => `health ${r.name} DOWN: ${r.detail}`), ...(autopay?.notices ?? [])]);
+    await pingHealthcheckForRun(prisma, "cron/index-mpts", watchdog, [...health.reds.map((r) => `health ${r.name} DOWN: ${r.detail}`), ...(autopay?.notices ?? []), ...(spendPaused ? [`spend-controls paused: XRP Ledger ${ledger.state} — Autopay sends and payer sign requests skipped this run; they retry automatically next run`] : [])]);
 
     return NextResponse.json({ ...progress, anchor, autopay, subscriptions, health: { overall: health.overall, reds: health.reds, ambers: health.ambers }, watchdog: watchdog ? { alerted: watchdog.alerted, recovered: watchdog.recovered, weeklySent: watchdog.weeklySent, open: watchdog.findings.filter((f) => f.level !== "ok").map((f) => ({ key: f.key, level: f.level, message: f.message })) } : null });
   } catch (err) {

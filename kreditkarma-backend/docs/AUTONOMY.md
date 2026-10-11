@@ -417,3 +417,29 @@ test runs on **Devnet**, not Testnet: Batch is enabled on mainnet and Devnet but
   /send-many says "done" only when GET /api/batch-send?uuid= reads the batch AND each inner payment from the ledger.
 - Watchdog (full run, 07:00): `batch-send` — RED if BatchV1_1 is not active; otherwise a read-only preflight between
   known accounts (nothing built or signed); a ledger read failure is a warning.
+
+## 20. XRP Ledger halt (2026-10-11)
+
+The XRP Ledger stopped validating for 64 minutes on 2025-02-04. Every node still answers during a halt — with the same
+old ledger — so "do the nodes agree?" stays green; only the validated ledger's AGE reveals it
+(`server_info.validated_ledger.age`, `HALT_AGE_SEC` = 120 in src/lib/xrplNodes.ts).
+
+- **Detection:** `sweepNodeHealth()` → `halted` (every responding node stale), `staleHosts` (only some: OUR nodes).
+  `ledgerStatus()` (cached 30 s) → ok | degraded | halted | unreachable; public at GET /api/ledger-status.
+- **Watchdog `ledger-halt`** (both crons, 06:00 + 07:00 UTC) emails via healthchecks.io RED with a different message
+  for "XRP LEDGER HALTED — the network, not XRPLHub", "OUR NODES, not the ledger" and "OUR SIDE: none answered".
+  Only checked at cron times: a halt shorter than the gap between runs is never seen (nor needs action).
+- **Server-side writes** (MPT/screening/lending/underwrite/monitoring anchors, credential issue/delete/cleanup) go through
+  `submitValidated()` (src/lib/ledgerSubmit.ts): pause without submitting when the node's ledger is stale; Sequence from
+  the VALIDATED ledger (a halt-stranded tx and its retry share it → at most one applies); bounded 20 s wait; done only
+  when a validated ledger says so. Anchors record `paused` (no alarm) and retry; queued credentials stay queued; a
+  tecDUPLICATE retry is recorded as issued only if the validated ledger holds that unexpired credential.
+- **Autopay:** a halted/unreachable ledger → `paused` (nothing submitted, status unchanged, no notice). A node's tef/tem
+  is never a failure on its own: tefNO_TICKET is believed only if the validated ledger lost the ticket, tefMAX_LEDGER only
+  if the validated ledger is past the expiry; anything else retries until the window closes (then "missed").
+  Window = the period + 3-day grace (weekly: 10 daily runs; monthly: 31–34); a halt only pushes LastLedgerSequence later.
+- **Spend Controls cron:** while halted/unreachable, no Autopay sends and no payer sign-request pushes; RED line explains.
+- **Customers** see "The XRP Ledger is paused right now. Nothing is lost — we'll send it as soon as it resumes." on the
+  homepage, /spend (+ plan, share, cash), /send-many, /permissions and the xApp. Reads keep working during a halt.
+- Tests: scripts/test-autopay-halt-testnet.ts (16/16), scripts/test-ledger-submit-testnet.ts (7/7),
+  scripts/test-ledger-halt-watchdog.ts (4/4). The treasury send functions are unused (grants are paid by a person).

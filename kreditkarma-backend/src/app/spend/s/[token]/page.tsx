@@ -4,7 +4,7 @@
 
 import React, { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { API, Disclosure, fmtDate, s } from "../../ui";
+import { API, Disclosure, fmtDate, s, LedgerBanner } from "../../ui";
 
 type Place = { label: string; category: string; availableNow: string; checks: { amount: string; expires: string; cashLink: string | null }[] };
 type ThisPeriod = { periodStart: string; periodEnd: string; amount: string | null; state: string; cashLink: string | null; autopay?: { reason: string | null; txHash: string | null } };
@@ -24,10 +24,10 @@ export default function SharePage() {
     fetch(`${API}/api/spend/s/${token}`).then(async (r) => { const j = await r.json(); if (!r.ok) throw new Error(j.message); setV(j); }).catch((e) => setErr(e instanceof Error ? e.message : "Could not load"));
   }, [token]);
 
-  if (!v) return <div style={s.shell}><main style={s.page}>{err ? <p style={s.err}>{err}</p> : <p>Loading…</p>}</main></div>;
+  if (!v) return <div style={s.shell}><main style={s.page}><LedgerBanner />{err ? <p style={s.err}>{err}</p> : <p>Loading…</p>}</main></div>;
   return (
     <div style={s.shell}>
-      <main style={s.page}>
+      <main style={s.page}><LedgerBanner />
         <h1 style={s.h1}>{v.plan}</h1>
         <p style={s.sub}>{v.howToSpend}</p>
         {v.thisPeriod && (

@@ -3,6 +3,7 @@
 // scheme as every other XRPLHub anchor; separate memo type + batch + interval
 // gate. Cron-agnostic; `force` skips the gate (admin).
 
+import { isLedgerRetry } from "./ledgerSubmit";
 import type { PrismaClient } from "@prisma/client";
 import { submitMemoAnchor, anchorSigningKeyPresent } from "./anchorMemo";
 import { UNDERWRITE_CANON_VERSION } from "./underwriteCanon";
@@ -92,8 +93,8 @@ export async function maybeAnchorUnderwriteReceipts(
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     const misconfig = /ANCHOR_WALLET_SEED|REFUSING:|derives .* expected/i.test(msg);
-    await prisma.underwriteBundleAnchor.update({ where: { id: row.id }, data: { status: misconfig ? "misconfigured" : "failed", error: msg } });
-    await notifyError("cron underwrite-anchor", err, { faultClass: misconfig ? "misconfigured" : "transient", merkleRoot });
+    await prisma.underwriteBundleAnchor.update({ where: { id: row.id }, data: { status: misconfig ? "misconfigured" : isLedgerRetry(err) ? "paused" : "failed", error: msg } });
+    if (!isLedgerRetry(err)) await notifyError("cron underwrite-anchor", err, { faultClass: misconfig ? "misconfigured" : "transient", merkleRoot });
     return { attempted: true, submitted: false, faultClass: misconfig ? "misconfigured" : "transient", reason: `underwrite anchor failed: ${msg}`, leafCount: unanchored.length, merkleRoot, anchorId: row.id };
   }
 }

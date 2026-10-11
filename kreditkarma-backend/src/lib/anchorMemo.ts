@@ -9,6 +9,7 @@
 // (src/lib/screenAnchor.ts) — different memo type, different batch, SAME wallet.
 // connectMainnetOrThrow still applies: a testnet/devnet endpoint throws.
 
+import { submitValidated } from "./ledgerSubmit";
 import { Wallet } from "xrpl";
 import { connectMainnetOrThrow } from "./credentials";
 import { ANCHOR_ACCOUNT, anchorSigningKeyPresent } from "./mptAnchor";
@@ -53,13 +54,13 @@ export async function submitMemoAnchor(memoType: string, memoDataJson: string): 
 
   const client = await connectMainnetOrThrow();
   try {
-    const prepared = await client.autofill({
+    // Halt-safe: pauses if the ledger isn't moving, validated Sequence, bounded wait (src/lib/ledgerSubmit.ts).
+    const { result: submitted, prepared } = await submitValidated(client, wallet, {
       TransactionType: "AccountSet",
       Account: wallet.classicAddress,
       Memos,
-    } as unknown as Parameters<typeof client.autofill>[0]);
-    const signed = wallet.sign(prepared);
-    const res = await client.submitAndWait(signed.tx_blob);
+    } as Record<string, unknown>);
+    const res = { result: submitted };
 
     const meta = res.result.meta;
     const engineResult =

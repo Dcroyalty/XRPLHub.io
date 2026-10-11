@@ -12,6 +12,7 @@
 // issuer already engaged us by buying the service, so this is queued without a separate opt-in request, exactly like
 // the "we issue, they accept" score-credential flow. A pending credential is never usable until CredentialAccept.
 
+import { submitValidated } from "./ledgerSubmit";
 import type { PrismaClient } from "@prisma/client";
 import { Wallet, convertStringToHex, unixTimeToRippleTime, rippleTimeToUnixTime, type SubmittableTransaction } from "xrpl";
 import { EXPECTED_ISSUER, buildCredentialCreate, connectMainnetOrThrow, WrongIssuerError, type IssueResult } from "./credentials";
@@ -112,9 +113,9 @@ export async function issueMptDeclaredCredential(plan: MptDeclaredPlan): Promise
   try {
     await deleteExpiredCredentialIfAny(client, wallet, EXPECTED_ISSUER, plan.subject, plan.credentialTypeHex);
 
-    const prepared = await client.autofill(plan.txjson);
-    const signed = wallet.sign(prepared);
-    const res = await client.submitAndWait(signed.tx_blob);
+    // Halt-safe: pauses if the ledger isn't moving, validated Sequence, bounded wait (src/lib/ledgerSubmit.ts).
+    const { result: submitted, prepared } = await submitValidated(client, wallet, plan.txjson as Record<string, unknown>);
+    const res = { result: submitted };
     const meta = res.result.meta;
     const engineResult = meta && typeof meta === "object" ? (meta as { TransactionResult: string }).TransactionResult : "unknown";
     return {

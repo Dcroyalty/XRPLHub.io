@@ -20,6 +20,7 @@
 //    no on-chain negative attestation, ever.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { submitValidated } from "./ledgerSubmit";
 import {
   Client,
   Wallet,
@@ -374,9 +375,9 @@ export async function issueScoreCredential(plan: IssuePlan): Promise<IssueResult
     // (e.g. from a prior 90-day cycle), delete it first. See credentialOps.ts.
     await deleteExpiredCredentialIfAny(client, wallet, EXPECTED_ISSUER, plan.subject, plan.credentialTypeHex);
 
-    const prepared = await client.autofill(plan.txjson);
-    const signed = wallet.sign(prepared);
-    const res = await client.submitAndWait(signed.tx_blob);
+    // Halt-safe: pauses if the ledger isn't moving, validated Sequence, bounded wait (src/lib/ledgerSubmit.ts).
+    const { result: submitted, prepared } = await submitValidated(client, wallet, plan.txjson as Record<string, unknown>);
+    const res = { result: submitted };
     const meta = res.result.meta;
     const engineResult =
       meta && typeof meta === "object"

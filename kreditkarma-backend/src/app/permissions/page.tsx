@@ -5,7 +5,7 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import { API, ConnectXaman, SignPanel, s, useSignedInWallet, type SignData } from "../spend/ui";
+import { API, ConnectXaman, SignPanel, s, useSignedInWallet, type SignData, LedgerBanner } from "../spend/ui";
 
 type Finding = { kind: string; level: "danger" | "warning" | "info" | "ok"; who: string | null; plain: string; detail: Record<string, unknown>; fix?: { action: string; params: Record<string, string> } };
 type Report = { address: string; exists: boolean; headline: string; canMoveMoney: { who: string; how: string }[]; findings: Finding[]; truncated: boolean; notes: string[]; ledgerIndex: number | null };
@@ -56,7 +56,7 @@ export default function PermissionsPage() {
 
   return (
     <div style={s.shell}>
-      <main style={s.page}>
+      <main style={s.page}><LedgerBanner />
         <Link href="/" style={s.small}>← XRPLHub</Link>
         <h1 style={s.h1}>Who can move money from my wallet?</h1>
         <p style={s.sub}>

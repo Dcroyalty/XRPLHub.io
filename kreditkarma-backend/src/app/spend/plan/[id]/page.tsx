@@ -4,7 +4,7 @@
 
 import React, { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { API, Disclosure, SignPanel, XappFooter, fmtDate, s, useXapp, v, type Explain, type SignData } from "../../ui";
+import { API, Disclosure, SignPanel, XappFooter, fmtDate, s, useXapp, v, type Explain, type SignData, LedgerBanner } from "../../ui";
 import { AutopayCard, type AutopayView } from "./AutopayCard";
 
 type Check = { invoiceId: string; checkId: string | null; payee: string; category: string; seq: number; amount: string; currency: string; expires: string; status: string; closedHow: string | null };
@@ -85,14 +85,14 @@ export default function PlanDashboard() {
     } });
   };
 
-  if (!d) return <div style={s.shell}><main style={s.page}>{err ? <p style={s.err}>{err}</p> : <p>Loading…</p>}</main></div>;
+  if (!d) return <div style={s.shell}><main style={s.page}><LedgerBanner />{err ? <p style={s.err}>{err}</p> : <p>Loading…</p>}</main></div>;
   const share = typeof window !== "undefined" ? `${window.location.origin}${d.plan.shareLink}` : d.plan.shareLink;
   const unsigned = d.current.filter((c) => c.status === "unsigned");
   const sub = d.plan.kind === "subscription";
 
   return (
     <div style={s.shell}>
-      <main style={s.page}>
+      <main style={s.page}><LedgerBanner />
         {xapp ? <a href="/xapp/spend" style={s.small}>← My plans</a> : <a href="/spend" style={s.small}>← Spend Controls</a>}
         <h1 style={s.h1}>{d.plan.name ?? (sub ? "Recurring payment" : "Allowance")}</h1>
         <p style={s.sub}>{sub ? "Recurring payment" : "Allowance"} · paid from <span style={s.mono}>{d.plan.funder}</span> · {d.plan.period} · {sub ? `${d.plan.checkSize} ${cur} each time` : `checks of ${d.plan.checkSize} ${cur}`}</p>

@@ -4,7 +4,7 @@
 
 import React, { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { API, SignPanel, fmtDate, s, type SignData } from "../../ui";
+import { API, SignPanel, fmtDate, s, type SignData, LedgerBanner } from "../../ui";
 
 type Check = { checkId: string; from: string; to: string; currency: string; upTo: string; expires: string | null; expired: boolean; writerHolds: number | null; coverable: boolean | null; notes: string[] };
 
@@ -28,7 +28,7 @@ export default function CashPage() {
 
   return (
     <div style={s.shell}>
-      <main style={s.page}>
+      <main style={s.page}><LedgerBanner />
         <h1 style={s.h1}>Cash this check</h1>
         {!c && !err && <p>Loading the check…</p>}
         {c && (

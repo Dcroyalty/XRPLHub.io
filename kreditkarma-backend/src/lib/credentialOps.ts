@@ -12,6 +12,7 @@
 // expired credentials: they sit on the ledger, on whichever side's reserve they were on, until someone
 // submits CredentialDelete.
 
+import { submitValidated } from "./ledgerSubmit";
 import type { Client, Wallet } from "xrpl";
 import { unixTimeToRippleTime } from "xrpl";
 
@@ -69,9 +70,9 @@ export async function deleteExpiredCredentialIfAny(client: Client, wallet: Walle
   }
   const wasAccepted = (Number(existing.Flags || 0) & 0x00010000) !== 0; // lsfAccepted
   const tx = { TransactionType: "CredentialDelete" as const, Account: wallet.classicAddress, Issuer: issuer, Subject: subject, CredentialType: typeHex };
-  const prepared = await client.autofill(tx);
-  const signed = wallet.sign(prepared);
-  const res = await client.submitAndWait(signed.tx_blob);
+  // Halt-safe: pauses if the ledger isn't moving, validated Sequence, bounded wait (src/lib/ledgerSubmit.ts).
+  const { result: submitted, prepared } = await submitValidated(client, wallet, tx as Record<string, unknown>);
+  const res = { result: submitted };
   const meta = res.result.meta;
   const result = meta && typeof meta === "object" ? (meta as { TransactionResult: string }).TransactionResult : "unknown";
   if (result !== "tesSUCCESS") throw new Error(`CredentialDelete of the expired credential failed: ${result}`);

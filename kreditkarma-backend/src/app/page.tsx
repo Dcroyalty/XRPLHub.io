@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { LedgerBanner } from "./spend/ui";
 import { watchXaman } from '@/lib/wallet/xamanWatch';
 import { GRANT_APPLICATIONS_OPEN, GRANTS_PAUSED_TITLE, GRANTS_PAUSED_MESSAGE, GRANTS_DONATE_NOTE } from '@/lib/grantsStatus';
 import WalletPicker from '@/lib/wallet/WalletPicker';
@@ -1991,6 +1992,7 @@ export default function XRPLHubHome() {
           </div>
         )}
         <TickerBar />
+        <div style={{ padding: "0 16px" }}><LedgerBanner dark /></div>
 
         {/* HERO */}
         <section className="section-pad" style={{ textAlign:'center',padding:'72px 24px 56px',position:'relative',overflow:'hidden' }}>

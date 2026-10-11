@@ -18,6 +18,7 @@
 //
 // Read by /api/cron/index-mpts (bounded) and scripts/census-mpts.cjs (hand-run).
 
+import { isLedgerRetry } from "./ledgerSubmit";
 import type { Client } from "xrpl";
 import type { PrismaClient } from "@prisma/client";
 import { validatedLedgerCloseTimeRipple } from "./credentials";
@@ -506,9 +507,10 @@ export async function maybeAnchor(prisma: PrismaClient): Promise<AnchorAttempt> 
     // A config problem (bad/absent seed, wrong wallet) fails forever; a network
     // / ledger error may clear next run. Both are recorded and alerted.
     const misconfig = /ANCHOR_WALLET_SEED|REFUSING:|derives .* expected/i.test(msg);
-    const status = misconfig ? "misconfigured" : "failed";
+    // A halted / unreachable ledger is a PAUSE: the same root is retried next run (the row is reused), never alerted as a fault.
+    const status = misconfig ? "misconfigured" : isLedgerRetry(err) ? "paused" : "failed";
     await prisma.mptAnchor.update({ where: { id: row.id }, data: { status, error: msg } });
-    await notifyError("cron/index-mpts anchor", err, {
+    if (!isLedgerRetry(err)) await notifyError("cron/index-mpts anchor", err, {
       faultClass: misconfig ? "misconfigured" : "transient",
       merkleRoot: snap.merkleRoot,
     });

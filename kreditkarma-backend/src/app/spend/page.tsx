@@ -6,7 +6,7 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import { API, ConnectXaman, Disclosure, XappFooter, inXamanWebview, s, useSignedInWallet, useXapp, v } from "./ui";
+import { API, ConnectXaman, Disclosure, XappFooter, inXamanWebview, s, useSignedInWallet, useXapp, v, LedgerBanner } from "./ui";
 
 type Payee = { address: string; label: string; category: string; budget: string; destinationTag: string };
 const CATEGORIES = ["food", "groceries", "clothing", "school", "transport", "health", "housing", "utilities", "entertainment", "other"];
@@ -71,7 +71,7 @@ export default function SpendPage() {
 
   return (
     <div style={s.shell}>
-      <main style={s.page}>
+      <main style={s.page}><LedgerBanner />
         {xapp ? <a href="/xapp/spend" style={s.small}>← My plans</a> : <Link href="/" style={s.small}>← XRPLHub</Link>}
         <h1 style={s.h1}>Spend Controls</h1>
         <p style={s.sub}>

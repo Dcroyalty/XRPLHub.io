@@ -275,7 +275,7 @@ export async function autopayView(prisma: PrismaClient, plan: Plan) {
 // ── cron ───────────────────────────────────────────────────────────────────────────────────────────────────────────
 /** Send every due Autopay payment (period started, still in its window). Bounded; never throws. */
 export async function runAutopayDue(prisma: PrismaClient, opts: { budgetMs?: number; now?: Date; rpc?: Rpc; settleWaitMs?: number } = {}) {
-  const out = { due: 0, paid: 0, failed: 0, missed: 0, cancelled: 0, pending: 0, waiting: 0, skipped: 0, retry: 0, sent: [] as string[], notices: [] as string[] };
+  const out = { due: 0, paid: 0, failed: 0, missed: 0, cancelled: 0, pending: 0, waiting: 0, skipped: 0, retry: 0, paused: 0, sent: [] as string[], notices: [] as string[] };
   const secret = autopaySecret();
   if (!secret) {
     // Never silent: if the key is gone while payments are due, the owner hears about it (the payers get checks via
@@ -296,7 +296,7 @@ export async function runAutopayDue(prisma: PrismaClient, opts: { budgetMs?: num
       if (Date.now() - started > budgetMs) break;
       out.due++;
       const o = await processRow(
-        { id: row.id, periodStart: row.periodStart, periodEnd: row.periodEnd, status: row.status as RowStatus, blobEnc: row.blobEnc, txHash: row.txHash, attempts: row.attempts },
+        { id: row.id, periodStart: row.periodStart, periodEnd: row.periodEnd, status: row.status as RowStatus, blobEnc: row.blobEnc, txHash: row.txHash, attempts: row.attempts, account: row.plan.funder, ticket: row.ticket, lastLedger: row.lastLedger },
         {
           rpc: opts.rpc ?? mainnetRpc, now, secret, settleWaitMs: opts.settleWaitMs ?? 8_000,
           update: async (id, patch) => { await prisma.spendAutopayPayment.update({ where: { id }, data: patch }); },
@@ -314,7 +314,9 @@ export async function runAutopayDue(prisma: PrismaClient, opts: { budgetMs?: num
       ).catch(async (e) => { await notifyError("spend autopay processRow", e, { row: row.id }); return "retry" as const; });
       if (o === "submitted" || o === "paid") out.sent.push(row.id);
       if (o === "submitted") out.pending++;
-      else if (o === "paid" || o === "failed" || o === "missed" || o === "cancelled" || o === "waiting" || o === "skipped" || o === "retry") out[o]++;
+      else if (o === "paid" || o === "failed" || o === "missed" || o === "cancelled" || o === "waiting" || o === "skipped" || o === "retry" || o === "paused") out[o]++;
+      // A halted ledger pauses EVERY due payment the same way: stop early, the next run retries them all.
+      if (o === "paused") break;
     }
     // A plan whose every payment is final has nothing left on Autopay.
     const onPlans = await prisma.spendPlan.findMany({ where: { autopayStatus: "on" }, select: { id: true }, take: 200 });

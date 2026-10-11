@@ -10,6 +10,7 @@
 // 90-day expiry, matching the score/MPT-declared families for integrator consistency. A domain-hijack or
 // DNS-reassignment window of up to 90 days is a real, if small, exposure — flagged, not solved, here.
 
+import { submitValidated } from "./ledgerSubmit";
 import type { PrismaClient } from "@prisma/client";
 import { Wallet, convertStringToHex, unixTimeToRippleTime, rippleTimeToUnixTime, type SubmittableTransaction } from "xrpl";
 import { EXPECTED_ISSUER, buildCredentialCreate, connectMainnetOrThrow, WrongIssuerError, type IssueResult } from "./credentials";
@@ -165,9 +166,9 @@ export async function issueDomainCredential(plan: DomainCredPlan): Promise<Issue
   try {
     await deleteExpiredCredentialIfAny(client, wallet, EXPECTED_ISSUER, plan.subject, plan.credentialTypeHex);
 
-    const prepared = await client.autofill(plan.txjson);
-    const signed = wallet.sign(prepared);
-    const res = await client.submitAndWait(signed.tx_blob);
+    // Halt-safe: pauses if the ledger isn't moving, validated Sequence, bounded wait (src/lib/ledgerSubmit.ts).
+    const { result: submitted, prepared } = await submitValidated(client, wallet, plan.txjson as Record<string, unknown>);
+    const res = { result: submitted };
     const meta = res.result.meta;
     const engineResult = meta && typeof meta === "object" ? (meta as { TransactionResult: string }).TransactionResult : "unknown";
     return {

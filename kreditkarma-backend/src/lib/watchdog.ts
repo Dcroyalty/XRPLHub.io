@@ -28,7 +28,7 @@ import { getAmendmentStatus } from "./amendments";
 import { LIST_NAMES, currentSnapshot, lastChecked } from "./sanctionLists";
 import type { PrismaClient } from "@prisma/client";
 import { notifyError, notifyInfo, pingHealthcheck } from "./notify";
-import { xrplRpc, XRPL_NODES, sweepNodeHealth, MIN_HEALTHY_NODES } from "./xrplNodes";
+import { xrplRpc, XRPL_NODES, sweepNodeHealth, MIN_HEALTHY_NODES, HALT_AGE_SEC } from "./xrplNodes";
 import { getAmendmentStatuses } from "./amendments";
 import { xrpUsd } from "./xrpPrice";
 import { ANCHOR_ACCOUNT } from "./mptAnchor";
@@ -370,6 +370,27 @@ async function checkBithomp(): Promise<Finding> {
 /** Forces a fresh server_info sweep (not the lazy 5-min cache xrplRpc uses) so this always reports the
  *  ring's CURRENT state, not whatever the last read happened to trigger. See xrplNodes.ts for the defense
  *  itself -- this just surfaces its verdict as a Finding. */
+// HALT vs BAD NODES (2026-10-11). On 2025-02-04 the XRP Ledger stopped validating for 64 minutes: every node still
+// answered, with the same old ledger, so "do the nodes agree?" stayed green. The ledger's AGE tells them apart:
+//   every node stale  → the NETWORK halted (nothing for us to fix; our ledger writes pause and resume on their own)
+//   some nodes stale  → OUR node list has bad nodes (they're skipped; replace them if it lasts)
+//   no node answers   → OUR connectivity (or every node at once)
+// Runs in BOTH crons (06:00 and 07:00 UTC) so a halt during either run is reported by email.
+export async function checkLedgerHalt(nodes?: string[]): Promise<Finding> {
+  const r = await sweepNodeHealth(nodes).catch(() => null);
+  if (!r || r.responded === 0) {
+    return { key: "ledger-halt", level: "red", message: "OUR SIDE: none of our XRP Ledger nodes answered at all — can't tell whether the ledger is moving. Ledger writes (Autopay, anchors, credentials) are paused and retry next run. If this repeats, check Vercel's network and the node list in src/lib/xrplNodes.ts." };
+  }
+  const mins = (sec: number | null) => (sec == null ? "?" : sec >= 120 ? `${Math.round(sec / 60)} min` : `${sec}s`);
+  if (r.halted) {
+    return { key: "ledger-halt", level: "red", message: `XRP LEDGER HALTED — the network, not XRPLHub: all ${r.responded} of our nodes report no new validated ledger for ${mins(r.freshestAgeSec)} (stuck at ledger ${r.majorityLedgerIndex}). Autopay sends, payer sign requests, anchors and credential issuance are PAUSED and resume automatically when it restarts; nothing is lost and nothing to do. Customers see "The XRP Ledger is paused right now".` };
+  }
+  if (r.staleHosts.length) {
+    return { key: "ledger-halt", level: "red", message: `OUR NODES, not the ledger: ${r.staleHosts.join(", ")} report no new validated ledger for over ${mins(HALT_AGE_SEC)} while ${r.responded - r.staleHosts.length} other node(s) are current (ledger ${r.majorityLedgerIndex}). Reads and writes skip them automatically; replace them in src/lib/xrplNodes.ts if this lasts.` };
+  }
+  return { key: "ledger-halt", level: "ok", message: `XRP Ledger closing normally — last validated ledger ${r.freshestAgeSec ?? "?"}s old (ledger ${r.majorityLedgerIndex}), ${r.responded} nodes current` };
+}
+
 async function checkNodeStaleness(): Promise<Finding> {
   const r = await sweepNodeHealth().catch(() => null);
   if (!r) return { key: "node-staleness", level: "ok", message: "sweep failed to run — skipped" };
@@ -535,6 +556,7 @@ export async function runWatchdog(prisma: PrismaClient, opts: WatchdogOptions = 
   add("anchors-behind", () => checkUnanchored(prisma));
   add("monitor-backlog", () => checkMonitorBacklog(prisma));
   add("amendment-reader", () => checkAmendments(prisma));
+  add("ledger-halt", () => checkLedgerHalt(), 9000);
   add("db-size", () => checkDbSize(prisma));
   if (opts.full) {
     add("anchor-wallet", checkAnchorWallet);

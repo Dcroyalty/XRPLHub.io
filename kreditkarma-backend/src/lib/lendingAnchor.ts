@@ -8,6 +8,7 @@
 // to the exact list of Loan ids observed, so a loan later deleted from the ledger
 // is still provably attested to have existed.
 
+import { isLedgerRetry } from "./ledgerSubmit";
 import type { PrismaClient } from "@prisma/client";
 import { submitMemoAnchor, anchorSigningKeyPresent } from "./anchorMemo";
 import { LENDING_CANON_VERSION } from "./lendingCanon";
@@ -143,9 +144,9 @@ export async function maybeAnchorLendingReceipts(
     const misconfig = /ANCHOR_WALLET_SEED|REFUSING:|derives .* expected/i.test(msg);
     await prisma.lendingExposureAnchor.update({
       where: { id: row.id },
-      data: { status: misconfig ? "misconfigured" : "failed", error: msg },
+      data: { status: misconfig ? "misconfigured" : isLedgerRetry(err) ? "paused" : "failed", error: msg },
     });
-    await notifyError("cron lending-anchor", err, {
+    if (!isLedgerRetry(err)) await notifyError("cron lending-anchor", err, {
       faultClass: misconfig ? "misconfigured" : "transient",
       merkleRoot,
     });

@@ -15,6 +15,7 @@
 // GET /api/mpt/anchor echoes this exact description so a third party can
 // recompute the root from the published rows and check it against the memo.
 
+import { submitValidated } from "./ledgerSubmit";
 import { createHash } from "crypto";
 import { Wallet } from "xrpl";
 import type { PrismaClient } from "@prisma/client";
@@ -210,13 +211,13 @@ export async function submitAnchorTx(payload: AnchorMemoPayload): Promise<{
   const { Memos } = buildAnchorMemo(payload);
   const client = await connectMainnetOrThrow();
   try {
-    const prepared = await client.autofill({
+    // Halt-safe: pauses if the ledger isn't moving, validated Sequence, bounded wait (src/lib/ledgerSubmit.ts).
+    const { result: submitted, prepared } = await submitValidated(client, wallet, {
       TransactionType: "AccountSet",
       Account: wallet.classicAddress,
       Memos,
-    } as unknown as Parameters<typeof client.autofill>[0]);
-    const signed = wallet.sign(prepared);
-    const res = await client.submitAndWait(signed.tx_blob);
+    } as Record<string, unknown>);
+    const res = { result: submitted };
     const meta = res.result.meta;
     const engineResult =
       meta && typeof meta === "object" ? (meta as { TransactionResult: string }).TransactionResult : "unknown";

@@ -186,6 +186,8 @@ interface NodeProbe {
   ok: boolean;
   ledgerIndex?: number;
   amendmentBlocked?: boolean;
+  /** Seconds since this node's last VALIDATED ledger closed (server_info validated_ledger.age). Grows during a halt. */
+  ageSec?: number;
 }
 
 async function probeServerInfo(url: string): Promise<NodeProbe> {
@@ -197,11 +199,12 @@ async function probeServerInfo(url: string): Promise<NodeProbe> {
       signal: AbortSignal.timeout(SERVER_INFO_TIMEOUT_MS),
     });
     if (!res.ok) return { url, ok: false };
-    const j = (await res.json()) as { result?: { info?: { amendment_blocked?: boolean; validated_ledger?: { seq?: number } } } };
+    const j = (await res.json()) as { result?: { info?: { amendment_blocked?: boolean; validated_ledger?: { seq?: number; age?: number } } } };
     const info = j.result?.info;
     const seq = info?.validated_ledger?.seq;
     if (!info || typeof seq !== "number") return { url, ok: false };
-    return { url, ok: true, ledgerIndex: seq, amendmentBlocked: !!info.amendment_blocked };
+    const age = info.validated_ledger?.age;
+    return { url, ok: true, ledgerIndex: seq, amendmentBlocked: !!info.amendment_blocked, ageSec: typeof age === "number" ? age : undefined };
   } catch {
     return { url, ok: false };
   }
@@ -219,7 +222,16 @@ export interface StalenessSweepResult {
   cooled: string[]; // hosts actually cooled this sweep
   /** true = some flagged nodes were deliberately left uncooled to respect MIN_HEALTHY_NODES -- needs a human. */
   floorHit: boolean;
+  /** Freshest validated-ledger age (seconds) among responding nodes; null if no node reported one. */
+  freshestAgeSec: number | null;
+  /** EVERY responding node (≥2) has had no new validated ledger for HALT_AGE_SEC: the whole XRP Ledger stopped. */
+  halted: boolean;
+  /** Some nodes stale while others are fresh: OUR node(s) are bad, the network is fine. */
+  staleHosts: string[];
 }
+
+/** No validated ledger for this long on every node = the network is halted (ledgers normally close every ~4 s). */
+export const HALT_AGE_SEC = 120;
 
 /** Largest group of values within CLUSTER_BAND of each other; ties keep the first (sorted ascending). */
 function largestCluster(values: Array<{ url: string; ledgerIndex: number }>): { members: typeof values; index: number } | null {
@@ -276,8 +288,15 @@ export async function sweepNodeHealth(nodes: string[] = XRPL_NODES): Promise<Sta
     if (wasHealthy) remainingHealthy--;
   }
 
+  const aged = ok.filter((p) => typeof p.ageSec === "number") as Array<NodeProbe & { ageSec: number }>;
+  const freshestAgeSec = aged.length ? Math.min(...aged.map((p) => p.ageSec)) : null;
+  const halted = aged.length >= 2 && aged.every((p) => p.ageSec > HALT_AGE_SEC);
+  const staleHosts = halted ? [] : aged.filter((p) => p.ageSec > HALT_AGE_SEC).map((p) => host(p.url));
   const result: StalenessSweepResult = {
     ranAt: now,
+    freshestAgeSec,
+    halted,
+    staleHosts,
     trusted,
     majorityLedgerIndex: cluster?.index ?? null,
     clusterSize: cluster?.members.length ?? 0,
@@ -304,4 +323,27 @@ async function ensureSweepFresh(): Promise<StalenessSweepResult | null> {
     sweepInFlight = sweepNodeHealth().finally(() => { sweepInFlight = null; });
   }
   return sweepInFlight;
+}
+
+// ── Is the XRP Ledger moving? (halt detection, 2026-10-11) ───────────────────────────────────────────────────────────
+// On 2025-02-04 the XRP Ledger stopped validating for 64 minutes. During a halt every node still answers — with the
+// SAME old ledger — so the majority check above stays "trusted". Only the ledger's AGE tells a halt apart.
+export type LedgerState = "ok" | "halted" | "degraded" | "unreachable";
+export interface LedgerStatus { state: LedgerState; ageSec: number | null; ledgerIndex: number | null; message: string; checkedAt: number }
+let lastStatus: LedgerStatus | null = null;
+/** Plain-English message customers see while the ledger is halted. */
+export const LEDGER_PAUSED_MESSAGE = "The XRP Ledger is paused right now. Nothing is lost — we'll send it as soon as it resumes.";
+/** Cached 30 s. Never throws. */
+export async function ledgerStatus(maxAgeMs = 30_000): Promise<LedgerStatus> {
+  if (lastStatus && Date.now() - lastStatus.checkedAt < maxAgeMs) return lastStatus;
+  const r = await sweepNodeHealth().catch(() => null);
+  const st: LedgerStatus = !r || r.responded === 0
+    ? { state: "unreachable", ageSec: null, ledgerIndex: null, message: "We can't reach the XRP Ledger right now. Nothing is lost — we'll try again shortly.", checkedAt: Date.now() }
+    : r.halted
+      ? { state: "halted", ageSec: r.freshestAgeSec, ledgerIndex: r.majorityLedgerIndex, message: LEDGER_PAUSED_MESSAGE, checkedAt: Date.now() }
+      : r.staleHosts.length
+        ? { state: "degraded", ageSec: r.freshestAgeSec, ledgerIndex: r.majorityLedgerIndex, message: "ok (some of our ledger connections are behind; using the healthy ones)", checkedAt: Date.now() }
+        : { state: "ok", ageSec: r.freshestAgeSec, ledgerIndex: r.majorityLedgerIndex, message: "ok", checkedAt: Date.now() };
+  lastStatus = st;
+  return st;
 }

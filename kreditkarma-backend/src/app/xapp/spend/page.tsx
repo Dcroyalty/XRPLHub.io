@@ -8,7 +8,7 @@
 // faked) → a 12-hour session in sessionStorage → GET /api/xapp/plans lists this account's plans.
 
 import React, { useEffect, useState } from "react";
-import { API, XappFooter, applyXappTheme, readXapp, s, saveXapp, saveXappStyle, v, type XappState } from "../../spend/ui";
+import { API, XappFooter, applyXappTheme, readXapp, s, saveXapp, saveXappStyle, v, type XappState, LedgerBanner } from "../../spend/ui";
 
 type PlanRow = {
   id: string; name: string | null; kind: string; period: string; currency: string; checkSize: string; payees: string[];
@@ -61,7 +61,7 @@ export default function SpendXapp() {
 
   return (
     <div style={s.shell}>
-      <main style={{ ...s.page, paddingTop: 16 }}>
+      <main style={{ ...s.page, paddingTop: 16 }}><LedgerBanner />
         <h1 style={s.h1}>Spend Controls</h1>
         <p style={s.sub}>Give money with rules: an allowance someone can only spend where you pick, or a bill paid every week or month. You approve every payment here; the person you pay cashes it with their own wallet. Free.</p>
         {x && <p style={{ ...s.small, marginTop: -10 }}>Account <span style={s.mono}>{x.account}</span>{!x.canSign && " · read-only in Xaman: you can look, but not approve"}</p>}

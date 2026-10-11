@@ -7,6 +7,7 @@
 // than MONITOR_ANCHOR_MIN_INTERVAL_MS. Observations are never modified once written — only `anchorId`
 // is set — so a batch that fails simply stays unanchored and is included in the next attempt.
 
+import { isLedgerRetry } from "./ledgerSubmit";
 import type { PrismaClient } from "@prisma/client";
 import { submitMemoAnchor, anchorSigningKeyPresent } from "./anchorMemo";
 import { MONITOR_CANON_VERSION, MONITOR_MEMO_TYPE } from "./monitorCanon";
@@ -87,8 +88,8 @@ export async function maybeAnchorMonitorObservations(prisma: PrismaClient, opts:
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     const misconfig = /ANCHOR_WALLET_SEED|REFUSING:|derives .* expected/i.test(msg);
-    await prisma.monitorAnchor.update({ where: { id: row.id }, data: { status: misconfig ? "misconfigured" : "failed", error: msg } });
-    await notifyError("cron monitor-anchor", err, { faultClass: misconfig ? "misconfigured" : "transient", merkleRoot });
+    await prisma.monitorAnchor.update({ where: { id: row.id }, data: { status: misconfig ? "misconfigured" : isLedgerRetry(err) ? "paused" : "failed", error: msg } });
+    if (!isLedgerRetry(err)) await notifyError("cron monitor-anchor", err, { faultClass: misconfig ? "misconfigured" : "transient", merkleRoot });
     return { attempted: true, submitted: false, faultClass: misconfig ? "misconfigured" : "transient", reason: `monitor anchor failed: ${msg}`, leafCount: unanchored.length, merkleRoot, anchorId: row.id };
   }
 }

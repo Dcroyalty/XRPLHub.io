@@ -17,6 +17,8 @@
 //      issuer's own on-chain history and cross-checks it against what THIS module actually issued,
 //      independent of whether this code path is what put a given CredentialCreate on the ledger.
 
+import { isLedgerRetry } from "./ledgerSubmit";
+import { xrplRpc } from "./xrplNodes";
 import type { PrismaClient } from "@prisma/client";
 import { planScoreCredential, issueScoreCredential, ScoreNotEligibleError } from "./credentials";
 import { planMptDeclaredCredential, issueMptDeclaredCredential } from "./mptCredential";
@@ -35,7 +37,7 @@ export interface AutoIssueOutcome {
   requestId: string;
   kind: string;
   subject: string;
-  result: "issued" | "failed" | "skipped_cap";
+  result: "issued" | "failed" | "skipped_cap" | "paused";
   txHash?: string;
   reason?: string;
 }
@@ -86,23 +88,19 @@ export async function runAutoIssuance(prisma: PrismaClient, opts: { deadlineMs?:
       if (q.kind === "score") {
         const plan = await planScoreCredential(q.subject); // re-scores internally; throws ScoreNotEligibleError if it no longer clears the floor
         const res = await issueScoreCredential(plan);
-        if (res.engineResult !== "tesSUCCESS") throw new Error(`engine result ${res.engineResult}`);
-        txHash = res.txHash;
+        txHash = await settledHash(res, plan.txjson as Record<string, unknown>);
       } else if (q.kind === "mpt-declared") {
         const plan = planMptDeclaredCredential(q.subject);
         const res = await issueMptDeclaredCredential(plan);
-        if (res.engineResult !== "tesSUCCESS") throw new Error(`engine result ${res.engineResult}`);
-        txHash = res.txHash;
+        txHash = await settledHash(res, plan.txjson as Record<string, unknown>);
       } else if (q.kind === "screen-nomatch") {
         const plan = planScreenCredential(q.subject);
         const res = await issueScreenCredential(prisma, plan); // re-screens internally; throws ScreenCredListedError if listed now
-        if (res.engineResult !== "tesSUCCESS") throw new Error(`engine result ${res.engineResult}`);
-        txHash = res.txHash;
+        txHash = await settledHash(res, plan.txjson as Record<string, unknown>);
       } else if (q.kind === "domain-verified") {
         const plan = planDomainCredential(q.subject);
         const res = await issueDomainCredential(plan); // re-verifies internally; throws if the link no longer holds
-        if (res.engineResult !== "tesSUCCESS") throw new Error(`engine result ${res.engineResult}`);
-        txHash = res.txHash;
+        txHash = await settledHash(res, plan.txjson as Record<string, unknown>);
       } else {
         throw new Error(`unknown credential kind "${q.kind}"`);
       }
@@ -111,6 +109,14 @@ export async function runAutoIssuance(prisma: PrismaClient, opts: { deadlineMs?:
       issuedToday++;
       processed.push({ requestId: q.id, kind: q.kind, subject: q.subject, result: "issued", txHash });
     } catch (e) {
+      // HALT / unreachable / submitted-but-not-validated: NOT a failure. Leave it queued for the next run and stop this
+      // run (every later request would hit the same paused ledger). Nothing is marked issued unless a validated ledger says so.
+      if (isLedgerRetry(e)) {
+        const reason = e instanceof Error ? e.message : String(e);
+        await prisma.credentialRequest.update({ where: { id: q.id }, data: { note: `paused (ledger): ${reason}`.slice(0, 500) } }).catch(() => {});
+        processed.push({ requestId: q.id, kind: q.kind, subject: q.subject, result: "paused", reason: `ledger paused — left queued: ${reason}` });
+        break;
+      }
       // A tier change / re-listed / domain-no-longer-verified is a normal, expected refusal (the fact stopped
       // being true) -- not a system fault. Mark failed so the queue does not retry it forever; a fresh request
       // (e.g. the subject asks again once eligible) queues normally.
@@ -124,4 +130,18 @@ export async function runAutoIssuance(prisma: PrismaClient, opts: { deadlineMs?:
   }
 
   return { ran: true, issuedToday, cap, processed };
+}
+
+/** The hash to record for an issuance: tesSUCCESS → its own hash. tecDUPLICATE (an earlier attempt, e.g. one stranded by a
+ *  ledger halt, already landed) → the existing credential's PreviousTxnID, but ONLY if the validated ledger really holds
+ *  that unexpired credential from us. Anything else throws (the caller marks it failed). */
+async function settledHash(res: { engineResult: string; txHash: string }, txjson: Record<string, unknown>): Promise<string> {
+  if (res.engineResult === "tesSUCCESS") return res.txHash;
+  if (res.engineResult === "tecDUPLICATE") {
+    const r = await xrplRpc("ledger_entry", { credential: { subject: txjson.Subject, issuer: txjson.Account, credential_type: txjson.CredentialType }, ledger_index: "validated" });
+    const node = r.ok ? ((r.body.result as { node?: { PreviousTxnID?: string; Expiration?: number } })?.node ?? null) : null;
+    const nowRipple = Math.floor(Date.now() / 1000) - 946_684_800;
+    if (node && (node.Expiration == null || node.Expiration > nowRipple) && node.PreviousTxnID) return node.PreviousTxnID;
+  }
+  throw new Error(`engine result ${res.engineResult}`);
 }

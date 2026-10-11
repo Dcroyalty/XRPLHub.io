@@ -330,3 +330,34 @@ export function ConnectXaman({ wallet, onChange, purpose }: { wallet: string | n
     </div>
   );
 }
+
+// ── XRP Ledger halt banner (2026-10-11) ─────────────────────────────────────────────────────────────────────────────
+// If the XRP Ledger stops closing ledgers (it did for 64 minutes on 2025-02-04), say so plainly instead of an error.
+export function useLedgerPaused(): string | null {
+  const [msg, setMsg] = useState<string | null>(null);
+  useEffect(() => {
+    let dead = false;
+    const check = async () => {
+      try {
+        const r = await fetch(`${API}/api/ledger-status`);
+        const j = (await r.json()) as { paused?: boolean; message?: string | null };
+        if (!dead) setMsg(j.paused ? (j.message ?? "The XRP Ledger is paused right now. Nothing is lost — we'll send it as soon as it resumes.") : null);
+      } catch { /* banner is best-effort */ }
+    };
+    void check();
+    const t = setInterval(check, 60_000);
+    return () => { dead = true; clearInterval(t); };
+  }, []);
+  return msg;
+}
+export function LedgerBanner({ dark = false }: { dark?: boolean }) {
+  const msg = useLedgerPaused();
+  if (!msg) return null;
+  return (
+    <div role="status" style={dark
+      ? { background: "rgba(245,158,11,.12)", border: "1px solid rgba(245,158,11,.4)", color: "#fcd34d", borderRadius: 12, padding: "12px 16px", margin: "12px auto", maxWidth: 1240, fontSize: 14, fontWeight: 600 }
+      : { ...s.card, background: v("warn-bg", "#fffbea"), borderColor: v("warn-border", "#f0e3a8"), color: v("warn-fg", "#4a4a3a"), fontSize: 14, fontWeight: 600 }}>
+      ⏸ {msg}
+    </div>
+  );
+}

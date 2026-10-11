@@ -5,7 +5,7 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { API, ConnectXaman, Disclosure, s, useSignedInWallet } from "../spend/ui";
+import { API, ConnectXaman, Disclosure, s, useSignedInWallet, LedgerBanner, useLedgerPaused } from "../spend/ui";
 import { watchXaman } from "@/lib/wallet/xamanWatch";
 
 type Row = { address: string; amount: string; currency: "XRP" | "RLUSD"; destinationTag: string; label: string };
@@ -27,6 +27,7 @@ export default function SendManyPage() {
   const [prep, setPrep] = useState<Prepared | null>(null);
   const [status, setStatus] = useState<Status | null>(null);
   const approveRef = useRef<HTMLDivElement>(null);
+  const ledgerPaused = useLedgerPaused();
 
   const set = (i: number, k: keyof Row, v: string) => setRows((rs) => rs.map((r, j) => (j === i ? { ...r, [k]: v } : r)));
   const total = (c: "XRP" | "RLUSD") => rows.filter((r) => r.currency === c).reduce((a, r) => a + (Number(r.amount) || 0), 0);
@@ -76,7 +77,7 @@ export default function SendManyPage() {
   const st = status?.state;
   return (
     <div style={s.shell}>
-      <main style={s.page}>
+      <main style={s.page}><LedgerBanner />
         <Link href="/" style={s.small}>← XRPLHub</Link>
         <h1 style={s.h1}>Pay up to 8 people with one approval</h1>
         <p style={s.sub}>
@@ -134,7 +135,7 @@ export default function SendManyPage() {
                 <p style={s.small}>Network fee for the whole batch: {prep.networkFeeXrp} XRP. Approve it before sending anything else from this wallet — otherwise the XRP Ledger refuses it and nobody is paid.</p>
               </>
             )}
-            {st === "pending_ledger" && <p style={{ fontSize: 15 }}>Approved in Xaman. Waiting for the XRP Ledger to confirm every payment…</p>}
+            {st === "pending_ledger" && <p style={{ fontSize: 15 }}>{ledgerPaused ? `Approved in Xaman. ${ledgerPaused}` : "Approved in Xaman. Waiting for the XRP Ledger to confirm every payment…"}</p>}
             {st === "done" && (
               <>
                 <p style={{ ...s.h2, fontSize: 18, color: "#047857" }}>Done — all {status?.payments?.length} payments are on the XRP Ledger.</p>

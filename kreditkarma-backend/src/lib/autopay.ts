@@ -230,9 +230,24 @@ export async function autopayPreflight(rpc: Rpc, i: PreflightInput, rlusd: Rlusd
 }
 
 // ── the scheduler ──────────────────────────────────────────────────────────────────────────────────────────────────
-export interface DueRow { id: string; periodStart: Date; periodEnd: Date; status: RowStatus; blobEnc: string | null; txHash: string | null; attempts: number }
+export interface DueRow {
+  id: string; periodStart: Date; periodEnd: Date; status: RowStatus; blobEnc: string | null; txHash: string | null; attempts: number;
+  /** For checking a node's rejection against the VALIDATED ledger before believing it (halt / bad-node safety). */
+  account?: string; ticket?: number; lastLedger?: number;
+}
 export type RowPatch = Partial<{ status: RowStatus; result: string; reason: string; submittedAt: Date; settledAt: Date; attempts: number }>;
-export type Outcome = "waiting" | "submitted" | "paid" | "failed" | "missed" | "cancelled" | "retry" | "skipped";
+export type Outcome = "waiting" | "submitted" | "paid" | "failed" | "missed" | "cancelled" | "retry" | "paused" | "skipped";
+
+/** No new validated ledger for this long = halted: don't submit, retry next run (same rule as src/lib/xrplNodes.ts). */
+export const HALT_AGE_SEC = 120;
+/** null = can't tell (treat like unreachable: retry). */
+export async function ledgerMoving(rpc: Rpc): Promise<boolean | null> {
+  const r = await rpc("server_info", {});
+  const vl = (r?.info as { validated_ledger?: { seq?: number; age?: number } } | undefined)?.validated_ledger;
+  if (!r || r.error) return null;
+  if (!vl || typeof vl.seq !== "number") return false;
+  return !(typeof vl.age === "number" && vl.age > HALT_AGE_SEC);
+}
 
 /** Plain-English reason for a final ledger failure (shown to payer and payee). */
 export function failureReason(code: string): string {
@@ -283,7 +298,7 @@ export async function processRow(
   if (seen.state === "final") return settle(row, seen.code, ctx);
 
   if (now.getTime() >= row.periodEnd.getTime() + AUTOPAY_GRACE_S * 1000) {
-    const reason = "Autopay couldn't send this payment during its week or month.";
+    const reason = "Autopay couldn't send this payment during its week or month (the XRP Ledger didn't accept it in time).";
     await ctx.update(row.id, { status: "missed", reason, settledAt: now });
     await ctx.notify(row.id, "missed", reason);
     return "missed";
@@ -295,6 +310,13 @@ export async function processRow(
     await ctx.update(row.id, { status: "failed", result: "decrypt_failed", reason, settledAt: now });
     await ctx.notify(row.id, "failed", reason);
     return "failed";
+  }
+  // LEDGER HALTED (no new validated ledger) or unreachable: don't submit. Not sent yet — the next run retries. The
+  // pre-signed payment's LastLedgerSequence only gets FURTHER away while no ledgers close, so a halt never expires it.
+  const moving = await ledgerMoving(rpc);
+  if (moving !== true) {
+    await ctx.update(row.id, { result: moving === false ? "ledger_halted" : "ledger_unreachable" });
+    return "paused";
   }
   const r = await rpc("submit", { tx_blob: blob });
   const code = String(r?.engine_result ?? "");
@@ -312,26 +334,32 @@ export async function processRow(
     }
     return "submitted";
   }
+  // tef / tem: ONE node refused it before any ledger processed it. During a halt or with a bad node that is not proof,
+  // so it never counts as failed on its own. Only the VALIDATED ledger can settle it.
   if (code === "tefNO_TICKET") {
-    // The ticket is gone. If THIS payment used it, finalResult will see it; otherwise the payer cancelled.
     const again = await finalResult(rpc, row.txHash);
-    if (again.state === "final") return settle(row, again.code, ctx);
+    if (again.state === "final") return settle(row, again.code, ctx); // THIS payment used the ticket
+    if (row.account && row.ticket != null) {
+      const held = await ticketsOnLedger(rpc, row.account);
+      if (held === null || held.includes(row.ticket)) { await ctx.update(row.id, { attempts, result: `${code} (validated ledger still holds the ticket — node disagrees; retry)` }); return "retry"; }
+    }
     await ctx.update(row.id, { status: "cancelled", result: code, reason: "The payer cancelled Autopay.", settledAt: now, attempts });
     return "cancelled";
   }
   if (code === "tefMAX_LEDGER") {
-    const reason = "This payment's approval had expired.";
-    await ctx.update(row.id, { status: "missed", result: code, reason, settledAt: now, attempts });
-    await ctx.notify(row.id, "missed", reason);
-    return "missed";
+    const v = await validatedLedger(rpc);
+    if (row.lastLedger != null && v && v.index > row.lastLedger) {
+      const reason = "This payment's approval had expired.";
+      await ctx.update(row.id, { status: "missed", result: code, reason, settledAt: now, attempts });
+      await ctx.notify(row.id, "missed", reason);
+      return "missed";
+    }
+    await ctx.update(row.id, { attempts, result: `${code} (validated ledger is not past its expiry — node disagrees; retry)` });
+    return "retry";
   }
-  if (code.startsWith("tef") || code.startsWith("tem")) {
-    const reason = failureReason(code);
-    await ctx.update(row.id, { status: "failed", result: code, reason, settledAt: now, attempts });
-    await ctx.notify(row.id, "failed", reason);
-    return "failed";
-  }
-  await ctx.update(row.id, { attempts, result: code }); // tel / ter: not applied, safe to send again next run
+  // Any other tef/tem/tel/ter: not applied, nothing settled. Retry next run; if it can never go through, the period's
+  // window closes and it is reported as missed (with this code) — never as "failed" without a validated ledger.
+  await ctx.update(row.id, { attempts, result: code });
   return "retry";
 }
 
