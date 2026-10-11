@@ -36,6 +36,7 @@ import { EXPECTED_ISSUER } from "./credentials";
 import { TREASURY } from "./pricing";
 import { maxTotalSubjects } from "./monitorEngine";
 import { checkCredentialAnomalies } from "./credentialAnomalyWatch";
+import { userTokensActive, xummConfigured } from "./xumm";
 
 export type Level = "ok" | "warn" | "red";
 export interface Finding {
@@ -376,6 +377,21 @@ async function checkBithomp(): Promise<Finding> {
 //   some nodes stale  → OUR node list has bad nodes (they're skipped; replace them if it lasts)
 //   no node answers   → OUR connectivity (or every node at once)
 // Runs in BOTH crons (06:00 and 07:00 UTC) so a halt during either run is reported by email.
+/** Spend Controls payers we can no longer reach in Xaman: a push token dies 30 days after the payer's last signature,
+ *  and Autopay payers sign nothing after setup. Warn (the payer still sees everything in the xApp / on the plan page). */
+export async function checkSpendPushTokens(prisma: PrismaClient): Promise<Finding> {
+  if (!xummConfigured()) return { key: "spend-push-tokens", level: "ok", message: "Xaman not configured" };
+  const plans = await prisma.spendPlan.findMany({ where: { kind: "subscription", status: "active", xamanUserToken: { not: null } }, select: { id: true, autopayStatus: true, xamanUserToken: true }, take: 200 });
+  if (!plans.length) return { key: "spend-push-tokens", level: "ok", message: "no subscription payers with push" };
+  const v = await userTokensActive([...new Set(plans.map((p) => p.xamanUserToken!))]);
+  if (!v) return { key: "spend-push-tokens", level: "warn", message: "could not ask Xaman whether payers' push tokens are still active" };
+  const dead = plans.filter((p) => v.get(p.xamanUserToken!)?.active !== true);
+  const soon = plans.filter((p) => { const e = v.get(p.xamanUserToken!)?.expires; return v.get(p.xamanUserToken!)?.active && e && e.getTime() - Date.now() < 7 * 86_400_000; });
+  const auto = dead.filter((p) => p.autopayStatus === "on").length;
+  if (dead.length) return { key: "spend-push-tokens", level: "warn", message: `${dead.length} of ${plans.length} subscription payer(s) can no longer get Xaman pushes (token expired: 30 days after their last signature)${auto ? `, ${auto} on Autopay` : ""} — if their payment fails they only see it in the xApp / on their plan page. Plans: ${dead.slice(0, 5).map((p) => p.id).join(", ")}` };
+  return { key: "spend-push-tokens", level: "ok", message: `all ${plans.length} subscription payer(s) reachable in Xaman${soon.length ? ` (${soon.length} expire within 7 days)` : ""}` };
+}
+
 export async function checkLedgerHalt(nodes?: string[]): Promise<Finding> {
   const r = await sweepNodeHealth(nodes).catch(() => null);
   if (!r || r.responded === 0) {
@@ -558,6 +574,7 @@ export async function runWatchdog(prisma: PrismaClient, opts: WatchdogOptions = 
   add("amendment-reader", () => checkAmendments(prisma));
   add("ledger-halt", () => checkLedgerHalt(), 9000);
   add("db-size", () => checkDbSize(prisma));
+  add("spend-push-tokens", () => checkSpendPushTokens(prisma));
   if (opts.full) {
     add("anchor-wallet", checkAnchorWallet);
     add("credential-expiry", checkCredentialExpiry);

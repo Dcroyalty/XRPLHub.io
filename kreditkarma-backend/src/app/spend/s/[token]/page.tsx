@@ -14,7 +14,7 @@ const PERIOD_STATE: Record<string, string> = {
   autopay_scheduled: "Autopay: the payer approved this payment ahead of time. It is sent to you at the start of this period.",
   autopay_paid: "Paid by Autopay — it's already in your wallet", autopay_failed: "Autopay payment didn't go through",
 };
-type View = { plan: string; kind?: string; thisPeriod?: ThisPeriod; currency: string; places: Place[]; fundsWarning: string | null; howToSpend: string; disclosure: string[] };
+type View = { plan: string; kind?: string; ended?: boolean; thisPeriod?: ThisPeriod; currency: string; places: Place[]; fundsWarning: string | null; howToSpend: string; disclosure: string[] };
 
 export default function SharePage() {
   const { token } = useParams<{ token: string }>();
@@ -30,6 +30,7 @@ export default function SharePage() {
       <main style={s.page}><LedgerBanner />
         <h1 style={s.h1}>{v.plan}</h1>
         <p style={s.sub}>{v.howToSpend}</p>
+        {v.ended && <div style={{ ...s.card, background: "#fffbea", borderColor: "#f0e3a8" }}><p style={{ fontSize: 15, margin: 0 }}><strong>The payer ended this plan.</strong> No new payments will come. Any check still open below can be cashed until the payer cancels it.</p></div>}
         {v.thisPeriod && (
           <div style={{ ...s.card, borderColor: v.thisPeriod.state === "autopay_failed" ? "#f2b8b5" : ["ready_to_cash", "cashed", "autopay_paid", "autopay_scheduled"].includes(v.thisPeriod.state) ? "#99d5cc" : "#f0e3a8" }}>
             <p style={s.h2}>This week or month: {fmtDate(v.thisPeriod.periodStart)} → {fmtDate(v.thisPeriod.periodEnd)}</p>

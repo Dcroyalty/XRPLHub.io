@@ -247,3 +247,20 @@ export async function getPayloadStatus(uuid: string): Promise<PayloadStatus> {
     null;
   return { state: "signed", txid, signer, identifier, userToken, hex };
 }
+
+/**
+ * Is each Xaman push token still usable? Xaman: a user token "expires 30 days after the last successfully signed
+ * payload" (https://docs.xaman.dev/concepts/payloads-sign-requests/delivery/push) — opening the xApp doesn't extend it.
+ * POST /platform/user-tokens (xumm-sdk verifyUserTokens). Null when Xaman can't be asked.
+ */
+export async function userTokensActive(tokens: string[]): Promise<Map<string, { active: boolean; expires: Date | null }> | null> {
+  if (!tokens.length) return new Map();
+  try {
+    const res = await xummFetch("https://xumm.app/api/v1/platform/user-tokens", { method: "POST", body: JSON.stringify({ tokens }) });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { tokens?: { user_token: string; active: boolean; expires?: number }[] };
+    return new Map((data.tokens ?? []).map((x) => [x.user_token, { active: x.active === true, expires: x.expires ? new Date(x.expires * 1000) : null }]));
+  } catch {
+    return null;
+  }
+}

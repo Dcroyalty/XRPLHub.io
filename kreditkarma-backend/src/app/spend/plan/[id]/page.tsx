@@ -29,6 +29,7 @@ export default function PlanDashboard() {
   const [err, setErr] = useState("");
   const [sign, setSign] = useState<{ title: string; data: SignData; explain?: Explain } | null>(null);
   const xapp = useXapp();
+  const [confirmEnd, setConfirmEnd] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -85,10 +86,17 @@ export default function PlanDashboard() {
     } });
   };
 
+  const endPlan = async () => {
+    const j = await post("end", {});
+    if (j) { setConfirmEnd(false); void load(); }
+  };
+
   if (!d) return <div style={s.shell}><main style={s.page}><LedgerBanner />{err ? <p style={s.err}>{err}</p> : <p>Loading…</p>}</main></div>;
   const share = typeof window !== "undefined" ? `${window.location.origin}${d.plan.shareLink}` : d.plan.shareLink;
   const unsigned = d.current.filter((c) => c.status === "unsigned");
   const sub = d.plan.kind === "subscription";
+  const ended = d.plan.status === "ended";
+  const openNow = d.reserve.openChecks;
 
   return (
     <div style={s.shell}>
@@ -96,12 +104,21 @@ export default function PlanDashboard() {
         {xapp ? <a href="/xapp/spend" style={s.small}>← My plans</a> : <a href="/spend" style={s.small}>← Spend Controls</a>}
         <h1 style={s.h1}>{d.plan.name ?? (sub ? "Recurring payment" : "Allowance")}</h1>
         <p style={s.sub}>{sub ? "Recurring payment" : "Allowance"} · paid from <span style={s.mono}>{d.plan.funder}</span> · {d.plan.period} · {sub ? `${d.plan.checkSize} ${cur} each time` : `checks of ${d.plan.checkSize} ${cur}`}</p>
-        {sub && (
+        {ended && (
+          <div style={{ ...s.card, background: v("warn-bg", "#fffbea"), borderColor: v("warn-border", "#f0e3a8") }}>
+            <p style={{ ...s.h2, fontSize: 15 }}>This plan has ended</p>
+            <p style={{ ...s.small, color: v("warn-fg", "#4a4a3a"), margin: 0 }}>
+              No new payments are made or sent to you to approve, and it no longer shows in your list in Xaman.
+              {openNow > 0 ? ` ${openNow} check${openNow === 1 ? " is" : "s are"} still open and can be cashed until you cancel ${openNow === 1 ? "it" : "them"} below.` : " Nothing is left open."}
+            </p>
+          </div>
+        )}
+        {sub && !ended && (
           <div style={{ ...s.card, background: d.pushReady ? v("ok-bg", "#eef8f6") : v("warn-bg", "#fffbea") }}>
             <p style={{ ...s.small, color: v("fg", "#333"), margin: 0 }}>
               {d.pushReady
                 ? "Reminders on: when a new week or month starts, that payment is sent to your Xaman app to approve. Nothing is made ahead of time."
-                : "Approve this period's check in Xaman once to turn on reminders. After that, each new payment is sent to your Xaman app. Nothing is made ahead of time."}
+                : "Reminders are off. Xaman only lets us send payments to your app within 30 days of your last approval for XRPLHub. Approve this period's check in Xaman to turn them back on, or check this page when each week or month starts. Nothing is made ahead of time."}
             </p>
           </div>
         )}
@@ -195,6 +212,21 @@ export default function PlanDashboard() {
         )}
         <Disclosure lines={d.disclosure} />
         <button style={s.btnGhost} onClick={() => void load()}>Refresh</button>
+        {!ended && (
+          <div style={{ ...s.card, marginTop: 14, background: v("danger-bg", "#fff7f6"), borderColor: v("danger-border", "#f2b8b5") }}>
+            <p style={s.h2}>End this plan</p>
+            <p style={s.small}>
+              Stops this {sub ? "recurring payment" : "allowance"} for good: no new checks, nothing more sent to your Xaman app{d.autopay && d.autopay.status !== "off" ? ", and Autopay payments not yet sent are cancelled" : ""}.
+              Checks already made stay cashable until you cancel them on this page.{d.autopay && d.autopay.status !== "off" ? " Release the remaining Autopay payments here afterwards to get their XRP back." : ""} To start again, make a new plan.
+            </p>
+            {confirmEnd ? (
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <button style={{ ...s.btn, flex: "1 1 140px" }} onClick={() => void endPlan()}>Yes, end it</button>
+                <button style={{ ...s.btnGhost, flex: "1 1 140px" }} onClick={() => setConfirmEnd(false)}>Keep it</button>
+              </div>
+            ) : <button style={s.btnGhost} onClick={() => setConfirmEnd(true)}>End this plan…</button>}
+          </div>
+        )}
         {xapp && <XappFooter />}
       </main>
     </div>

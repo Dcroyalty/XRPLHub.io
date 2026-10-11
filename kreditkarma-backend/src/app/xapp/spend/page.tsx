@@ -13,6 +13,7 @@ import { API, XappFooter, applyXappTheme, readXapp, s, saveXapp, saveXappStyle, 
 type PlanRow = {
   id: string; name: string | null; kind: string; period: string; currency: string; checkSize: string; payees: string[];
   thisPeriod: { checks: number; unsigned: number; open: number }; pushReady: boolean;
+  autopay: "covered" | "failed" | null; autopayFailedReason: string | null;
 };
 
 export default function SpendXapp() {
@@ -89,8 +90,14 @@ export default function SpendXapp() {
                 {p.kind === "subscription" ? `Recurring payment · ${p.checkSize} ${p.currency} ${p.period === "weekly" ? "every week" : "every month"}` : `Allowance · ${p.period === "weekly" ? "weekly" : "monthly"} · ${p.payees.length} place${p.payees.length === 1 ? "" : "s"}`}
                 {" · "}{p.payees.slice(0, 3).join(", ")}
               </p>
+              {p.autopay === "failed" && (
+                <p style={{ fontSize: 14, margin: "6px 0 0", color: v("err", "#b91c1c") }}>
+                  <strong>Autopay didn&apos;t go through this period.</strong>{p.autopayFailedReason ? ` ${p.autopayFailedReason}` : ""} Open to approve a check instead →
+                </p>
+              )}
               <p style={{ fontSize: 14, margin: "6px 0 0" }}>
-                {p.thisPeriod.unsigned > 0
+                {p.autopay === "covered" ? <span style={{ color: v("ok", "#047857") }}>This period is paid by Autopay</span>
+                  : p.thisPeriod.unsigned > 0
                   ? <strong style={{ color: v("attn", "#b45309") }}>{p.thisPeriod.unsigned} payment{p.thisPeriod.unsigned === 1 ? "" : "s"} to approve this period →</strong>
                   : p.thisPeriod.checks > 0 ? <span style={{ color: v("ok", "#047857") }}>This period is approved ({p.thisPeriod.open} open)</span> : <span style={s.small}>Open to approve this period →</span>}
               </p>

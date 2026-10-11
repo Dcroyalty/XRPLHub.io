@@ -443,3 +443,28 @@ old ledger — so "do the nodes agree?" stays green; only the validated ledger's
   homepage, /spend (+ plan, share, cash), /send-many, /permissions and the xApp. Reads keep working during a halt.
 - Tests: scripts/test-autopay-halt-testnet.ts (16/16), scripts/test-ledger-submit-testnet.ts (7/7),
   scripts/test-ledger-halt-watchdog.ts (4/4). The treasury send functions are unused (grants are paid by a person).
+
+## 21. Spend Controls xApp in Xaman: identifier, pushes, token expiry, ending plans (2026-10-11)
+
+- **xApp identifier:** `sandbox.64e45fc7aaca`, assigned by the Xaman Developer Console (there is no custom-identifier
+  field). Test link: https://xumm.app/detect/xapp:sandbox.64e45fc7aaca. WebApp URL: https://www.xrplhub.io/xapp/spend.
+  (The `xrplhub_spend_` prefix in the code is a *payload* identifier, not the xApp identifier. Leave it.)
+- **"Push permission: No" in the console does NOT block our pushes.** Xaman: sign requests may be pushed by any app
+  once the user has interacted with it; only *custom xApp push events* need that permission
+  (https://docs.xaman.dev/concepts/limitations/push-permission). Spend Controls only pushes sign requests.
+- **User token expiry:** "expires 30 days after the **last** successfully signed payload"
+  (https://docs.xaman.dev/concepts/payloads-sign-requests/delivery/push). Opening the xApp does not extend it.
+  Autopay payers sign nothing after setup, so their token is usually dead by the time a payment could fail.
+  A monthly subscription signed on day 1 can also expire just before the next 31-day month starts. So:
+  - the cron reports every push Xaman did not deliver as a RED line ("spend push NOT delivered"), naming the plan
+    and saying whether it was an Autopay failure notice;
+  - watchdog `spend-push-tokens` (warn) asks Xaman (`POST /platform/user-tokens`) which payers are unreachable;
+  - the xApp plan list shows "Autopay didn't go through this period" in red, the dashboard says "Reminders are off"
+    when the token is dead, and the payee's link shows the failure;
+  - the Autopay terms tell customers that pushes only work within 30 days of their last approval.
+  - NOT built (owner's decision): an optional email for failure notices, or a monthly "keep reminders on" sign-in
+    request that would renew the token.
+- **Ending a plan:** dashboard → "End this plan…" → "Yes, end it" (`POST /api/spend/plans/:id/end`). Status `ended`:
+  no new checks, no pushes (token dropped), unsent Autopay payments cancelled, hidden from the xApp list
+  (`/api/xapp/plans` lists `status: "active"` only), the payee's link says it ended. Open checks stay cancellable,
+  tickets stay releasable. Can't be undone.

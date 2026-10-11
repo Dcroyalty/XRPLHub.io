@@ -85,7 +85,7 @@ export async function GET(req: Request) {
     });
     // healthchecks.io is the alert channel: /fail on any open RED (watchdog or money-path health), else success.
     // Autopay failures are customer-facing: they go out as RED lines so healthchecks.io emails the owner today.
-    await pingHealthcheckForRun(prisma, "cron/index-mpts", watchdog, [...health.reds.map((r) => `health ${r.name} DOWN: ${r.detail}`), ...(autopay?.notices ?? []), ...(spendPaused ? [`spend-controls paused: XRP Ledger ${ledger.state} — Autopay sends and payer sign requests skipped this run; they retry automatically next run`] : [])]);
+    await pingHealthcheckForRun(prisma, "cron/index-mpts", watchdog, [...health.reds.map((r) => `health ${r.name} DOWN: ${r.detail}`), ...(autopay?.notices ?? []), ...(subscriptions && "unreached" in subscriptions ? subscriptions.unreached.map((l) => `spend push NOT delivered: ${l}`) : []), ...(spendPaused ? [`spend-controls paused: XRP Ledger ${ledger.state} — Autopay sends and payer sign requests skipped this run; they retry automatically next run`] : [])]);
 
     return NextResponse.json({ ...progress, anchor, autopay, subscriptions, health: { overall: health.overall, reds: health.reds, ambers: health.ambers }, watchdog: watchdog ? { alerted: watchdog.alerted, recovered: watchdog.recovered, weeklySent: watchdog.weeklySent, open: watchdog.findings.filter((f) => f.level !== "ok").map((f) => ({ key: f.key, level: f.level, message: f.message })) } : null });
   } catch (err) {

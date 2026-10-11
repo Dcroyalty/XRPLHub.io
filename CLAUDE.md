@@ -44,7 +44,7 @@ The live production app is a single Next.js project in **`kreditkarma-backend/`*
   FUTURE period on its own Ticket with a far-future LastLedgerSequence WE set (Xaman keeps it: probe 427afc24). Blobs are
   encrypted (`SPEND_AUTOPAY_KEY`), never returned, sent one per period by the 07:00 cron, never early, never retried after
   a tec. Cancel = stop + payer burns the remaining tickets. Starts the period AFTER the current one, so it never overlaps a
-  check. Testnet E2E: `node scripts/test-autopay-testnet.ts`. The **xApp** (`/xapp/spend`)
+  check. Testnet E2E: `node scripts/test-autopay-testnet.ts`. The **xApp** (`/xapp/spend`, Xaman identifier `sandbox.64e45fc7aaca`; push/token rules in AUTONOMY §21)
   shows ONLY Spend Controls and signs with `xumm-xapp-sdk` `openSignRequest` — never add the catalog, DEX or anything
   Xaman does itself to it.
 - **Focus (competitive map, 2026-10-06):** lead with XRPLScore + monitoring + lending readiness, Spend Controls, MPT

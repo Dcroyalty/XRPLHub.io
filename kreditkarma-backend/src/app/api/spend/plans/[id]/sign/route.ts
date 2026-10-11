@@ -21,6 +21,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   const { id } = await ctx.params;
   const plan = await loadPlan(id);
   if (!plan) return spendErr(404, "not_found", "No plan with that id.");
+  if (plan.status !== "active") return spendErr(409, "plan_ended", "This plan has ended, so there is nothing to approve.");
   const body = (await req.json().catch(() => ({}))) as { invoiceId?: unknown; batch?: unknown };
 
   // A period Autopay already pays never gets a check too (that would pay it twice).

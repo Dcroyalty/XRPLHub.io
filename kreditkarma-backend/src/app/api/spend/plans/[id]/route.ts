@@ -8,6 +8,7 @@ import { prisma } from "@/lib/xrplscore-db";
 import { rateLimit, rateLimited } from "@/lib/rateLimit";
 import { batchAvailability, checkCreateFor, ensurePeriodChecks, fromRipple, funderBalance, ownerReserveXrp, periodWindow, syncPlanChecks, type PlanCurrency, type Period } from "@/lib/spendControls";
 import { SPEND_DISCLOSURE, loadPlan, spendErr, spendJson } from "@/lib/spendApi";
+import { userTokensActive } from "@/lib/xumm";
 import { autopayCovers, autopayView } from "@/lib/spendAutopay";
 
 export const runtime = "nodejs";
@@ -23,7 +24,9 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
 
   // Free: every plan is live. (Plans created before 2026-10-06 may still carry an old paidThrough; it no longer matters.)
   const paid = true;
-  await ensurePeriodChecks(prisma, plan);
+  // An ended plan makes no new period checks and offers nothing to approve; open checks can still be cancelled.
+  const live = plan.status === "active";
+  if (live) await ensurePeriodChecks(prisma, plan);
   const sync = await syncPlanChecks(prisma, plan.id, plan.funder);
 
   const { start, end } = periodWindow(plan.period as Period);
@@ -40,7 +43,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
   const current = rows.filter((r) => r.periodStart.getTime() === start.getTime());
   const view = (r: (typeof rows)[number]) => {
     const coveredByAutopay = !!covers?.covered && r.periodStart.getTime() === start.getTime();
-    const tx = r.status === "unsigned" && paid && !coveredByAutopay ? checkCreateFor(plan.funder, r, plan.currency) : null;
+    const tx = r.status === "unsigned" && paid && live && !coveredByAutopay ? checkCreateFor(plan.funder, r, plan.currency) : null;
     return {
       invoiceId: r.invoiceId, checkId: r.checkId, payee: r.payee.label, payeeAddress: r.payee.address, category: r.payee.category,
       seq: r.seq, amount: r.amount, currency: plan.currency, expires: fromRipple(r.expiration).toISOString(),
@@ -60,7 +63,8 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
     funderRlusd: plan.currency === "RLUSD" ? balance : null,
     // Subscriptions: whether the daily job can push next period's check to the funder's Xaman app (a token exists after
     // their first signed Spend request). The token itself is never returned.
-    pushReady: !!plan.xamanUserToken,
+    // Xaman drops a push token 30 days after the payer's last signature, so ask Xaman whether it still works.
+    pushReady: live && !!plan.xamanUserToken && (await userTokensActive([plan.xamanUserToken]).catch(() => null))?.get(plan.xamanUserToken)?.active !== false,
     ledgerSynced: sync.ok,
     batch,
     payments: payments.map((p) => ({ txHash: p.txHash, months: p.months, amount: p.amount, paidAt: p.paidAt })),

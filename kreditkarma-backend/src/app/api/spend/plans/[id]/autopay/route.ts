@@ -38,6 +38,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   if (plan.kind !== "subscription") return spendErr(409, "not_subscription", "Autopay is only for recurring payments.");
   const body = (await req.json().catch(() => ({}))) as { action?: unknown; periods?: unknown; uuid?: unknown; tickets?: unknown };
 
+  if (plan.status !== "active" && body.action !== "cancel" && body.action !== "release") return spendErr(409, "plan_ended", "This plan has ended. You can still release its remaining Autopay payments.");
+
   let r: { ok: true } & Record<string, unknown> | Fail;
   switch (body.action) {
     case "start": r = await startAutopay(prisma, plan, body.periods); break;

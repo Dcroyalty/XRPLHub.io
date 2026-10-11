@@ -338,9 +338,11 @@ export async function promptSubscriptions(
     /** Autopay (spendAutopay.autopayCovers): a covered period gets no check; a failed one gets a check with the reason. */
     autopay?: (planId: string, window: { start: Date; end: Date }) => Promise<{ covered: boolean; failedReason: string | null }>;
   } = {}
-): Promise<{ plans: number; pushed: number; alreadySigned: number; skipped: number; failed: number }> {
+): Promise<{ plans: number; pushed: number; alreadySigned: number; skipped: number; failed: number; unreached: string[] }> {
   const max = opts.max ?? 40, budgetMs = opts.budgetMs ?? 15_000, started = Date.now();
-  const out = { plans: 0, pushed: 0, alreadySigned: 0, skipped: 0, failed: 0 };
+  // unreached: a sign request Xaman did NOT deliver (most often the push token expired: 30 days after the payer's last
+  // signature). The payer still sees it in the xApp and on the plan page; the cron reports these to the owner as RED.
+  const out = { plans: 0, pushed: 0, alreadySigned: 0, skipped: 0, failed: 0, unreached: [] as string[] };
   try {
     const plans = await prisma.spendPlan.findMany({
       where: { kind: "subscription", status: "active", xamanUserToken: { not: null } },
@@ -360,9 +362,10 @@ export async function promptSubscriptions(
         if (!b.ok) { out.failed++; continue; }
         const label = `${ap?.failedReason ? `Autopay didn't go through (${ap.failedReason}) Approve this to pay now. ` : ""}${plan.name ?? "subscription"}: ${row.amount} ${plan.currency} to ${row.payee.label}`;
         const r = await push(b.txjson, label, plan.id, plan.xamanUserToken!).catch(() => null);
-        if (!r) { out.failed++; continue; }
-        await prisma.spendCheck.update({ where: { id: row.id }, data: { promptedAt: new Date(), promptUuid: r.uuid } });
-        if (r.pushed) out.pushed++; else out.failed++;
+        if (r) await prisma.spendCheck.update({ where: { id: row.id }, data: { promptedAt: new Date(), promptUuid: r.uuid } });
+        if (r?.pushed) { out.pushed++; continue; }
+        out.failed++;
+        out.unreached.push(`plan ${plan.id} (${plan.name ?? "subscription"}): Xaman did not deliver ${ap?.failedReason ? "the AUTOPAY FAILED notice" : "this period's sign request"} to payer ${plan.funder}${r ? "" : " (Xaman refused the request)"} — most likely their Xaman push token expired (30 days after their last signature). They see it only if they open the xApp or their plan page; the payee sees it on their link.`);
       }
       await prisma.spendPlan.update({ where: { id: plan.id }, data: { updatedAt: new Date() } }); // round-robin
     }

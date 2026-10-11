@@ -200,6 +200,22 @@ export async function cancelAutopay(prisma: PrismaClient, plan: Plan) {
   return { ok: true as const, cancelled: r.count };
 }
 
+/** End a plan (the payer's choice, from the dashboard): no more period checks or pushes, every Autopay payment not yet
+ *  sent is cancelled (a "pending" one already on its way is left to settle), the push token is dropped, and the plan
+ *  leaves the xApp list. Open checks stay cashable until the payer cancels them; tickets stay until released. */
+export async function endPlan(prisma: PrismaClient, plan: Plan) {
+  if (plan.status === "ended") return { ok: true as const, already: true, cancelledAutopay: 0 };
+  const r = await prisma.spendAutopayPayment.updateMany({
+    where: { planId: plan.id, status: { in: ["unsigned", "scheduled"] } },
+    data: { status: "cancelled", reason: "Plan ended by the payer." },
+  });
+  await prisma.spendPlan.update({
+    where: { id: plan.id },
+    data: { status: "ended", xamanUserToken: null, ...(plan.autopayStatus !== "off" ? { autopayStatus: "ended", autopayTicketUuid: null } : {}) },
+  });
+  return { ok: true as const, already: false, cancelledAutopay: r.count };
+}
+
 /** Our tickets still on the ledger whose payment will never be sent (cancelled / never approved / plan ended). */
 export async function releasableTickets(prisma: PrismaClient, plan: Plan, rpc: Rpc = mainnetRpc): Promise<number[] | null> {
   const rows = await prisma.spendAutopayPayment.findMany({ where: { planId: plan.id }, select: { ticket: true, status: true } });

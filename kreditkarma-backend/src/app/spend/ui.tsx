@@ -130,10 +130,11 @@ export function XappFooter() {
   return (
     <div style={{ borderTop: `1px solid ${v("border", "#e4e4e0")}`, marginTop: 22, paddingTop: 12, fontSize: 12, color: v("small", "#666"), lineHeight: 1.7 }}>
       <div>
-        Help: <a href="mailto:support@xrplhub.io" style={{ color: v("accent", "#0f766e") }}>support@xrplhub.io</a>
+        <ExtLink href="https://www.xrplhub.io/support" style={{ color: v("accent", "#0f766e") }}>Help &amp; support</ExtLink>
         {" · "}<ExtLink href="https://www.xrplhub.io/privacy" style={{ color: v("accent", "#0f766e") }}>Privacy Policy</ExtLink>
         {" · "}<ExtLink href="https://www.xrplhub.io/terms" style={{ color: v("accent", "#0f766e") }}>Terms</ExtLink>
       </div>
+      <div>Email: <span style={{ userSelect: "all" }}>support@xrplhub.io</span></div>
       <div>XRPLHub is an independent service. It is not affiliated with, endorsed by or operated by XRPL Labs or Xaman.</div>
     </div>
   );

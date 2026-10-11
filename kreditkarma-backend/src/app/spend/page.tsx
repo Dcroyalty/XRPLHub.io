@@ -103,8 +103,16 @@ export default function SpendPage() {
 
         <div style={s.card}>
           <p style={s.h2}>1. The {sub ? "payment" : "allowance"}</p>
+          {xapp ? (
+            <>
+              <p style={s.label}>Paying from your Xaman account</p>
+              <p style={{ ...s.mono, margin: "0 0 4px", wordBreak: "break-all" }}>{funder || "…"}</p>
+              <p style={{ ...s.small, margin: 0 }}>The account you opened Spend Controls with. To pay from another account, switch accounts in Xaman and open Spend Controls again.</p>
+            </>
+          ) : <>
           <label style={s.label}>Your XRP wallet address (you&apos;ll pay from it and approve each check there)</label>
-          <input style={{ ...s.input, ...s.mono, ...(wallet ? { background: v("subtle", "#f4f4f2") } : {}) }} value={funder} readOnly={!!wallet} onChange={(e) => setFunder(e.target.value)} placeholder={wallet === "" ? (xapp || inXamanWebview() ? "r… (reopen Spend Controls from Xaman to fill this in)" : "Sign in with Xaman above, or type it (Crossmark / GemWallet)") : "r…"} />
+          <input style={{ ...s.input, ...s.mono, ...(wallet ? { background: v("subtle", "#f4f4f2") } : {}) }} value={funder} readOnly={!!wallet || inXamanWebview()} onChange={(e) => setFunder(e.target.value)} placeholder={wallet === "" ? (xapp || inXamanWebview() ? "r… (reopen Spend Controls from Xaman to fill this in)" : "Sign in with Xaman above, or type it (Crossmark / GemWallet)") : "r…"} />
+          </>}
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
             <div style={{ flex: "1 1 180px" }}><label style={s.label}>Name (optional)</label><input style={s.input} value={name} onChange={(e) => setName(e.target.value)} placeholder={sub ? "Gym membership" : "Sam's allowance"} /></div>
             <div style={{ flex: "1 1 120px" }}><label style={s.label}>How often</label>

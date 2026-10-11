@@ -51,6 +51,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ token: string }
   return spendJson({
     plan: plan.name ?? (plan.kind === "subscription" ? "Subscription" : "Spending plan"),
     kind: plan.kind,
+    ended: plan.status === "ended",
     currency: plan.currency,
     ...(thisPeriod ? { thisPeriod } : {}),
     places: plan.payees.map((p) => {
