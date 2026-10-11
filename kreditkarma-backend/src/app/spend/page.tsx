@@ -6,7 +6,7 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import { API, ConnectXaman, Disclosure, s, useSignedInWallet, useXapp } from "./ui";
+import { API, ConnectXaman, Disclosure, XappFooter, inXamanWebview, s, useSignedInWallet, useXapp, v } from "./ui";
 
 type Payee = { address: string; label: string; category: string; budget: string; destinationTag: string };
 const CATEGORIES = ["food", "groceries", "clothing", "school", "transport", "health", "housing", "utilities", "entertainment", "other"];
@@ -93,9 +93,9 @@ export default function SpendPage() {
           ))}
         </div>
         {sub && (
-          <div style={{ ...s.card, background: "#eef8f6", borderColor: "#99d5cc" }}>
+          <div style={{ ...s.card, background: v("ok-bg", "#eef8f6"), borderColor: v("ok-border", "#99d5cc") }}>
             <p style={{ ...s.h2, fontSize: 14 }}>How recurring payments work</p>
-            <p style={{ ...s.small, color: "#334" }}>One check each week or month for the amount you set. A check can be cashed as soon as it exists, so we never make next month&apos;s early. When a new week or month starts, we send that payment to your Xaman app to approve (after you approve the first one). Until you approve it, that period isn&apos;t paid. Stop anytime: just don&apos;t approve it, or cancel a check before it&apos;s cashed. Tired of approving every month? Turn on Autopay on your dashboard after you set this up: approve the next payments at once, and we send one at the start of each period.</p>
+            <p style={{ ...s.small, color: v("fg", "#334") }}>One check each week or month for the amount you set. A check can be cashed as soon as it exists, so we never make next month&apos;s early. When a new week or month starts, we send that payment to your Xaman app to approve (after you approve the first one). Until you approve it, that period isn&apos;t paid. Stop anytime: just don&apos;t approve it, or cancel a check before it&apos;s cashed. Tired of approving every month? Turn on Autopay on your dashboard after you set this up: approve the next payments at once, and we send one at the start of each period.</p>
           </div>
         )}
 
@@ -104,7 +104,7 @@ export default function SpendPage() {
         <div style={s.card}>
           <p style={s.h2}>1. The {sub ? "payment" : "allowance"}</p>
           <label style={s.label}>Your XRP wallet address (you&apos;ll pay from it and approve each check there)</label>
-          <input style={{ ...s.input, ...s.mono, ...(wallet ? { background: "#f4f4f2" } : {}) }} value={funder} readOnly={!!wallet} onChange={(e) => setFunder(e.target.value)} placeholder={wallet === "" ? "Sign in with Xaman above, or type it (Crossmark / GemWallet)" : "r…"} />
+          <input style={{ ...s.input, ...s.mono, ...(wallet ? { background: v("subtle", "#f4f4f2") } : {}) }} value={funder} readOnly={!!wallet} onChange={(e) => setFunder(e.target.value)} placeholder={wallet === "" ? (xapp || inXamanWebview() ? "r… (reopen Spend Controls from Xaman to fill this in)" : "Sign in with Xaman above, or type it (Crossmark / GemWallet)") : "r…"} />
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
             <div style={{ flex: "1 1 180px" }}><label style={s.label}>Name (optional)</label><input style={s.input} value={name} onChange={(e) => setName(e.target.value)} placeholder={sub ? "Gym membership" : "Sam's allowance"} /></div>
             <div style={{ flex: "1 1 120px" }}><label style={s.label}>How often</label>
@@ -119,7 +119,7 @@ export default function SpendPage() {
         <div style={s.card}>
           <p style={s.h2}>{sub ? "2. Who you pay" : "2. Places they can spend (up to 10)"}</p>
           {(sub ? payees.slice(0, 1) : payees).map((p, i) => (
-            <div key={i} style={{ borderTop: i ? "1px solid #eee" : "none", paddingTop: i ? 10 : 0, marginTop: i ? 10 : 0 }}>
+            <div key={i} style={{ borderTop: i ? `1px solid ${v("row", "#eee")}` : "none", paddingTop: i ? 10 : 0, marginTop: i ? 10 : 0 }}>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 <div style={{ flex: "2 1 220px" }}><label style={s.label}>Their XRP wallet address</label><input style={{ ...s.input, ...s.mono }} value={p.address} onChange={(e) => setP(i, "address", e.target.value)} placeholder="r…" /></div>
                 <div style={{ flex: "1 1 140px" }}><label style={s.label}>Name</label><input style={s.input} value={p.label} onChange={(e) => setP(i, "label", e.target.value)} placeholder="Joe's Market" /></div>
@@ -153,6 +153,7 @@ export default function SpendPage() {
           {busy ? "Creating…" : sub ? "Set up the payment →" : "Set up the allowance →"}
         </button>
         <p style={{ ...s.small, marginTop: 8 }}>Next you approve the checks in your wallet. You never pay XRPLHub.</p>
+        {xapp && <XappFooter />}
       </main>
     </div>
   );

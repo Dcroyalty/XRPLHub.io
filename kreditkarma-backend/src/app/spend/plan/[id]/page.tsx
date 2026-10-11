@@ -4,7 +4,7 @@
 
 import React, { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { API, Disclosure, SignPanel, fmtDate, s, useXapp, type SignData } from "../../ui";
+import { API, Disclosure, SignPanel, XappFooter, fmtDate, s, useXapp, v, type Explain, type SignData } from "../../ui";
 import { AutopayCard, type AutopayView } from "./AutopayCard";
 
 type Check = { invoiceId: string; checkId: string | null; payee: string; category: string; seq: number; amount: string; currency: string; expires: string; status: string; closedHow: string | null };
@@ -27,7 +27,7 @@ export default function PlanDashboard() {
   const { id } = useParams<{ id: string }>();
   const [d, setD] = useState<Dash | null>(null);
   const [err, setErr] = useState("");
-  const [sign, setSign] = useState<{ title: string; data: SignData } | null>(null);
+  const [sign, setSign] = useState<{ title: string; data: SignData; explain?: Explain } | null>(null);
   const xapp = useXapp();
 
   const load = useCallback(async () => {
@@ -57,9 +57,33 @@ export default function PlanDashboard() {
   // After a signature: let the server keep Xaman's push token, so next period's subscription check reaches the app.
   const onSigned = (uuid: string) => { void fetch(`${API}/api/spend/plans/${id}/signed`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ uuid }) }).catch(() => {}); };
   const cur = d?.plan.currency ?? "RLUSD";
-  const signOne = async (c: Check) => { const j = await post("sign", { invoiceId: c.invoiceId }); if (j) setSign({ title: `Sign: check to ${c.payee}, up to ${c.amount} ${cur}`, data: j }); };
-  const signBatch = async () => { const j = await post("sign", { batch: true }); if (j) setSign({ title: `Sign once: ${j.count} checks`, data: j }); };
-  const cancel = async (c: Check) => { const j = await post("cancel", { checkId: c.checkId }); if (j) setSign({ title: `Cancel the check to ${c.payee} (${c.amount} ${cur})`, data: j }); };
+  // Plain-words explanation shown before every signature (inside the xApp: before the Xaman screen opens).
+  const checkExplain = (payees: string, n: number, upTo: string, expires: string, isSub: boolean): Explain => ({
+    what: n === 1 ? `A check from your wallet to ${payees}, for up to ${upTo}.` : `${n} checks from your wallet in one approval (${upTo} in total): ${payees}. All of them are created, or none.`,
+    why: isSub ? "This is this period's payment for your recurring plan. Nothing is made ahead of time." : "This is this period's allowance at the places you picked.",
+    consequences: [
+      `${n === 1 ? "The person you pay can cash it" : "Each one can be cashed"} any time until ${expires}, for up to the amount shown. Money isn't set aside — keep enough in your wallet.`,
+      `Each open check holds 0.2 XRP of your wallet's reserve (${(0.2 * n).toFixed(1)} XRP here) until it's cashed or cancelled. You get it back then.`,
+      "You can cancel any check here before it's cashed. A cashed check can't be undone.",
+    ],
+  });
+  const isSub = d?.plan.kind === "subscription";
+  const signOne = async (c: Check) => { const j = await post("sign", { invoiceId: c.invoiceId }); if (j) setSign({ title: `${xapp ? "Approve" : "Sign"}: check to ${c.payee}, up to ${c.amount} ${cur}`, data: j, explain: checkExplain(c.payee, 1, `${c.amount} ${cur}`, fmtDate(c.expires), isSub) }); };
+  const signBatch = async () => {
+    const j = await post("sign", { batch: true });
+    if (!j || !d) return;
+    const picked = d.current.filter((c) => ((j.invoiceIds as string[] | undefined) ?? []).includes(c.invoiceId));
+    const total = picked.reduce((a, c) => a + Number(c.amount), 0);
+    setSign({ title: `${xapp ? "Approve" : "Sign"} once: ${j.count} checks`, data: j, explain: checkExplain([...new Set(picked.map((c) => c.payee))].join(", "), j.count, `${Number(total.toFixed(6))} ${cur}`, picked[0] ? fmtDate(picked[0].expires) : "the end of this period", isSub) });
+  };
+  const cancel = async (c: Check) => {
+    const j = await post("cancel", { checkId: c.checkId });
+    if (j) setSign({ title: `Cancel the check to ${c.payee} (${c.amount} ${cur})`, data: j, explain: {
+      what: `Cancel the check to ${c.payee} for up to ${c.amount} ${cur}.`,
+      why: "You no longer want it to be cashable (or it expired and still holds your reserve).",
+      consequences: ["After this, nobody can cash it.", "The 0.2 XRP it held is free again in your wallet.", "Nothing else changes; your plan stays as it is."],
+    } });
+  };
 
   if (!d) return <div style={s.shell}><main style={s.page}>{err ? <p style={s.err}>{err}</p> : <p>Loading…</p>}</main></div>;
   const share = typeof window !== "undefined" ? `${window.location.origin}${d.plan.shareLink}` : d.plan.shareLink;
@@ -73,23 +97,23 @@ export default function PlanDashboard() {
         <h1 style={s.h1}>{d.plan.name ?? (sub ? "Recurring payment" : "Allowance")}</h1>
         <p style={s.sub}>{sub ? "Recurring payment" : "Allowance"} · paid from <span style={s.mono}>{d.plan.funder}</span> · {d.plan.period} · {sub ? `${d.plan.checkSize} ${cur} each time` : `checks of ${d.plan.checkSize} ${cur}`}</p>
         {sub && (
-          <div style={{ ...s.card, background: d.pushReady ? "#eef8f6" : "#fffbea" }}>
-            <p style={{ ...s.small, color: "#333", margin: 0 }}>
+          <div style={{ ...s.card, background: d.pushReady ? v("ok-bg", "#eef8f6") : v("warn-bg", "#fffbea") }}>
+            <p style={{ ...s.small, color: v("fg", "#333"), margin: 0 }}>
               {d.pushReady
                 ? "Reminders on: when a new week or month starts, that payment is sent to your Xaman app to approve. Nothing is made ahead of time."
                 : "Approve this period's check in Xaman once to turn on reminders. After that, each new payment is sent to your Xaman app. Nothing is made ahead of time."}
             </p>
           </div>
         )}
-        <p style={{ ...s.small, marginTop: -10 }}>Bookmark this page — its address is your dashboard.</p>
+        {!xapp && <p style={{ ...s.small, marginTop: -10 }}>Bookmark this page — its address is your dashboard.</p>}
 
-        {sign && <SignPanel data={sign.data} title={sign.title} onSigned={onSigned} onDone={() => { setSign(null); void load(); }} />}
+        {sign && <SignPanel data={sign.data} title={sign.title} explain={sign.explain} onSigned={onSigned} onDone={() => { setSign(null); void load(); }} />}
         {err && <p style={s.err}>{err}</p>}
 
         <div style={s.card}>
           <p style={s.h2}>{sub ? "Share with the person you pay" : "Share with the person you support"}</p>
           <p style={s.small}>{sub ? "They see whether this period is paid, and cash the check with their own wallet." : "They see where they can spend and how much is available."} They don&apos;t need an account.</p>
-          <p style={{ ...s.mono, background: "#f4f4f2", padding: 8, borderRadius: 6 }}>{share}</p>
+          <p style={{ ...s.mono, background: v("subtle", "#f4f4f2"), padding: 8, borderRadius: 6 }}>{share}</p>
           <button style={s.btnGhost} onClick={() => navigator.clipboard?.writeText(share)}>Copy link</button>
         </div>
 
@@ -101,7 +125,7 @@ export default function PlanDashboard() {
               {d.batch.available ? <button style={s.btnGhost} onClick={signBatch}>Approve up to 8 at once</button> : <>Approving them all at once isn&apos;t available yet ({d.batch.reason}).</>}
             </p>
           )}
-          <table style={s.table}>
+          <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}><table style={{ ...s.table, minWidth: xapp ? 360 : undefined }}>
             <thead><tr><th style={s.th}>Paid to</th><th style={s.th}>Up to</th><th style={s.th}>Expires</th><th style={s.th}>Status</th><th style={s.th}></th></tr></thead>
             <tbody>
               {d.current.map((c) => (
@@ -118,7 +142,7 @@ export default function PlanDashboard() {
               ))}
               {!d.current.length && <tr><td style={s.td} colSpan={5}>No checks this week or month.</td></tr>}
             </tbody>
-          </table>
+          </table></div>
         </div>
 
         {sub && d.autopay && <AutopayCard planId={d.plan.id} view={d.autopay} currency={cur} period={d.plan.period} onChange={() => void load()} />}
@@ -133,16 +157,17 @@ export default function PlanDashboard() {
         {d.history.length > 0 && (
           <div style={s.card}>
             <p style={s.h2}>Earlier checks</p>
-            <table style={s.table}><tbody>
+            <div style={{ overflowX: "auto" }}><table style={{ ...s.table, minWidth: xapp ? 320 : undefined }}><tbody>
               {d.history.map((c) => (
                 <tr key={c.invoiceId}><td style={s.td}>{c.payee} #{c.seq}</td><td style={s.td}>{c.amount} {cur}</td><td style={s.td}>{fmtDate(c.expires)}</td><td style={s.td}>{STATUS[c.status] ?? c.status}{c.closedHow ? ` (${c.closedHow})` : ""}</td>
                   <td style={s.td}>{(c.status === "open" || c.status === "expired") && c.checkId && <button style={s.btnGhost} onClick={() => cancel(c)}>Cancel</button>}</td></tr>
               ))}
-            </tbody></table>
+            </tbody></table></div>
           </div>
         )}
         <Disclosure lines={d.disclosure} />
         <button style={s.btnGhost} onClick={() => void load()}>Refresh</button>
+        {xapp && <XappFooter />}
       </main>
     </div>
   );

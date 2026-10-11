@@ -1,37 +1,43 @@
 "use client";
 // src/app/spend/ui.tsx — shared bits for the Spend Controls pages (light pages, like /checkout).
+// Colors are CSS variables whose FALLBACK is the website's light palette, so on the website nothing changes. Inside
+// the Xaman xApp, applyXappTheme() sets the variables to follow Xaman's theme (xAppStyle: LIGHT / DARK / MOONLIGHT /
+// ROYAL). Use v("name", "#fallback") for any new color on a page the xApp can reach.
 
 import React, { useEffect, useState } from "react";
 import { watchXaman } from "@/lib/wallet/xamanWatch";
 
 export const API = (typeof process !== "undefined" && process.env?.NEXT_PUBLIC_API_URL) || "";
 
+/** A themeable color: the website's value as the fallback, the xApp theme's value when one is set. */
+export const v = (name: string, fallback: string) => `var(--xh-${name}, ${fallback})`;
+
 export const s: Record<string, React.CSSProperties> = {
-  shell: { background: "#f7f7f5", color: "#1a1a1a", minHeight: "100vh" },
+  shell: { background: v("bg", "#f7f7f5"), color: v("fg", "#1a1a1a"), minHeight: "100vh" },
   page: { maxWidth: 760, margin: "0 auto", padding: "28px 16px 56px", fontFamily: "system-ui, -apple-system, sans-serif", lineHeight: 1.5 },
   h1: { fontSize: 26, fontWeight: 800, margin: "4px 0 6px" },
   h2: { fontSize: 17, fontWeight: 700, margin: "0 0 10px" },
-  sub: { color: "#555", fontSize: 14, margin: "0 0 18px" },
-  card: { background: "#fff", border: "1px solid #e4e4e0", borderRadius: 12, padding: 16, marginBottom: 14 },
-  label: { display: "block", fontSize: 12, fontWeight: 600, color: "#444", margin: "0 0 4px" },
-  input: { width: "100%", padding: "9px 10px", border: "1px solid #ccc", borderRadius: 8, fontSize: 14, boxSizing: "border-box", background: "#fff", color: "#1a1a1a" },
+  sub: { color: v("muted", "#555"), fontSize: 14, margin: "0 0 18px" },
+  card: { background: v("card", "#fff"), border: `1px solid ${v("border", "#e4e4e0")}`, borderRadius: 12, padding: 16, marginBottom: 14 },
+  label: { display: "block", fontSize: 12, fontWeight: 600, color: v("label", "#444"), margin: "0 0 4px" },
+  input: { width: "100%", padding: "9px 10px", border: `1px solid ${v("input-border", "#ccc")}`, borderRadius: 8, fontSize: 14, boxSizing: "border-box", background: v("input-bg", "#fff"), color: v("fg", "#1a1a1a") },
   mono: { fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 12, wordBreak: "break-all" },
-  btn: { padding: "10px 16px", borderRadius: 9, border: "none", background: "#0f766e", color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer" },
-  btnGhost: { padding: "8px 12px", borderRadius: 8, border: "1px solid #ccc", background: "#fff", color: "#1a1a1a", fontSize: 13, cursor: "pointer" },
-  small: { fontSize: 12, color: "#666" },
-  err: { color: "#b91c1c", fontSize: 13, margin: "6px 0" },
-  ok: { color: "#047857", fontSize: 13, margin: "6px 0" },
+  btn: { padding: "10px 16px", borderRadius: 9, border: "none", background: v("accent", "#0f766e"), color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer" },
+  btnGhost: { padding: "8px 12px", borderRadius: 8, border: `1px solid ${v("input-border", "#ccc")}`, background: v("card", "#fff"), color: v("fg", "#1a1a1a"), fontSize: 13, cursor: "pointer" },
+  small: { fontSize: 12, color: v("small", "#666") },
+  err: { color: v("err", "#b91c1c"), fontSize: 13, margin: "6px 0" },
+  ok: { color: v("ok", "#047857"), fontSize: 13, margin: "6px 0" },
   table: { width: "100%", borderCollapse: "collapse", fontSize: 13 },
-  th: { textAlign: "left", padding: "6px 6px", borderBottom: "1px solid #e4e4e0", color: "#555", fontWeight: 600 },
-  td: { padding: "7px 6px", borderBottom: "1px solid #f0f0ec", verticalAlign: "top" },
+  th: { textAlign: "left", padding: "6px 6px", borderBottom: `1px solid ${v("border", "#e4e4e0")}`, color: v("muted", "#555"), fontWeight: 600 },
+  td: { padding: "7px 6px", borderBottom: `1px solid ${v("row", "#f0f0ec")}`, verticalAlign: "top" },
 };
 
 export function Disclosure({ lines }: { lines?: string[] }) {
   if (!lines?.length) return null;
   return (
-    <div style={{ ...s.card, background: "#fffbea", borderColor: "#f0e3a8" }}>
+    <div style={{ ...s.card, background: v("warn-bg", "#fffbea"), borderColor: v("warn-border", "#f0e3a8") }}>
       <p style={{ ...s.h2, fontSize: 14 }}>Read this first</p>
-      <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13, color: "#4a4a3a" }}>
+      <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13, color: v("warn-fg", "#4a4a3a") }}>
         {lines.map((l) => <li key={l} style={{ margin: "3px 0" }}>{l}</li>)}
       </ul>
     </div>
@@ -39,9 +45,12 @@ export function Disclosure({ lines }: { lines?: string[] }) {
 }
 
 export type SignData = { uuid?: string | null; qr_png?: string | null; deep_link?: string | null; websocket?: string | null; txjson?: Record<string, unknown> };
+/** What the user is about to sign, in plain words — shown BEFORE every signature inside the xApp. */
+export type Explain = { what: string; why: string; consequences: string[] };
 
 // ── xApp mode: these pages running INSIDE Xaman as the Spend Controls xApp (src/app/xapp/spend) ──────────────────────
 const XAPP_KEY = "xrplhub_xapp";
+const XAPP_STYLE_KEY = "xrplhub_xapp_style";
 export type XappState = { session: string; account: string; canSign: boolean };
 export function readXapp(): XappState | null {
   try {
@@ -54,18 +63,93 @@ export function readXapp(): XappState | null {
 export function saveXapp(x: XappState) {
   try { window.sessionStorage.setItem(XAPP_KEY, JSON.stringify(x)); } catch { /* the xApp still works for this page */ }
 }
-/** null until mounted (SSR-safe), then the xApp session or false. */
+/** True inside Xaman's xApp webview, even if the session were lost: xApps run in a React Native WebView. */
+export function inXamanWebview(): boolean {
+  if (typeof window === "undefined") return false;
+  return typeof (window as unknown as { ReactNativeWebView?: unknown }).ReactNativeWebView !== "undefined" || readXapp() !== null;
+}
+/** null until mounted (SSR-safe), then the xApp session or false. Applies Xaman's theme while in the xApp. */
 export function useXapp(): XappState | false | null {
   const [x, setX] = useState<XappState | false | null>(null);
-  useEffect(() => { setX(readXapp() ?? false); }, []); // eslint-disable-line react-hooks/set-state-in-effect
+  useEffect(() => {
+    const st = readXapp();
+    if (st) applyXappTheme(readXappStyle());
+    setX(st ?? false); // eslint-disable-line react-hooks/set-state-in-effect
+  }, []);
   return x;
 }
 
-/** Inside Xaman: open the sign request with the xApp SDK (an in-app overlay, no QR, no deep link) and wait for its
- *  `payload` event. XRPLHub created the payload server-side with the same Xaman app; the user signs in Xaman. */
-function XappSignPanel({ data, title, onDone, onSigned }: { data: SignData; title: string; onDone?: () => void; onSigned?: (uuid: string) => void; approveOnly?: boolean }) {
-  const [state, setState] = useState<"opening" | "waiting" | "signed" | "rejected" | "error">("opening");
+// Xaman passes its theme as ?xAppStyle=LIGHT|DARK|MOONLIGHT|ROYAL when it opens the xApp; we keep it for the session.
+type Theme = Record<string, string>;
+const LIGHT: Theme = {
+  bg: "#f7f7f5", fg: "#1a1a1a", card: "#ffffff", border: "#e4e4e0", muted: "#555555", label: "#444444", small: "#666666",
+  "input-bg": "#ffffff", "input-border": "#cccccc", accent: "#0f766e", err: "#b91c1c", ok: "#047857", row: "#f0f0ec",
+  "warn-bg": "#fffbea", "warn-border": "#f0e3a8", "warn-fg": "#4a4a3a", "ok-bg": "#eef8f6", "ok-border": "#99d5cc",
+  subtle: "#f4f4f2", "danger-bg": "#fff7f6", "danger-border": "#f2b8b5", "attn": "#b45309",
+};
+const dark = (bg: string, card: string, border: string): Theme => ({
+  bg, fg: "#f2f2f2", card, border, muted: "#b8bcc6", label: "#c8ccd4", small: "#9aa0ab",
+  "input-bg": card, "input-border": border, accent: "#14b8a6", err: "#f87171", ok: "#34d399", row: border,
+  "warn-bg": "#2b2410", "warn-border": "#5c4a12", "warn-fg": "#f1e6c2", "ok-bg": "#0f2a26", "ok-border": "#1f6b5f",
+  subtle: card, "danger-bg": "#2d1414", "danger-border": "#6b2424", attn: "#fbbf24",
+});
+const THEMES: Record<string, Theme> = {
+  LIGHT,
+  DARK: dark("#000000", "#1c1c1e", "#2c2c2e"),
+  MOONLIGHT: dark("#181a21", "#23262f", "#343845"),
+  ROYAL: dark("#030b36", "#0d1a4f", "#1f2d6b"),
+};
+export function saveXappStyle(style: string | null) {
+  try { if (style) window.sessionStorage.setItem(XAPP_STYLE_KEY, style.toUpperCase()); } catch { /* fine */ }
+}
+function readXappStyle(): string {
+  try { return window.sessionStorage.getItem(XAPP_STYLE_KEY) ?? "LIGHT"; } catch { return "LIGHT"; }
+}
+export function applyXappTheme(style: string) {
+  const t = THEMES[style.toUpperCase()] ?? LIGHT;
+  const root = document.documentElement;
+  for (const [k, val] of Object.entries(t)) root.style.setProperty(`--xh-${k}`, val);
+  root.style.background = t.bg;
+  document.body.style.background = t.bg;
+  root.style.colorScheme = t === LIGHT ? "light" : "dark";
+}
+
+/** A link to somewhere outside the xApp (XRPScan, Privacy, Terms): opened in Xaman's in-app browser inside the xApp,
+ *  a normal new tab on the website. */
+export function ExtLink({ href, children, style }: { href: string; children: React.ReactNode; style?: React.CSSProperties }) {
+  const open = (e: React.MouseEvent) => {
+    if (!inXamanWebview()) return;
+    e.preventDefault();
+    import("xumm-xapp-sdk").then(({ xApp }) => { void new xApp().openBrowser({ url: href }); }).catch(() => { window.location.href = href; });
+  };
+  return <a href={href} target="_blank" rel="noreferrer" onClick={open} style={style}>{children}</a>;
+}
+
+/** Support, legal and independence — at the bottom of every xApp screen (Xaman's xApp review checklist). */
+export function XappFooter() {
+  return (
+    <div style={{ borderTop: `1px solid ${v("border", "#e4e4e0")}`, marginTop: 22, paddingTop: 12, fontSize: 12, color: v("small", "#666"), lineHeight: 1.7 }}>
+      <div>
+        Help: <a href="mailto:support@xrplhub.io" style={{ color: v("accent", "#0f766e") }}>support@xrplhub.io</a>
+        {" · "}<ExtLink href="https://www.xrplhub.io/privacy" style={{ color: v("accent", "#0f766e") }}>Privacy Policy</ExtLink>
+        {" · "}<ExtLink href="https://www.xrplhub.io/terms" style={{ color: v("accent", "#0f766e") }}>Terms</ExtLink>
+      </div>
+      <div>XRPLHub is an independent service. It is not affiliated with, endorsed by or operated by XRPL Labs or Xaman.</div>
+    </div>
+  );
+}
+
+const feeText = (tx?: Record<string, unknown>) => {
+  const f = tx && typeof tx.Fee === "string" ? Number(tx.Fee) : null;
+  return f ? `${f / 1e6} XRP network fee (paid to the XRP Ledger, not to XRPLHub).` : "A tiny network fee, about 0.000012 XRP, set by Xaman and paid to the XRP Ledger (not to XRPLHub).";
+};
+
+/** Inside Xaman: FIRST explain what is being signed (what, why, fee, consequences), THEN open the sign request with the
+ *  xApp SDK only when the user taps. Nothing opens on its own. XRPLHub created the payload server-side; the user signs. */
+function XappSignPanel({ data, title, onDone, onSigned, approveOnly, explain }: { data: SignData; title: string; onDone?: () => void; onSigned?: (uuid: string) => void; approveOnly?: boolean; explain?: Explain }) {
+  const [state, setState] = useState<"review" | "waiting" | "signed" | "rejected" | "error">("review");
   const [sdk, setSdk] = useState<{ openSignRequest: (o: { uuid: string }) => unknown } | null>(null);
+  const x = readXapp();
   useEffect(() => {
     if (!data.uuid) return;
     const uuid = data.uuid;
@@ -73,32 +157,43 @@ function XappSignPanel({ data, title, onDone, onSigned }: { data: SignData; titl
     let off: (() => void) | null = null;
     import("xumm-xapp-sdk").then(({ xApp }) => {
       if (dead) return;
-      const x = new xApp();
+      const app = new xApp();
       const onPayload = (e: { reason: "SIGNED" | "DECLINED"; uuid: string }) => {
         if (e.uuid !== uuid) return;
         if (e.reason === "SIGNED") { setState("signed"); onSigned?.(uuid); setTimeout(() => onDone?.(), 3000); }
         else setState("rejected");
       };
-      x.on("payload", onPayload);
-      off = () => x.off("payload", onPayload);
-      setSdk(x as unknown as { openSignRequest: (o: { uuid: string }) => unknown });
-      x.openSignRequest({ uuid });
-      setState("waiting");
+      app.on("payload", onPayload);
+      off = () => app.off("payload", onPayload);
+      setSdk(app as unknown as { openSignRequest: (o: { uuid: string }) => unknown });
     }).catch(() => setState("error"));
     return () => { dead = true; off?.(); };
   }, [data.uuid]); // eslint-disable-line react-hooks/exhaustive-deps
+  const open = () => { if (sdk && data.uuid) { sdk.openSignRequest({ uuid: data.uuid }); setState("waiting"); } };
   return (
-    <div style={{ ...s.card, borderColor: "#99d5cc" }}>
+    <div style={{ ...s.card, borderColor: v("ok-border", "#99d5cc") }}>
       <p style={s.h2}>{title}</p>
-      {!data.uuid && <p style={s.err}>Xaman could not create this sign request just now. Try again in a moment.</p>}
-      {data.uuid && state === "opening" && <p style={s.small}>Opening the sign request in Xaman…</p>}
-      {data.uuid && state === "waiting" && (
-        <p style={s.small}>Review and sign it in the Xaman overlay. {sdk && <button type="button" style={s.btnGhost} onClick={() => sdk.openSignRequest({ uuid: data.uuid! })}>Open it again</button>}</p>
+      {explain && (
+        <div style={{ fontSize: 14, marginBottom: 10 }}>
+          <p style={{ margin: "0 0 6px" }}><strong>What you&apos;re approving:</strong> {explain.what}</p>
+          <p style={{ margin: "0 0 6px" }}><strong>Why:</strong> {explain.why}</p>
+          <p style={{ margin: "0 0 6px" }}><strong>Fee:</strong> {feeText(data.txjson)}</p>
+          <p style={{ margin: "0 0 4px" }}><strong>What happens after:</strong></p>
+          <ul style={{ margin: 0, paddingLeft: 18 }}>{explain.consequences.map((c) => <li key={c} style={{ margin: "2px 0" }}>{c}</li>)}</ul>
+        </div>
       )}
-      {state === "signed" && <p style={s.ok}>Signed — updating from the ledger…</p>}
+      {!data.uuid && <p style={s.err}>Xaman could not create this request just now. Go back and try again in a moment.</p>}
+      {data.uuid && x && !x.canSign && <p style={s.err}>This account is read-only in Xaman, so it can&apos;t approve anything. Open the xApp from an account with its secret on this device.</p>}
+      {data.uuid && (!x || x.canSign) && (state === "review" || state === "waiting") && (
+        <button type="button" style={{ ...s.btn, width: "100%", padding: "13px 16px", opacity: sdk ? 1 : 0.6 }} disabled={!sdk} onClick={open}>
+          {state === "waiting" ? "Open it again in Xaman" : approveOnly ? "Review and approve in Xaman (nothing is sent now)" : "Review and approve in Xaman"}
+        </button>
+      )}
+      {state === "waiting" && <p style={{ ...s.small, marginTop: 6 }}>Check the details in the Xaman screen, then approve or decline.</p>}
+      {state === "signed" && <p style={s.ok}>{approveOnly ? "Approved. Nothing was sent now." : "Approved — updating from the XRP Ledger…"}</p>}
       {state === "rejected" && <p style={s.err}>Declined. Nothing was sent.</p>}
-      {state === "error" && <p style={s.err}>The Xaman xApp bridge didn&apos;t load. Close and reopen the xApp.</p>}
-      <p style={{ ...s.small, marginTop: 8 }}>You sign in your own wallet. XRPLHub never holds keys or funds.</p>
+      {state === "error" && <p style={s.err}>Xaman&apos;s xApp bridge didn&apos;t load. Close and reopen the xApp.</p>}
+      <p style={{ ...s.small, marginTop: 8 }}>You approve in your own wallet. XRPLHub never holds your keys or money, and never asks for your secret or recovery words.</p>
     </div>
   );
 }
@@ -107,14 +202,14 @@ function XappSignPanel({ data, title, onDone, onSigned }: { data: SignData; titl
  *  Inside the Xaman xApp it hands off to XappSignPanel (SDK sign requests). */
 /** approveOnly: an Autopay pre-approval (Xaman signs WITHOUT sending). Never offer its raw transaction to another
  *  wallet — most wallets would send it at once, i.e. pay early. */
-export function SignPanel(props: { data: SignData; title: string; onDone?: () => void; onSigned?: (uuid: string) => void; approveOnly?: boolean }) {
+export function SignPanel(props: { data: SignData; title: string; onDone?: () => void; onSigned?: (uuid: string) => void; approveOnly?: boolean; explain?: Explain }) {
   const x = useXapp();
   if (x) return <XappSignPanel {...props} />;
   if (x === null) return null;
   return <WebSignPanel {...props} />;
 }
 
-function WebSignPanel({ data, title, onDone, onSigned, approveOnly }: { data: SignData; title: string; onDone?: () => void; onSigned?: (uuid: string) => void; approveOnly?: boolean }) {
+function WebSignPanel({ data, title, onDone, onSigned, approveOnly }: { data: SignData; title: string; onDone?: () => void; onSigned?: (uuid: string) => void; approveOnly?: boolean; explain?: Explain }) {
   const [showJson, setShowJson] = useState(!approveOnly && !data.qr_png && !data.deep_link);
   const [state, setState] = useState<"waiting" | "signed" | "rejected" | "expired">("waiting");
   // Xaman pushes the result over its status websocket (no polling). On a signature, tell the caller (which records the
@@ -197,6 +292,8 @@ export function ConnectXaman({ wallet, onChange, purpose }: { wallet: string | n
   }, [req]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (wallet === null) return null;
+  // Inside Xaman the account comes from the xApp OTT only — never a sign-in/connect/disconnect UI (xApp review rule).
+  if (xapp || inXamanWebview()) return null;
   if (wallet) {
     return (
       <div style={{ ...s.card, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap", background: "#f2fbf8", borderColor: "#99d5cc" }}>

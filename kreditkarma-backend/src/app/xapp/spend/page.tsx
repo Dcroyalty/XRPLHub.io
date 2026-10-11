@@ -8,7 +8,7 @@
 // faked) → a 12-hour session in sessionStorage → GET /api/xapp/plans lists this account's plans.
 
 import React, { useEffect, useState } from "react";
-import { API, readXapp, s, saveXapp, type XappState } from "../../spend/ui";
+import { API, XappFooter, applyXappTheme, readXapp, s, saveXapp, saveXappStyle, v, type XappState } from "../../spend/ui";
 
 type PlanRow = {
   id: string; name: string | null; kind: string; period: string; currency: string; checkSize: string; payees: string[];
@@ -24,10 +24,14 @@ export default function SpendXapp() {
   useEffect(() => {
     let dead = false;
     (async () => {
-      const ott = new URLSearchParams(window.location.search).get("xAppToken");
+      const q = new URLSearchParams(window.location.search);
+      // Follow Xaman's theme (LIGHT / DARK / MOONLIGHT / ROYAL) on every screen of this session.
+      saveXappStyle(q.get("xAppStyle"));
+      applyXappTheme(q.get("xAppStyle") ?? (window.sessionStorage.getItem("xrplhub_xapp_style") || "LIGHT"));
+      const ott = q.get("xAppToken");
       const existing = readXapp();
       if (!ott && existing) { setX(existing); return; }
-      if (!ott) { setErr("Open this inside the Xaman app (XRPLHub Spend Controls xApp)."); return; }
+      if (!ott) { setErr("Please open Spend Controls from the xApps list in Xaman."); return; }
       try {
         const r = await fetch(`${API}/api/xapp/session`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ott }) });
         const j = await r.json();
@@ -59,14 +63,14 @@ export default function SpendXapp() {
     <div style={s.shell}>
       <main style={{ ...s.page, paddingTop: 16 }}>
         <h1 style={s.h1}>Spend Controls</h1>
-        <p style={s.sub}>Allowances and recurring payments, paid by checks you approve here. The person you pay cashes them with their own wallet. Free.</p>
-        {x && <p style={{ ...s.small, marginTop: -10 }}>Account <span style={s.mono}>{x.account}</span>{!x.canSign && " · read-only in Xaman (you can view, not sign)"}</p>}
+        <p style={s.sub}>Give money with rules: an allowance someone can only spend where you pick, or a bill paid every week or month. You approve every payment here; the person you pay cashes it with their own wallet. Free.</p>
+        {x && <p style={{ ...s.small, marginTop: -10 }}>Account <span style={s.mono}>{x.account}</span>{!x.canSign && " · read-only in Xaman: you can look, but not approve"}</p>}
         {err && <p style={s.err}>{err}</p>}
 
         {x && (
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", margin: "8px 0 14px" }}>
-            <a href="/spend?kind=subscription" style={{ ...s.btn, textDecoration: "none" }}>+ New subscription</a>
-            <a href="/spend" style={{ ...s.btnGhost, textDecoration: "none" }}>+ New budget</a>
+            <a href="/spend?kind=subscription" style={{ ...s.btn, textDecoration: "none", flex: "1 1 160px", textAlign: "center" }}>+ New recurring payment</a>
+            <a href="/spend" style={{ ...s.btnGhost, textDecoration: "none", flex: "1 1 160px", textAlign: "center", padding: "10px 12px" }}>+ New allowance</a>
           </div>
         )}
 
@@ -80,20 +84,21 @@ export default function SpendXapp() {
         {plans?.map((p) => (
           <a key={p.id} href={`/spend/plan/${p.id}`} style={{ textDecoration: "none", color: "inherit" }}>
             <div style={s.card}>
-              <p style={{ ...s.h2, marginBottom: 4 }}>{p.name ?? (p.kind === "subscription" ? "Subscription" : "Spending plan")}</p>
+              <p style={{ ...s.h2, marginBottom: 4 }}>{p.name ?? (p.kind === "subscription" ? "Recurring payment" : "Allowance")}</p>
               <p style={s.small}>
-                {p.kind === "subscription" ? `Subscription · ${p.checkSize} ${p.currency} ${p.period}` : `Budget · ${p.period} · ${p.payees.length} payee${p.payees.length === 1 ? "" : "s"}`}
+                {p.kind === "subscription" ? `Recurring payment · ${p.checkSize} ${p.currency} ${p.period === "weekly" ? "every week" : "every month"}` : `Allowance · ${p.period === "weekly" ? "weekly" : "monthly"} · ${p.payees.length} place${p.payees.length === 1 ? "" : "s"}`}
                 {" · "}{p.payees.slice(0, 3).join(", ")}
               </p>
               <p style={{ fontSize: 14, margin: "6px 0 0" }}>
                 {p.thisPeriod.unsigned > 0
-                  ? <strong style={{ color: "#b45309" }}>{p.thisPeriod.unsigned} check{p.thisPeriod.unsigned === 1 ? "" : "s"} to sign this period →</strong>
-                  : p.thisPeriod.checks > 0 ? <span style={{ color: "#047857" }}>This period is approved ({p.thisPeriod.open} open)</span> : <span style={s.small}>Open to approve this period →</span>}
+                  ? <strong style={{ color: v("attn", "#b45309") }}>{p.thisPeriod.unsigned} payment{p.thisPeriod.unsigned === 1 ? "" : "s"} to approve this period →</strong>
+                  : p.thisPeriod.checks > 0 ? <span style={{ color: v("ok", "#047857") }}>This period is approved ({p.thisPeriod.open} open)</span> : <span style={s.small}>Open to approve this period →</span>}
               </p>
             </div>
           </a>
         ))}
         <p style={{ ...s.small, marginTop: 14 }}>XRPLHub is not a bank and never holds your money or keys. A check doesn&apos;t set money aside. Each open check sets aside 0.2 XRP in your wallet until it is cashed or cancelled.</p>
+        <XappFooter />
       </main>
     </div>
   );
