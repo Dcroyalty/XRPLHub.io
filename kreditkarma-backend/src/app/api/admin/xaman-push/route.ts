@@ -94,5 +94,5 @@ async function act(req: Request) {
     identifier: `xrplhub_pushtest_${Date.now()}`,
     instruction: "XRPLHub reminder test. Nothing to sign or send. Please tap Decline.",
   });
-  return json({ uuid: p.uuid, pushed: p.pushed === true, tokenFrom: from, tokenRef: src._token.slice(0, 4) + "…", sentAt: new Date().toISOString() });
+  return json({ uuid: p.uuid, pushed: p.pushed === true, xamanCreateResponse: p.raw ?? null, tokenFrom: from, tokenRef: src._token.slice(0, 4) + "…", sentAt: new Date().toISOString() });
 }

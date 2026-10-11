@@ -146,6 +146,8 @@ export interface CreatedPayload {
   pushed?: boolean;
   /** The payload's status websocket (refs.websocket_status). */
   websocket?: string | null;
+  /** Xaman's full create response (no secrets in it) — kept for push diagnostics. */
+  raw?: Record<string, unknown>;
 }
 
 /**
@@ -191,7 +193,12 @@ export async function createPayload(body: {
     throw new Error(String(reason));
   }
 
+  // Every PUSH attempt: log Xaman's create response (Vercel keeps 1 h) and keep the last 25 in the database, so a
+  // missing reminder can be traced to Xaman's own answer (2026-10-11: test push 60b28b46 never arrived).
+  if (body.userToken) await recordPushAttempt({ at: new Date().toISOString(), http: res.status, identifier: body.identifier ?? null, txType: String(body.txjson.TransactionType ?? ""), tokenRef: body.userToken.slice(0, 4) + "…", response: data });
+
   return {
+    raw: data,
     uuid: data.uuid,
     qrPng: data.refs?.qr_png ?? null,
     deepLink: data.next?.always ?? null,
@@ -272,5 +279,21 @@ export async function getPayloadRaw(uuid: string): Promise<Record<string, unknow
     return ((await res.json().catch(() => null)) as Record<string, unknown> | null);
   } catch {
     return null;
+  }
+}
+
+/** The push log: console (Vercel, 1 h) + the last 25 attempts in IndexerCheckpoint id "xaman-push-log" (marker = JSON array;
+ *  no schema change). Read it with: select marker from "IndexerCheckpoint" where id = 'xaman-push-log'. Never throws. */
+export async function recordPushAttempt(rec: Record<string, unknown>): Promise<void> {
+  console.log("[xaman push]", JSON.stringify(rec));
+  try {
+    const { prisma } = await import("./xrplscore-db");
+    const row = await prisma.indexerCheckpoint.findUnique({ where: { id: "xaman-push-log" } });
+    let list: unknown[] = [];
+    try { list = JSON.parse(row?.marker ?? "[]") as unknown[]; } catch { list = []; }
+    const marker = JSON.stringify([rec, ...list].slice(0, 25));
+    await prisma.indexerCheckpoint.upsert({ where: { id: "xaman-push-log" }, create: { id: "xaman-push-log", marker }, update: { marker } });
+  } catch (e) {
+    console.error("[xaman push] could not store the push log", e);
   }
 }

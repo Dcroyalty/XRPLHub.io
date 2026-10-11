@@ -488,3 +488,7 @@ old ledger — so "do the nodes agree?" stays green; only the validated ledger's
   "Reminders unavailable" (create page via /api/spend/config, dashboard, Autopay terms, the API's `how`, llms.txt). The cron
   still tries the push (it costs nothing) and reports non-delivery as RED. Turn it on only after a test push arrives on a phone
   (/admin → xaman: step 1 sign-in → "Check the sign-in" → "Send ONE test push…").
+- **Push log (2026-10-11):** every push attempt (`createPayload` with a user token) logs Xaman's full create response
+  (`[xaman push]` in Vercel logs, 1 h) and keeps the last 25 in the database:
+  `select marker from "IndexerCheckpoint" where id = 'xaman-push-log'`. `scripts/show-push-request.ts` prints the exact
+  body we POST (token masked): `user_token` is a top-level field, as in Xaman's Push docs.
