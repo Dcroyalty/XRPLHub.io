@@ -353,55 +353,166 @@ function AdminSignIn({ onAuthed }: { onAuthed: (wallet: string) => void }) {
 // MAIN ADMIN PAGE
 // ═══════════════════════════════════════════════════════════════════════════════
 // Xaman push diagnostic: Xaman's own record of sign requests (was it pushed? opened?), token state, and ONE test push.
+// Every action shows its result in plain words right under its button (2026-10-11: the raw JSON at the bottom of the
+// panel was off-screen on a phone and looked like "nothing happens").
+type XRec = { uuid: string; error?: string; xamanError?: unknown; meta?: { signed?: boolean; cancelled?: boolean; expired?: boolean; pushed?: boolean; app_opened?: boolean }; signer?: string | null; issuedToken?: { present: boolean; state?: { active: boolean | null; expires?: string | null; note?: string } | null } };
+type Line = { text: string; tone: 'wait' | 'ok' | 'bad' } | null;
+async function adminJson(url: string, init?: RequestInit): Promise<{ ok: boolean; status: number; body: Record<string, unknown> }> {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 25_000);
+  try {
+    const r = await fetch(url, { ...init, cache: 'no-store', signal: ctl.signal });
+    const text = await r.text();
+    let body: Record<string, unknown>;
+    try { body = JSON.parse(text); } catch { body = { error: `The server answered HTTP ${r.status} with something that isn't JSON: ${text.slice(0, 120)}` }; }
+    return { ok: r.ok, status: r.status, body };
+  } catch (e) {
+    return { ok: false, status: 0, body: { error: (e as Error).name === 'AbortError' ? 'No answer from the server within 25 seconds.' : `Could not reach the server: ${String(e)}` } };
+  } finally { clearTimeout(timer); }
+}
+const errText = (r: { status: number; body: Record<string, unknown> }) => `${r.status === 401 ? 'Your admin sign-in expired (1 hour). Reload /admin and sign in again.' : String(r.body.message ?? r.body.error ?? 'Unknown error')}${r.status ? ` (HTTP ${r.status})` : ''}`;
+function signinVerdict(x: XRec | undefined): { line: Line; done: boolean } {
+  if (!x) return { line: { text: 'Xaman returned nothing for this request.', tone: 'bad' }, done: true };
+  if (x.error || x.xamanError) return { line: { text: `Xaman error: ${x.error ?? JSON.stringify(x.xamanError)}`, tone: 'bad' }, done: true };
+  const m = x.meta ?? {};
+  if (m.signed) {
+    const tk = x.issuedToken;
+    if (!tk?.present) return { line: { text: `Signed by ${x.signer ?? '?'}, but Xaman issued NO push token. Send Xaman the message from the report.`, tone: 'bad' }, done: true };
+    if (tk.state?.active === true) return { line: { text: `✓ Signed by ${x.signer ?? '?'}. Xaman issued a push token and says it is ACTIVE${tk.state.expires ? ` (until ${new Date(tk.state.expires).toLocaleString()})` : ''}. Now do step 2.`, tone: 'ok' }, done: true };
+    return { line: { text: `Signed. Xaman issued a token but says it is NOT active (${tk.state?.note ?? 'active = false'}).`, tone: 'bad' }, done: true };
+  }
+  if (m.cancelled) return { line: { text: 'You declined this sign-in. Press "New sign-in request" and approve it instead.', tone: 'bad' }, done: true };
+  if (m.expired) return { line: { text: 'This sign-in expired (10 minutes). Press "New sign-in request" again.', tone: 'bad' }, done: true };
+  return { line: { text: `Waiting for your signature… (checked ${new Date().toLocaleTimeString()}${m.app_opened ? ', opened in Xaman' : ', not opened in Xaman yet'})`, tone: 'wait' }, done: false };
+}
+function pushVerdict(x: XRec | undefined): { line: Line; done: boolean } {
+  const m = x?.meta ?? {};
+  if (!x || x.error || x.xamanError) return { line: { text: `Xaman error: ${x?.error ?? JSON.stringify(x?.xamanError)}`, tone: 'bad' }, done: true };
+  if (m.cancelled) return { line: { text: '✓ It reached your Xaman and you declined it. Reminders work.', tone: 'ok' }, done: true };
+  if (m.signed) return { line: { text: '✓ It reached your Xaman (you approved the sign-in; nothing was sent). Reminders work.', tone: 'ok' }, done: true };
+  if (m.expired) return { line: { text: `It expired without being opened${m.pushed ? ' (Xaman says it was pushed)' : ' and Xaman says it was NOT pushed'}.`, tone: 'bad' }, done: true };
+  return { line: { text: `Xaman says pushed = ${m.pushed === true ? 'true' : 'false'}. ${m.app_opened ? 'Opened in Xaman.' : 'Not opened yet: look in Xaman Events.'} (checked ${new Date().toLocaleTimeString()})`, tone: m.pushed ? 'wait' : 'bad' }, done: false };
+}
+function StatusLine({ line }: { line: Line }) {
+  if (!line) return null;
+  const c = line.tone === 'ok' ? '#10b981' : line.tone === 'bad' ? '#f87171' : '#fbbf24';
+  return <div role="status" aria-live="polite" style={{ margin:'10px 0', padding:'10px 12px', borderRadius:8, border:`1px solid ${c}`, color:c, fontSize:13, lineHeight:1.5 }}>{line.text}</div>;
+}
 function XamanPushPanel() {
   const [uuids, setUuids] = useState('a55209bf-1d20-458d-9227-4d018059a6dc,5227b6e5-0320-4fab-ab5c-a28ca47e246f');
   const [planId, setPlanId] = useState('cmv1b95kl0000k006c36ihr5a');
-  const [tokenFrom, setTokenFrom] = useState('5227b6e5-0320-4fab-ab5c-a28ca47e246f');
+  const [tokenFrom, setTokenFrom] = useState('');
   const [out, setOut] = useState('');
   const [sent, setSent] = useState<string | null>(null);
   const [signin, setSignin] = useState<{ uuid: string; qr_png: string | null; deep_link: string | null } | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState('');
+  const [s1, setS1] = useState<Line>(null);
+  const [s2, setS2] = useState<Line>(null);
+  const [s3, setS3] = useState<Line>(null);
+  const [tokenOk, setTokenOk] = useState(false);
+  const poll = useRef<{ kind: 'signin' | 'push'; uuid: string; until: number } | null>(null);
   const inp: React.CSSProperties = { width:'100%', padding:'8px 10px', borderRadius:8, border:'1px solid rgba(255,255,255,.15)', background:'rgba(255,255,255,.04)', color:'#fff', fontFamily:'monospace', fontSize:12, marginBottom:8 };
-  const btn: React.CSSProperties = { padding:'8px 14px', borderRadius:8, border:'1px solid #10b981', background:'rgba(16,185,129,.15)', color:'#10b981', fontWeight:700, cursor:'pointer', marginRight:8 };
-  const check = async (list = uuids) => {
-    setBusy(true);
-    try { const r = await fetch(`${API_URL}/api/admin/xaman-push?uuids=${encodeURIComponent(list)}&planId=${encodeURIComponent(planId)}`, { cache: 'no-store' }); setOut(JSON.stringify(await r.json(), null, 2)); }
-    catch (e) { setOut(String(e)); } finally { setBusy(false); }
+  const btn: React.CSSProperties = { padding:'10px 14px', borderRadius:8, border:'1px solid #10b981', background:'rgba(16,185,129,.15)', color:'#10b981', fontWeight:700, cursor:'pointer', marginRight:8, marginBottom:6 };
+  const label: React.CSSProperties = { fontSize:12, color:'rgba(255,255,255,.6)', margin:'4px 0 6px', lineHeight:1.5 };
+
+  const look = useCallback(async (uuid: string) => adminJson(`${API_URL}/api/admin/xaman-push?uuids=${encodeURIComponent(uuid)}&planId=${encodeURIComponent(planId)}`), [planId]);
+  const checkSignin = useCallback(async (uuid: string, quiet = false) => {
+    if (!quiet) setS1({ text: 'Checking with Xaman…', tone: 'wait' });
+    const r = await look(uuid);
+    setOut(JSON.stringify(r.body, null, 2));
+    if (!r.ok) { setS1({ text: errText(r), tone: 'bad' }); return true; }
+    const v = signinVerdict((r.body.requests as XRec[] | undefined)?.[0]);
+    setS1(v.line);
+    if (v.done && v.line?.tone === 'ok') { setTokenOk(true); setTokenFrom(uuid); }
+    return v.done;
+  }, [look]);
+  const checkPush = useCallback(async (uuid: string, quiet = false) => {
+    if (!quiet) setS2({ text: 'Checking with Xaman…', tone: 'wait' });
+    const r = await look(uuid);
+    setOut(JSON.stringify(r.body, null, 2));
+    if (!r.ok) { setS2({ text: errText(r), tone: 'bad' }); return true; }
+    const v = pushVerdict((r.body.requests as XRec[] | undefined)?.[0]);
+    setS2(v.line);
+    return v.done;
+  }, [look]);
+
+  // Poll Xaman every 4 s while a sign-in or a test push is outstanding (max 10 minutes), so no button needs pressing.
+  useEffect(() => {
+    const id = setInterval(async () => {
+      const p = poll.current;
+      if (!p) return;
+      if (Date.now() > p.until) { poll.current = null; return; }
+      const done = p.kind === 'signin' ? await checkSignin(p.uuid, true) : await checkPush(p.uuid, true);
+      if (done && poll.current?.uuid === p.uuid) poll.current = null;
+    }, 4000);
+    return () => clearInterval(id);
+  }, [checkSignin, checkPush]);
+
+  const freshToken = async () => {
+    setBusy('signin'); setTokenOk(false); setS2(null); setSignin(null);
+    setS1({ text: 'Creating a sign-in request…', tone: 'wait' });
+    const r = await adminJson(`${API_URL}/api/admin/xaman-push`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'signin' }) });
+    setOut(JSON.stringify(r.body, null, 2));
+    if (!r.ok || !r.body.uuid) setS1({ text: errText(r), tone: 'bad' });
+    else {
+      const sx = r.body as unknown as { uuid: string; qr_png: string | null; deep_link: string | null };
+      setSignin(sx);
+      setS1({ text: 'Waiting for your signature. On this phone: tap "Open in Xaman" below. On a computer: scan the QR with Xaman. This page checks every 4 seconds.', tone: 'wait' });
+      poll.current = { kind: 'signin', uuid: sx.uuid, until: Date.now() + 10 * 60_000 };
+    }
+    setBusy('');
   };
   const push = async () => {
-    if (!window.confirm('Send ONE test request to your Xaman app now? It asks nothing to be signed or sent; tap Decline.')) return;
-    setBusy(true);
-    try {
-      const r = await fetch(`${API_URL}/api/admin/xaman-push`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ tokenFrom }) });
-      const j = await r.json(); setOut(JSON.stringify(j, null, 2)); if (j.uuid) setSent(j.uuid);
-    } catch (e) { setOut(String(e)); } finally { setBusy(false); }
+    if (!window.confirm('Send ONE test request to your Xaman app now? Nothing is signed or sent; tap Decline.')) return;
+    setBusy('push'); setS2({ text: 'Sending one test push…', tone: 'wait' });
+    const r = await adminJson(`${API_URL}/api/admin/xaman-push`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ tokenFrom }) });
+    setOut(JSON.stringify(r.body, null, 2));
+    if (!r.ok || !r.body.uuid) setS2({ text: errText(r), tone: 'bad' });
+    else {
+      setSent(String(r.body.uuid));
+      setS2(r.body.pushed === true
+        ? { text: 'Xaman says pushed = true. Watch your phone, then tap Decline. This page checks every 4 seconds.', tone: 'wait' }
+        : { text: 'Xaman says pushed = FALSE: it did not send the notification.', tone: 'bad' });
+      poll.current = { kind: 'push', uuid: String(r.body.uuid), until: Date.now() + 10 * 60_000 };
+    }
+    setBusy('');
   };
-  const freshToken = async () => {
-    setBusy(true);
-    try {
-      const r = await fetch(`${API_URL}/api/admin/xaman-push`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'signin' }) });
-      const j = await r.json(); setOut(JSON.stringify(j, null, 2)); if (j.uuid) { setSignin(j); setTokenFrom(j.uuid); }
-    } catch (e) { setOut(String(e)); } finally { setBusy(false); }
+  const inspect = async () => {
+    setBusy('inspect'); setS3({ text: 'Checking with Xaman…', tone: 'wait' });
+    const r = await adminJson(`${API_URL}/api/admin/xaman-push?uuids=${encodeURIComponent(uuids)}&planId=${encodeURIComponent(planId)}`);
+    setOut(JSON.stringify(r.body, null, 2));
+    setS3(r.ok ? { text: `Done. Xaman's records are in "Details" below (checked ${new Date().toLocaleTimeString()}).`, tone: 'ok' } : { text: errText(r), tone: 'bad' });
+    setBusy('');
   };
+
   return (
     <div style={{ ...GLASS, padding:'18px 20px' }}>
-      <div style={{ fontSize:13, fontWeight:700, marginBottom:10 }}>Xaman push check</div>
-      <div style={{ fontSize:11, color:'rgba(255,255,255,.45)', marginBottom:6 }}>Step 1 — fresh token: sign a sign-in request (scan or open the link; nothing is sent), then press &quot;Check the sign-in&quot;.</div>
-      <button style={btn} disabled={busy} onClick={() => void freshToken()}>New sign-in request</button>
-      {signin && <button style={btn} disabled={busy} onClick={() => void check(signin.uuid)}>Check the sign-in</button>}
-      {signin?.qr_png && <div style={{ margin:'10px 0' }}><img src={signin.qr_png} alt="Sign-in QR" width={180} height={180} style={{ background:'#fff', borderRadius:8 }} /></div>}
-      {signin?.deep_link && <div style={{ marginBottom:12 }}><a href={signin.deep_link} target="_blank" rel="noreferrer" style={{ color:'#10b981', fontSize:12 }}>Open in Xaman ↗</a></div>}
-      <div style={{ fontSize:11, color:'rgba(255,255,255,.45)', margin:'10px 0 4px' }}>Earlier requests to inspect</div>
-      <div style={{ fontSize:11, color:'rgba(255,255,255,.45)', marginBottom:4 }}>Xaman request uuids (comma-separated)</div>
-      <input style={inp} value={uuids} onChange={(e) => setUuids(e.target.value)} />
-      <div style={{ fontSize:11, color:'rgba(255,255,255,.45)', marginBottom:4 }}>Spend plan id (its stored push token is checked, never shown)</div>
-      <input style={inp} value={planId} onChange={(e) => setPlanId(e.target.value)} />
-      <button style={btn} disabled={busy} onClick={() => void check()}>Check with Xaman</button>
-      <div style={{ fontSize:11, color:'rgba(255,255,255,.45)', margin:'14px 0 4px' }}>Test push: use the token from this request you signed</div>
-      <input style={inp} value={tokenFrom} onChange={(e) => setTokenFrom(e.target.value)} />
-      <button style={btn} disabled={busy} onClick={() => void push()}>Send ONE test push…</button>
-      {sent && <button style={btn} disabled={busy} onClick={() => void check(sent)}>Check the test push</button>}
-      {out && <pre style={{ marginTop:12, fontSize:11, whiteSpace:'pre-wrap', wordBreak:'break-all', color:'rgba(255,255,255,.75)' }}>{out}</pre>}
+      <div style={{ fontSize:15, fontWeight:700, marginBottom:10 }}>Xaman push check</div>
+
+      <div style={{ fontSize:13, fontWeight:700 }}>Step 1: get a fresh push token</div>
+      <div style={label}>Sign a sign-in request (nothing is sent). This page then asks Xaman whether it issued a push token.</div>
+      <button style={btn} disabled={!!busy} onClick={() => void freshToken()}>{busy === 'signin' ? 'Creating…' : 'New sign-in request'}</button>
+      {signin && <button style={btn} disabled={!!busy} onClick={() => void checkSignin(signin.uuid)}>Check the sign-in now</button>}
+      <StatusLine line={s1} />
+      {signin?.deep_link && !tokenOk && <a href={signin.deep_link} target="_blank" rel="noreferrer" style={{ ...btn, display:'block', textAlign:'center', textDecoration:'none', background:'#10b981', color:'#000', margin:'6px 0 10px' }}>Open in Xaman</a>}
+      {signin?.qr_png && !tokenOk && <div style={{ margin:'6px 0 12px' }}><img src={signin.qr_png} alt="Sign-in QR for Xaman" width={180} height={180} style={{ background:'#fff', borderRadius:8 }} /></div>}
+
+      <div style={{ fontSize:13, fontWeight:700, marginTop:14 }}>Step 2: one test push</div>
+      <div style={label}>{tokenOk ? 'Uses the token Xaman just issued. Your phone should show the request; tap Decline.' : 'Available after step 1 shows ✓.'}</div>
+      <button style={{ ...btn, opacity: tokenOk ? 1 : 0.4 }} disabled={!!busy || !tokenOk} onClick={() => void push()}>{busy === 'push' ? 'Sending…' : 'Send ONE test push…'}</button>
+      {sent && <button style={btn} disabled={!!busy} onClick={() => void checkPush(sent)}>Check the test push now</button>}
+      <StatusLine line={s2} />
+
+      <details style={{ marginTop:16 }}>
+        <summary style={{ fontSize:13, fontWeight:700, cursor:'pointer' }}>Inspect earlier requests</summary>
+        <div style={label}>Xaman request uuids (comma-separated)</div>
+        <input style={inp} value={uuids} onChange={(e) => setUuids(e.target.value)} />
+        <div style={label}>Spend plan id (its stored push token is checked, never shown)</div>
+        <input style={inp} value={planId} onChange={(e) => setPlanId(e.target.value)} />
+        <button style={btn} disabled={!!busy} onClick={() => void inspect()}>Check with Xaman</button>
+        <StatusLine line={s3} />
+      </details>
+      {out && <details style={{ marginTop:10 }}><summary style={{ fontSize:12, cursor:'pointer', color:'rgba(255,255,255,.6)' }}>Details (Xaman&apos;s raw answer)</summary><pre style={{ marginTop:8, fontSize:11, whiteSpace:'pre-wrap', wordBreak:'break-all', color:'rgba(255,255,255,.75)' }}>{out}</pre></details>}
     </div>
   );
 }

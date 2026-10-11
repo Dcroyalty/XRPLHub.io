@@ -45,6 +45,11 @@ async function describe(uuid: string) {
 
 export async function GET(req: Request) {
   if (!isAdmin(req)) return adminUnauthorized();
+  // Always answer JSON, never an HTML error page: the admin panel shows the message in plain words.
+  try { return await inspect(req); } catch (e) { return json({ error: `Inspect failed: ${e instanceof Error ? e.message : String(e)}` }, 500); }
+}
+
+async function inspect(req: Request) {
   if (!xummConfigured()) return json({ error: "Xaman not configured" }, 503);
   const url = new URL(req.url);
   const uuids = (url.searchParams.get("uuids") ?? "").split(",").map((s) => s.trim()).filter((s) => UUID_RE.test(s)).slice(0, 8);
@@ -67,6 +72,10 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   if (!isAdmin(req)) return adminUnauthorized();
+  try { return await act(req); } catch (e) { return json({ error: `Xaman request failed: ${e instanceof Error ? e.message : String(e)}` }, 502); }
+}
+
+async function act(req: Request) {
   if (!xummConfigured()) return json({ error: "Xaman not configured" }, 503);
   const body = (await req.json().catch(() => ({}))) as { tokenFrom?: unknown; action?: unknown };
   if (body.action === "signin") {
