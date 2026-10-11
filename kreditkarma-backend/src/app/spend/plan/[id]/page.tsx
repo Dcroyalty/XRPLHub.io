@@ -166,7 +166,7 @@ export default function PlanDashboard() {
         <div style={s.card}>
           <p style={s.h2}>Your wallet</p>
           <p style={{ fontSize: 14 }}><strong>{d.reserve.heldNowXrp} XRP</strong> is set aside in your wallet by {d.reserve.openChecks} open or expired check{d.reserve.openChecks === 1 ? "" : "s"} ({d.reserve.perCheckXrp} XRP each). {d.reserve.note}</p>
-          <p style={s.small}>Your wallet holds {d.funderBalance ?? d.funderRlusd ?? "?"} {cur}{cur === "XRP" ? " above its reserve" : ""}. Checks don&apos;t set money aside, so keep enough there to cover them.</p>
+          <p style={s.small}>Your wallet holds {(() => { const b = d.funderBalance ?? d.funderRlusd; return b == null ? "?" : xapp ? Number(b.toFixed(6)) : b; })()} {cur}{cur === "XRP" ? " above its reserve" : ""}. Checks don&apos;t set money aside, so keep enough there to cover them.</p>
           {!d.ledgerSynced && <p style={s.err}>Could not get the latest status just now. Refresh in a moment.</p>}
         </div>
 

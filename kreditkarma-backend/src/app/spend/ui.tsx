@@ -4,7 +4,7 @@
 // the Xaman xApp, applyXappTheme() sets the variables to follow Xaman's theme (xAppStyle: LIGHT / DARK / MOONLIGHT /
 // ROYAL). Use v("name", "#fallback") for any new color on a page the xApp can reach.
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { watchXaman } from "@/lib/wallet/xamanWatch";
 
 export const API = (typeof process !== "undefined" && process.env?.NEXT_PUBLIC_API_URL) || "";
@@ -150,6 +150,9 @@ function XappSignPanel({ data, title, onDone, onSigned, approveOnly, explain }: 
   const [state, setState] = useState<"review" | "waiting" | "signed" | "rejected" | "error">("review");
   const [sdk, setSdk] = useState<{ openSignRequest: (o: { uuid: string }) => unknown } | null>(null);
   const x = readXapp();
+  // The panel can mount far above the button that was tapped: bring the explanation into view.
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => { box.current?.scrollIntoView({ behavior: "smooth", block: "start" }); }, [data.uuid]);
   useEffect(() => {
     if (!data.uuid) return;
     const uuid = data.uuid;
@@ -171,7 +174,7 @@ function XappSignPanel({ data, title, onDone, onSigned, approveOnly, explain }: 
   }, [data.uuid]); // eslint-disable-line react-hooks/exhaustive-deps
   const open = () => { if (sdk && data.uuid) { sdk.openSignRequest({ uuid: data.uuid }); setState("waiting"); } };
   return (
-    <div style={{ ...s.card, borderColor: v("ok-border", "#99d5cc") }}>
+    <div ref={box} style={{ ...s.card, borderColor: v("ok-border", "#99d5cc"), scrollMarginTop: 12 }}>
       <p style={s.h2}>{title}</p>
       {explain && (
         <div style={{ fontSize: 14, marginBottom: 10 }}>
