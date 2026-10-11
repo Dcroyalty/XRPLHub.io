@@ -264,3 +264,13 @@ export async function userTokensActive(tokens: string[]): Promise<Map<string, { 
     return null;
   }
 }
+
+/** Xaman's full record of one request (GET /platform/payload/{uuid}) — for the admin push diagnostic. Null on failure. */
+export async function getPayloadRaw(uuid: string): Promise<Record<string, unknown> | null> {
+  try {
+    const res = await xummFetch(`${XUMM_PAYLOAD}/${encodeURIComponent(uuid)}`, { method: "GET" });
+    return ((await res.json().catch(() => null)) as Record<string, unknown> | null);
+  } catch {
+    return null;
+  }
+}

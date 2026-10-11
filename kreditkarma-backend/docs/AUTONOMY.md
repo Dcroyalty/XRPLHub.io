@@ -472,3 +472,6 @@ old ledger — so "do the nodes agree?" stays green; only the validated ledger's
   Xaman's user ID, not a push token, so opening the xApp silently switched reminders off on every subscription of that
   account. It is no longer stored. A payer's push token comes back the next time they approve any Spend request. Live
   check after the fix: the Autopay test plan (cmv1b95kl0000k006c36ihr5a) shows "Reminders are off".
+- **Push diagnostic (admin):** /admin → "xaman" tab. It shows Xaman's own record of any sign request (`meta.pushed`,
+  `app_opened`, `expired`, which Xaman app made it, whether its token is active), and can send ONE test push (a SignIn,
+  nothing to sign; tap Decline) using the token from a request the admin wallet signed. Route: `/api/admin/xaman-push`.

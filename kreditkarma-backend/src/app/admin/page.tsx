@@ -352,12 +352,52 @@ function AdminSignIn({ onAuthed }: { onAuthed: (wallet: string) => void }) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // MAIN ADMIN PAGE
 // ═══════════════════════════════════════════════════════════════════════════════
+// Xaman push diagnostic: Xaman's own record of sign requests (was it pushed? opened?), token state, and ONE test push.
+function XamanPushPanel() {
+  const [uuids, setUuids] = useState('a55209bf-1d20-458d-9227-4d018059a6dc,5227b6e5-0320-4fab-ab5c-a28ca47e246f');
+  const [planId, setPlanId] = useState('cmv1b95kl0000k006c36ihr5a');
+  const [tokenFrom, setTokenFrom] = useState('5227b6e5-0320-4fab-ab5c-a28ca47e246f');
+  const [out, setOut] = useState('');
+  const [sent, setSent] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const inp: React.CSSProperties = { width:'100%', padding:'8px 10px', borderRadius:8, border:'1px solid rgba(255,255,255,.15)', background:'rgba(255,255,255,.04)', color:'#fff', fontFamily:'monospace', fontSize:12, marginBottom:8 };
+  const btn: React.CSSProperties = { padding:'8px 14px', borderRadius:8, border:'1px solid #10b981', background:'rgba(16,185,129,.15)', color:'#10b981', fontWeight:700, cursor:'pointer', marginRight:8 };
+  const check = async (list = uuids) => {
+    setBusy(true);
+    try { const r = await fetch(`${API_URL}/api/admin/xaman-push?uuids=${encodeURIComponent(list)}&planId=${encodeURIComponent(planId)}`, { cache: 'no-store' }); setOut(JSON.stringify(await r.json(), null, 2)); }
+    catch (e) { setOut(String(e)); } finally { setBusy(false); }
+  };
+  const push = async () => {
+    if (!window.confirm('Send ONE test request to your Xaman app now? It asks nothing to be signed or sent; tap Decline.')) return;
+    setBusy(true);
+    try {
+      const r = await fetch(`${API_URL}/api/admin/xaman-push`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ tokenFrom }) });
+      const j = await r.json(); setOut(JSON.stringify(j, null, 2)); if (j.uuid) setSent(j.uuid);
+    } catch (e) { setOut(String(e)); } finally { setBusy(false); }
+  };
+  return (
+    <div style={{ ...GLASS, padding:'18px 20px' }}>
+      <div style={{ fontSize:13, fontWeight:700, marginBottom:10 }}>Xaman push check</div>
+      <div style={{ fontSize:11, color:'rgba(255,255,255,.45)', marginBottom:4 }}>Xaman request uuids (comma-separated)</div>
+      <input style={inp} value={uuids} onChange={(e) => setUuids(e.target.value)} />
+      <div style={{ fontSize:11, color:'rgba(255,255,255,.45)', marginBottom:4 }}>Spend plan id (its stored push token is checked, never shown)</div>
+      <input style={inp} value={planId} onChange={(e) => setPlanId(e.target.value)} />
+      <button style={btn} disabled={busy} onClick={() => void check()}>Check with Xaman</button>
+      <div style={{ fontSize:11, color:'rgba(255,255,255,.45)', margin:'14px 0 4px' }}>Test push: use the token from this request you signed</div>
+      <input style={inp} value={tokenFrom} onChange={(e) => setTokenFrom(e.target.value)} />
+      <button style={btn} disabled={busy} onClick={() => void push()}>Send ONE test push…</button>
+      {sent && <button style={btn} disabled={busy} onClick={() => void check(sent)}>Check the test push</button>}
+      {out && <pre style={{ marginTop:12, fontSize:11, whiteSpace:'pre-wrap', wordBreak:'break-all', color:'rgba(255,255,255,.75)' }}>{out}</pre>}
+    </div>
+  );
+}
+
 export default function AdminPage() {
   const [authed, setAuthed]       = useState(false);
   const [wallet, setWallet]       = useState('');
   const [data, setData]           = useState<AdminData|null>(null);
   const [loading, setLoading]     = useState(false);
-  const [tab, setTab]             = useState<'overview'|'grants'|'payments'|'credentials'|'watchdog'|'scores'|'donations'>('overview');
+  const [tab, setTab]             = useState<'overview'|'grants'|'payments'|'credentials'|'watchdog'|'scores'|'donations'|'xaman'>('overview');
   const [copiedAddr, setCopiedAddr] = useState('');
   const [grantFilter, setGF]      = useState('ALL');
   const [lastRefresh, setLastRefresh] = useState('');
@@ -450,12 +490,14 @@ export default function AdminPage() {
 
         {/* ── TAB NAV (wraps) ── */}
         <div style={{ display:'flex', gap:6, marginBottom:18, borderBottom:'1px solid rgba(255,255,255,.07)', paddingBottom:12, flexWrap:'wrap' }}>
-          {(['overview','grants','payments','credentials','watchdog','scores','donations'] as const).map(t=>(
+          {(['overview','grants','payments','credentials','watchdog','scores','donations','xaman'] as const).map(t=>(
             <button key={t} onClick={()=>setTab(t)} style={{ padding:'8px 14px', borderRadius:99, border:`1px solid ${tab===t?'#10b981':'rgba(255,255,255,.1)'}`, background:tab===t?'rgba(16,185,129,.15)':'transparent', color:tab===t?'#10b981':'rgba(255,255,255,.45)', fontSize:11, fontWeight:700, cursor:'pointer', fontFamily:'inherit', textTransform:'capitalize' }}>
               {t}
             </button>
           ))}
         </div>
+
+        {tab === 'xaman' && <XamanPushPanel />}
 
         {/* ── OVERVIEW ── */}
         {tab === 'overview' && data && (
