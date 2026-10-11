@@ -125,24 +125,40 @@ export default function PlanDashboard() {
               {d.batch.available ? <button style={s.btnGhost} onClick={signBatch}>Approve up to 8 at once</button> : <>Approving them all at once isn&apos;t available yet ({d.batch.reason}).</>}
             </p>
           )}
-          <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}><table style={{ ...s.table, minWidth: xapp ? 360 : undefined }}>
-            <thead><tr><th style={s.th}>Paid to</th><th style={s.th}>Up to</th><th style={s.th}>Expires</th><th style={s.th}>Status</th><th style={s.th}></th></tr></thead>
-            <tbody>
+          {xapp ? (
+            // Inside the xApp: one card per check, full-width buttons — nothing is cut off on small Android screens.
+            <div>
               {d.current.map((c) => (
-                <tr key={c.invoiceId}>
-                  <td style={s.td}>{c.payee} #{c.seq}<div style={s.small}>{c.category}</div></td>
-                  <td style={s.td}>{c.amount} {cur}</td>
-                  <td style={s.td}>{fmtDate(c.expires)}</td>
-                  <td style={s.td}>{STATUS[c.status] ?? c.status}{c.closedHow ? ` (${c.closedHow})` : ""}</td>
-                  <td style={s.td}>
-                    {c.status === "unsigned" && d.paid && <button style={s.btnGhost} onClick={() => signOne(c)}>Approve</button>}
-                    {(c.status === "open" || c.status === "expired") && c.checkId && <button style={s.btnGhost} onClick={() => cancel(c)}>Cancel</button>}
-                  </td>
-                </tr>
+                <div key={c.invoiceId} style={{ borderTop: `1px solid ${v("row", "#f0f0ec")}`, padding: "10px 0" }}>
+                  <div style={{ fontSize: 15, fontWeight: 700 }}>{c.payee} <span style={{ ...s.small, fontWeight: 400 }}>#{c.seq} · {c.category}</span></div>
+                  <div style={{ fontSize: 14 }}>Up to {c.amount} {cur} · until {fmtDate(c.expires)}</div>
+                  <div style={{ ...s.small, margin: "2px 0 6px" }}>{STATUS[c.status] ?? c.status}{c.closedHow ? ` (${c.closedHow})` : ""}</div>
+                  {c.status === "unsigned" && d.paid && <button style={{ ...s.btn, width: "100%" }} onClick={() => signOne(c)}>Approve this check</button>}
+                  {(c.status === "open" || c.status === "expired") && c.checkId && <button style={{ ...s.btnGhost, width: "100%" }} onClick={() => cancel(c)}>Cancel this check</button>}
+                </div>
               ))}
-              {!d.current.length && <tr><td style={s.td} colSpan={5}>No checks this week or month.</td></tr>}
-            </tbody>
-          </table></div>
+              {!d.current.length && <p style={s.small}>No checks this week or month.</p>}
+            </div>
+          ) : (
+            <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}><table style={{ ...s.table, minWidth: xapp ? 360 : undefined }}>
+              <thead><tr><th style={s.th}>Paid to</th><th style={s.th}>Up to</th><th style={s.th}>Expires</th><th style={s.th}>Status</th><th style={s.th}></th></tr></thead>
+              <tbody>
+                {d.current.map((c) => (
+                  <tr key={c.invoiceId}>
+                    <td style={s.td}>{c.payee} #{c.seq}<div style={s.small}>{c.category}</div></td>
+                    <td style={s.td}>{c.amount} {cur}</td>
+                    <td style={s.td}>{fmtDate(c.expires)}</td>
+                    <td style={s.td}>{STATUS[c.status] ?? c.status}{c.closedHow ? ` (${c.closedHow})` : ""}</td>
+                    <td style={s.td}>
+                      {c.status === "unsigned" && d.paid && <button style={s.btnGhost} onClick={() => signOne(c)}>Approve</button>}
+                      {(c.status === "open" || c.status === "expired") && c.checkId && <button style={s.btnGhost} onClick={() => cancel(c)}>Cancel</button>}
+                    </td>
+                  </tr>
+                ))}
+                {!d.current.length && <tr><td style={s.td} colSpan={5}>No checks this week or month.</td></tr>}
+              </tbody>
+            </table></div>
+          )}
         </div>
 
         {sub && d.autopay && <AutopayCard planId={d.plan.id} view={d.autopay} currency={cur} period={d.plan.period} onChange={() => void load()} />}
@@ -157,12 +173,24 @@ export default function PlanDashboard() {
         {d.history.length > 0 && (
           <div style={s.card}>
             <p style={s.h2}>Earlier checks</p>
-            <div style={{ overflowX: "auto" }}><table style={{ ...s.table, minWidth: xapp ? 320 : undefined }}><tbody>
-              {d.history.map((c) => (
-                <tr key={c.invoiceId}><td style={s.td}>{c.payee} #{c.seq}</td><td style={s.td}>{c.amount} {cur}</td><td style={s.td}>{fmtDate(c.expires)}</td><td style={s.td}>{STATUS[c.status] ?? c.status}{c.closedHow ? ` (${c.closedHow})` : ""}</td>
-                  <td style={s.td}>{(c.status === "open" || c.status === "expired") && c.checkId && <button style={s.btnGhost} onClick={() => cancel(c)}>Cancel</button>}</td></tr>
-              ))}
-            </tbody></table></div>
+            {xapp ? (
+              <div>
+                {d.history.map((c) => (
+                  <div key={c.invoiceId} style={{ borderTop: `1px solid ${v("row", "#f0f0ec")}`, padding: "8px 0", fontSize: 14 }}>
+                    <div><strong>{c.payee}</strong> #{c.seq} · {c.amount} {cur} · {fmtDate(c.expires)}</div>
+                    <div style={s.small}>{STATUS[c.status] ?? c.status}{c.closedHow ? ` (${c.closedHow})` : ""}</div>
+                    {(c.status === "open" || c.status === "expired") && c.checkId && <button style={{ ...s.btnGhost, width: "100%", marginTop: 6 }} onClick={() => cancel(c)}>Cancel this check</button>}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{ overflowX: "auto" }}><table style={{ ...s.table, minWidth: xapp ? 320 : undefined }}><tbody>
+                {d.history.map((c) => (
+                  <tr key={c.invoiceId}><td style={s.td}>{c.payee} #{c.seq}</td><td style={s.td}>{c.amount} {cur}</td><td style={s.td}>{fmtDate(c.expires)}</td><td style={s.td}>{STATUS[c.status] ?? c.status}{c.closedHow ? ` (${c.closedHow})` : ""}</td>
+                    <td style={s.td}>{(c.status === "open" || c.status === "expired") && c.checkId && <button style={s.btnGhost} onClick={() => cancel(c)}>Cancel</button>}</td></tr>
+                ))}
+              </tbody></table></div>
+            )}
           </div>
         )}
         <Disclosure lines={d.disclosure} />
