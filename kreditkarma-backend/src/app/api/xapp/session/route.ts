@@ -2,10 +2,11 @@
 // POST { ott } — the Spend Controls xApp opens with ?xAppToken=<one-time token>. We resolve it SERVER-SIDE with our Xaman
 // API key + secret (the page can't fake the account), then:
 //   - return a 12-hour session naming the account (src/lib/xappSession.ts);
-//   - keep Xaman's user token on this account's subscription plans, so each new period's check can be pushed to them.
+//   - NOTHING about push: the OTT's "user" is Xaman's user ID, not a push token (BUG fixed 2026-10-11: storing it here
+//     overwrote every subscription's real push token, so opening the xApp silently switched reminders off). The push
+//     token comes only from a signed payload (application.issued_user_token, /api/spend/plans/:id/signed).
 // Mainnet only: Spend Controls checks are mainnet RLUSD / XRP.
 
-import { prisma } from "@/lib/xrplscore-db";
 import { rateLimit, rateLimited } from "@/lib/rateLimit";
 import { getXappOtt, xummConfigured } from "@/lib/xumm";
 import { issueXappSession } from "@/lib/xappSession";
@@ -34,8 +35,5 @@ export async function POST(req: Request) {
   const session = issueXappSession(o.account);
   if (!session) return spendErr(503, "not_configured", "Sessions are not configured on this server.");
 
-  if (o.userToken) {
-    await prisma.spendPlan.updateMany({ where: { funder: o.account, kind: "subscription" }, data: { xamanUserToken: o.userToken } });
-  }
   return spendJson({ session, account: o.account, canSign: o.accountaccess !== "READONLY" });
 }

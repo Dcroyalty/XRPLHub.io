@@ -468,3 +468,7 @@ old ledger — so "do the nodes agree?" stays green; only the validated ledger's
   no new checks, no pushes (token dropped), unsent Autopay payments cancelled, hidden from the xApp list
   (`/api/xapp/plans` lists `status: "active"` only), the payee's link says it ended. Open checks stay cancellable,
   tickets stay releasable. Can't be undone.
+- **BUG fixed (2026-10-11):** `/api/xapp/session` stored the xApp OTT's `user` field as the push token. That field is
+  Xaman's user ID, not a push token, so opening the xApp silently switched reminders off on every subscription of that
+  account. It is no longer stored. A payer's push token comes back the next time they approve any Spend request. Live
+  check after the fix: the Autopay test plan (cmv1b95kl0000k006c36ihr5a) shows "Reminders are off".

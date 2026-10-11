@@ -97,8 +97,8 @@ export async function xummFetch(url: string, init: RequestInit = {}): Promise<Re
 /** What Xaman tells us about the user who opened our xApp (subset of xumm-sdk's xAppOttData). */
 export interface XappOtt {
   account: string | null;
-  /** The user token for push (same concept as application.issued_user_token). */
-  userToken: string | null;
+  /** Xaman's user ID (UUID). NOT a push token — never store it as one (pushes need application.issued_user_token). */
+  userUuid: string | null;
   nodetype: string | null;      // "MAINNET" | "TESTNET" | ...
   accountaccess: string | null; // "FULL" | "READONLY"
 }
@@ -113,7 +113,7 @@ export async function getXappOtt(ott: string): Promise<XappOtt | null> {
   const d = (await res.json().catch(() => null)) as Record<string, unknown> | null;
   if (!res.ok || !d || d.error) return null;
   const str = (v: unknown) => (typeof v === "string" && v ? v : null);
-  return { account: str(d.account), userToken: str(d.user), nodetype: str(d.nodetype), accountaccess: str(d.accountaccess) };
+  return { account: str(d.account), userUuid: str(d.user), nodetype: str(d.nodetype), accountaccess: str(d.accountaccess) };
 }
 
 /**
