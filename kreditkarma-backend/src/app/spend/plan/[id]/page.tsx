@@ -93,9 +93,11 @@ export default function PlanDashboard() {
 
   if (!d) return <div style={s.shell}><main style={s.page}><LedgerBanner />{err ? <p style={s.err}>{err}</p> : <p>Loading…</p>}</main></div>;
   const share = typeof window !== "undefined" ? `${window.location.origin}${d.plan.shareLink}` : d.plan.shareLink;
-  const unsigned = d.current.filter((c) => c.status === "unsigned");
   const sub = d.plan.kind === "subscription";
   const ended = d.plan.status === "ended";
+  const unsigned = ended ? [] : d.current.filter((c) => c.status === "unsigned");
+  // An ended plan's never-approved checks were never made: nothing to approve.
+  const label = (c: Check) => (ended && c.status === "unsigned" ? "Never made (plan ended)" : STATUS[c.status] ?? c.status);
   const openNow = d.reserve.openChecks;
 
   return (
@@ -149,8 +151,8 @@ export default function PlanDashboard() {
                 <div key={c.invoiceId} style={{ borderTop: `1px solid ${v("row", "#f0f0ec")}`, padding: "10px 0" }}>
                   <div style={{ fontSize: 15, fontWeight: 700 }}>{c.payee} <span style={{ ...s.small, fontWeight: 400 }}>#{c.seq} · {c.category}</span></div>
                   <div style={{ fontSize: 14 }}>Up to {c.amount} {cur} · until {fmtDate(c.expires)}</div>
-                  <div style={{ ...s.small, margin: "2px 0 6px" }}>{STATUS[c.status] ?? c.status}{c.closedHow ? ` (${c.closedHow})` : ""}</div>
-                  {c.status === "unsigned" && d.paid && <button style={{ ...s.btn, width: "100%" }} onClick={() => signOne(c)}>Approve this check</button>}
+                  <div style={{ ...s.small, margin: "2px 0 6px" }}>{label(c)}{c.closedHow ? ` (${c.closedHow})` : ""}</div>
+                  {c.status === "unsigned" && d.paid && !ended && <button style={{ ...s.btn, width: "100%" }} onClick={() => signOne(c)}>Approve this check</button>}
                   {(c.status === "open" || c.status === "expired") && c.checkId && <button style={{ ...s.btnGhost, width: "100%" }} onClick={() => cancel(c)}>Cancel this check</button>}
                 </div>
               ))}
@@ -165,9 +167,9 @@ export default function PlanDashboard() {
                     <td style={s.td}>{c.payee} #{c.seq}<div style={s.small}>{c.category}</div></td>
                     <td style={s.td}>{c.amount} {cur}</td>
                     <td style={s.td}>{fmtDate(c.expires)}</td>
-                    <td style={s.td}>{STATUS[c.status] ?? c.status}{c.closedHow ? ` (${c.closedHow})` : ""}</td>
+                    <td style={s.td}>{label(c)}{c.closedHow ? ` (${c.closedHow})` : ""}</td>
                     <td style={s.td}>
-                      {c.status === "unsigned" && d.paid && <button style={s.btnGhost} onClick={() => signOne(c)}>Approve</button>}
+                      {c.status === "unsigned" && d.paid && !ended && <button style={s.btnGhost} onClick={() => signOne(c)}>Approve</button>}
                       {(c.status === "open" || c.status === "expired") && c.checkId && <button style={s.btnGhost} onClick={() => cancel(c)}>Cancel</button>}
                     </td>
                   </tr>
@@ -195,7 +197,7 @@ export default function PlanDashboard() {
                 {d.history.map((c) => (
                   <div key={c.invoiceId} style={{ borderTop: `1px solid ${v("row", "#f0f0ec")}`, padding: "8px 0", fontSize: 14 }}>
                     <div><strong>{c.payee}</strong> #{c.seq} · {c.amount} {cur} · {fmtDate(c.expires)}</div>
-                    <div style={s.small}>{STATUS[c.status] ?? c.status}{c.closedHow ? ` (${c.closedHow})` : ""}</div>
+                    <div style={s.small}>{label(c)}{c.closedHow ? ` (${c.closedHow})` : ""}</div>
                     {(c.status === "open" || c.status === "expired") && c.checkId && <button style={{ ...s.btnGhost, width: "100%", marginTop: 6 }} onClick={() => cancel(c)}>Cancel this check</button>}
                   </div>
                 ))}
@@ -203,7 +205,7 @@ export default function PlanDashboard() {
             ) : (
               <div style={{ overflowX: "auto" }}><table style={{ ...s.table, minWidth: xapp ? 320 : undefined }}><tbody>
                 {d.history.map((c) => (
-                  <tr key={c.invoiceId}><td style={s.td}>{c.payee} #{c.seq}</td><td style={s.td}>{c.amount} {cur}</td><td style={s.td}>{fmtDate(c.expires)}</td><td style={s.td}>{STATUS[c.status] ?? c.status}{c.closedHow ? ` (${c.closedHow})` : ""}</td>
+                  <tr key={c.invoiceId}><td style={s.td}>{c.payee} #{c.seq}</td><td style={s.td}>{c.amount} {cur}</td><td style={s.td}>{fmtDate(c.expires)}</td><td style={s.td}>{label(c)}{c.closedHow ? ` (${c.closedHow})` : ""}</td>
                     <td style={s.td}>{(c.status === "open" || c.status === "expired") && c.checkId && <button style={s.btnGhost} onClick={() => cancel(c)}>Cancel</button>}</td></tr>
                 ))}
               </tbody></table></div>
