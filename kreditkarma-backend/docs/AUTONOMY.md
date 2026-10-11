@@ -492,3 +492,15 @@ old ledger — so "do the nodes agree?" stays green; only the validated ledger's
   (`[xaman push]` in Vercel logs, 1 h) and keeps the last 25 in the database:
   `select marker from "IndexerCheckpoint" where id = 'xaman-push-log'`. `scripts/show-push-request.ts` prints the exact
   body we POST (token masked): `user_token` is a top-level field, as in Xaman's Push docs.
+
+## 22. Wallet Check xApp (2026-10-11)
+
+- **The xApp is now Wallet Check:** `/xapp/check` (Xaman identifier `sandbox.64e45fc7aaca`). One purpose: check before you trust.
+  "Your wallet" = Wallet Permissions Check for the account Xaman provides, with the free fixes (remove a permission, cancel
+  a check), each explained in plain words and opened in Xaman only on a tap. "Check a wallet" = the free XRPLScore track
+  record (`/api/score/:address`) for any address, picked from Xaman's own contacts / QR scanner (`selectDestination`) or
+  pasted. No push, no sign-in, nothing stored.
+- **Spend Controls is website-only.** `/xapp/spend` still works but nothing links to it (push reminders never reached a
+  phone, §21).
+- **Audit:** the Xaman checklist runs headless against production at 320/360/390/412 px in LIGHT, DARK, MOONLIGHT and
+  ROYAL. It records every message sent to Xaman, proving nothing opens without a tap.
