@@ -1,11 +1,11 @@
 // src/app/api/xapp/session/route.ts
-// POST { ott } — the Spend Controls xApp opens with ?xAppToken=<one-time token>. We resolve it SERVER-SIDE with our Xaman
+// POST { ott } — our xApp (Wallet Check, /xapp/check; formerly Spend Controls, /xapp/spend) opens with ?xAppToken=<one-time token>. We resolve it SERVER-SIDE with our Xaman
 // API key + secret (the page can't fake the account), then:
 //   - return a 12-hour session naming the account (src/lib/xappSession.ts);
 //   - NOTHING about push: the OTT's "user" is Xaman's user ID, not a push token (BUG fixed 2026-10-11: storing it here
 //     overwrote every subscription's real push token, so opening the xApp silently switched reminders off). The push
 //     token comes only from a signed payload (application.issued_user_token, /api/spend/plans/:id/signed).
-// Mainnet only: Spend Controls checks are mainnet RLUSD / XRP.
+// Mainnet only: everything the xApp reads or fixes is on the XRP Ledger mainnet.
 
 import { rateLimit, rateLimited } from "@/lib/rateLimit";
 import { getXappOtt, xummConfigured } from "@/lib/xumm";
@@ -30,7 +30,7 @@ export async function POST(req: Request) {
     return spendErr(401, "ott_invalid", "Xaman didn't confirm this session (the token may have been used already). Close and reopen the xApp.");
   }
   if (o.nodetype && o.nodetype !== "MAINNET") {
-    return spendErr(409, "wrong_network", `Spend Controls runs on the XRP Ledger mainnet; Xaman is on ${o.nodetype}. Switch network in Xaman and reopen.`);
+    return spendErr(409, "wrong_network", `This xApp works on the XRP Ledger mainnet; Xaman is on ${o.nodetype}. Switch network in Xaman and reopen.`);
   }
   const session = issueXappSession(o.account);
   if (!session) return spendErr(503, "not_configured", "Sessions are not configured on this server.");

@@ -48,7 +48,7 @@ export type SignData = { uuid?: string | null; qr_png?: string | null; deep_link
 /** What the user is about to sign, in plain words — shown BEFORE every signature inside the xApp. */
 export type Explain = { what: string; why: string; consequences: string[] };
 
-// ── xApp mode: these pages running INSIDE Xaman as the Spend Controls xApp (src/app/xapp/spend) ──────────────────────
+// ── xApp mode: pages running INSIDE Xaman (the Wallet Check xApp, src/app/xapp/check; /xapp/spend still works, unlinked) ──────────────────────
 const XAPP_KEY = "xrplhub_xapp";
 const XAPP_STYLE_KEY = "xrplhub_xapp_style";
 export type XappState = { session: string; account: string; canSign: boolean };

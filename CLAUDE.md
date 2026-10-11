@@ -44,9 +44,7 @@ The live production app is a single Next.js project in **`kreditkarma-backend/`*
   FUTURE period on its own Ticket with a far-future LastLedgerSequence WE set (Xaman keeps it: probe 427afc24). Blobs are
   encrypted (`SPEND_AUTOPAY_KEY`), never returned, sent one per period by the 07:00 cron, never early, never retried after
   a tec. Cancel = stop + payer burns the remaining tickets. Starts the period AFTER the current one, so it never overlaps a
-  check. Testnet E2E: `node scripts/test-autopay-testnet.ts`. The **xApp** (`/xapp/spend`, Xaman identifier `sandbox.64e45fc7aaca`; push/token rules in AUTONOMY §21)
-  shows ONLY Spend Controls and signs with `xumm-xapp-sdk` `openSignRequest` — never add the catalog, DEX or anything
-  Xaman does itself to it.
+  check. Testnet E2E: `node scripts/test-autopay-testnet.ts`. Spend Controls is website-only now; the old xApp page `/xapp/spend` still works but is unlinked (push reminders never reached a phone: AUTONOMY §21).
 - **Focus (competitive map, 2026-10-06):** lead with XRPLScore + monitoring + lending readiness, Spend Controls, MPT
   issuer-power risk. Don't rebuild what Xaman or any wallet already does.
 - **Community grants** — a person reviews every application; nothing is automated. The
@@ -55,6 +53,9 @@ The live production app is a single Next.js project in **`kreditkarma-backend/`*
 - **B2B API** — the scoring/report API sold to businesses, **billed in RLUSD**
   (see `src/lib/rlusd.ts`, x402 payment flow in `src/lib/x402.ts`).
 
+- **Wallet Check xApp** (`/xapp/check`, Xaman identifier `sandbox.64e45fc7aaca`, 2026-10-11): runs inside Xaman, no push, no
+  sign-in. Your wallet = Wallet Permissions Check + free fixes (explained, then signed on a tap); any wallet = XRPLScore track
+  record (Xaman contact/QR picker). Never add Spend Controls, a DEX or anything Xaman does itself to it.
 - **Wallet Permissions Check** (`src/lib/walletPermissions.ts`, `/permissions`, 2026-10-09) — who can move money out of a
   wallet (keys, signer list, delegations, checks, channels, escrows, offers, tickets). Free page; agents pay $0.02 via
   x402. Its free fixes (DelegateSet revoke, CheckCancel) are other transactions we build. See docs/HUB-GAPS.md.
