@@ -10,7 +10,7 @@ import { AutopayCard, type AutopayView } from "./AutopayCard";
 type Check = { invoiceId: string; checkId: string | null; payee: string; category: string; seq: number; amount: string; currency: string; expires: string; status: string; closedHow: string | null };
 type Dash = {
   plan: { id: string; name: string | null; kind: string; funder: string; period: string; checkSize: string; currency: string; status: string; paidThrough: string | null; shareLink: string };
-  pushReady: boolean; funderBalance: number | null;
+  pushReady: boolean; reminders?: boolean; funderBalance: number | null;
   paid: boolean;
   period: { start: string; end: string };
   current: Check[]; history: Check[];
@@ -116,9 +116,11 @@ export default function PlanDashboard() {
           </div>
         )}
         {sub && !ended && (
-          <div style={{ ...s.card, background: d.pushReady ? v("ok-bg", "#eef8f6") : v("warn-bg", "#fffbea") }}>
+          <div style={{ ...s.card, background: d.reminders && d.pushReady ? v("ok-bg", "#eef8f6") : v("warn-bg", "#fffbea") }}>
             <p style={{ ...s.small, color: v("fg", "#333"), margin: 0 }}>
-              {d.pushReady
+              {!d.reminders
+                ? "Reminders unavailable: we can't send payments to your Xaman app yet. When each week or month starts, open this page (or Spend Controls in Xaman) to approve that payment. Nothing is made ahead of time."
+                : d.pushReady
                 ? "Reminders on: when a new week or month starts, that payment is sent to your Xaman app to approve. Nothing is made ahead of time."
                 : "Reminders are off. Xaman only lets us send payments to your app within 30 days of your last approval for XRPLHub. Approve this period's check in Xaman to turn them back on, or check this page when each week or month starts. Nothing is made ahead of time."}
             </p>
@@ -218,7 +220,7 @@ export default function PlanDashboard() {
           <div style={{ ...s.card, marginTop: 14, background: v("danger-bg", "#fff7f6"), borderColor: v("danger-border", "#f2b8b5") }}>
             <p style={s.h2}>End this plan</p>
             <p style={s.small}>
-              Stops this {sub ? "recurring payment" : "allowance"} for good: no new checks, nothing more sent to your Xaman app{d.autopay && d.autopay.status !== "off" ? ", and Autopay payments not yet sent are cancelled" : ""}.
+              Stops this {sub ? "recurring payment" : "allowance"} for good: no new checks{d.reminders ? ", nothing more sent to your Xaman app" : ""}{d.autopay && d.autopay.status !== "off" ? ", and Autopay payments not yet sent are cancelled" : ""}.
               Checks already made stay cashable until you cancel them on this page.{d.autopay && d.autopay.status !== "off" ? " Release the remaining Autopay payments here afterwards to get their XRP back." : ""} To start again, make a new plan.
             </p>
             {confirmEnd ? (

@@ -375,13 +375,15 @@ async function settle(row: DueRow, code: string, ctx: { now: Date; update: (id: 
 }
 
 /** Shown wherever Autopay is offered (plain words; owner spec item 5). */
-export function autopayDisclosure(reservePerTicketXrp: number, payeeLabel: string, amount: string, currency: string): string[] {
+export function autopayDisclosure(reservePerTicketXrp: number, payeeLabel: string, amount: string, currency: string, reminders = false): string[] {
   return [
     "XRPLHub decides when each pre-approved payment is sent. We send exactly one at the start of each week or month, never early. You approve them all now, ahead of time, and we keep them encrypted.",
     `Each pre-approved payment holds ${reservePerTicketXrp} XRP in your wallet until it's used or released. You get the ${reservePerTicketXrp} XRP back then.`,
     `Each approved payment can only pay ${payeeLabel} exactly ${amount} ${currency}. It can't be changed or used for anything else.`,
     "Keep enough money in your wallet. If a payment fails (for example, not enough money), we don't try it again. It shows on this page and in the Spend Controls xApp in Xaman, with a normal check to approve instead, and the person you pay sees it on their link.",
-    "We also send that check to your Xaman app. Xaman only lets us do that within 30 days of your last approval for XRPLHub, and Autopay needs no approvals, so after that check this page or the xApp around each payment date.",
+    reminders
+      ? "We also send that check to your Xaman app. Xaman only lets us do that within 30 days of your last approval for XRPLHub, and Autopay needs no approvals, so after that check this page or the xApp around each payment date."
+      : "We can't send reminders to your Xaman app yet, so check this page or Spend Controls in Xaman around each payment date.",
     "To cancel, press Cancel: we stop sending at once. Then release each remaining payment (one small approval each). That makes it impossible to send, by anyone, and gives you back its XRP.",
     "Autopay is free. Each payment costs only the XRP Ledger's network fee (0.00002 XRP), paid from your wallet.",
   ];

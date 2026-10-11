@@ -453,7 +453,10 @@ old ledger — so "do the nodes agree?" stays green; only the validated ledger's
   once the user has interacted with it; only *custom xApp push events* need that permission
   (https://docs.xaman.dev/concepts/limitations/push-permission). Spend Controls only pushes sign requests.
 - **User token expiry:** "expires 30 days after the **last** successfully signed payload"
-  (https://docs.xaman.dev/concepts/payloads-sign-requests/delivery/push). Opening the xApp does not extend it.
+  (https://docs.xaman.dev/concepts/payloads-sign-requests/delivery/push). The push-permission page also says "every time
+  the user interacts with the app again, the 30 day cycle will reset" and that xApps obtain a token "after xApp open". In an
+  xApp that token is the JWT claim `usertoken_uuidv4` (Xumm-Universal-SDK src/index.ts: `user.token`), NOT the OTT
+  `user` field. Tokens are "user & app bound": only the API credentials they were issued to can use them.
   Autopay payers sign nothing after setup, so their token is usually dead by the time a payment could fail.
   A monthly subscription signed on day 1 can also expire just before the next 31-day month starts. So:
   - the cron reports every push Xaman did not deliver as a RED line ("spend push NOT delivered"), naming the plan
@@ -475,3 +478,13 @@ old ledger — so "do the nodes agree?" stays green; only the validated ledger's
 - **Push diagnostic (admin):** /admin → "xaman" tab. It shows Xaman's own record of any sign request (`meta.pushed`,
   `app_opened`, `expired`, which Xaman app made it, whether its token is active), and can send ONE test push (a SignIn,
   nothing to sign; tap Decline) using the token from a request the admin wallet signed. Route: `/api/admin/xaman-push`.
+- **Saturday 10 Oct reminder was never delivered (owner's /admin check, 2026-10-11):** request a55209bf, CheckCreate,
+  `meta.pushed = false`, never opened, expired. The Oct 9 pre-approval 5227b6e5 was signed but Xaman issued NO user token
+  (`application.issued_user_token` null), and Xaman's docs name no condition for that. The token the plan held on Saturday
+  could only have come from the Oct 9 TicketCreate. It was overwritten on Oct 11 (the OTT bug) and can't be inspected. All
+  three treasury subscription plans now hold `2587…`, the OTT `user` ID written at the Oct 11 xApp open (inactive).
+  Xaman key/secret unchanged since 2026-10-05, so this is not a deleted-app token.
+- **Reminders are NOT promised until proven:** `SPEND_PUSH_VERIFIED` (unset = off). While off, every surface says
+  "Reminders unavailable" (create page via /api/spend/config, dashboard, Autopay terms, the API's `how`, llms.txt). The cron
+  still tries the push (it costs nothing) and reports non-delivery as RED. Turn it on only after a test push arrives on a phone
+  (/admin → xaman: step 1 sign-in → "Check the sign-in" → "Send ONE test push…").

@@ -16,6 +16,7 @@ import { xrplRpc } from "./xrplNodes";
 import { RLUSD_HEX, RLUSD_ISSUER } from "./pricing";
 import { createPayload, getPayloadStatus, safeIdentifier, xummConfigured } from "./xumm";
 import { notifyError, notifyInfo } from "./notify";
+import { remindersAvailable } from "./spendApi";
 import { batchAvailability, ownerReserveXrp } from "./spendControls";
 import {
   AUTOPAY_GRACE_S, AUTOPAY_MAX_PERIODS, acceptSignedBlob, autopayDisclosure, autopayPeriods, autopayPreflight,
@@ -284,7 +285,7 @@ export async function autopayView(prisma: PrismaClient, plan: Plan) {
       txHash: r.status === "paid" || r.status === "failed" || r.status === "pending" ? r.txHash : null, // the blob itself is never returned
     })),
     releasableTickets: releasable,
-    disclosure: p ? autopayDisclosure(reserve, p.label, p.budget, plan.currency) : [],
+    disclosure: p ? autopayDisclosure(reserve, p.label, p.budget, plan.currency, remindersAvailable()) : [],
   };
 }
 

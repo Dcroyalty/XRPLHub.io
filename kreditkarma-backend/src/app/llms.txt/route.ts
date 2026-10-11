@@ -3,6 +3,7 @@
 // AI crawlers. Plain text, stable URL: https://www.xrplhub.io/llms.txt
 
 import { PLAN_ORDER, PLANS } from "@/lib/plans";
+import { remindersAvailable } from "@/lib/spendApi";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -214,7 +215,7 @@ no prepay. Each open check holds 0.2 XRP of the funder's reserve until cashed or
 Not a bank, not a money transmitter; XRPLHub never holds funds or keys. Checks don't lock funds.
 SUBSCRIPTIONS (kind "subscription"): one payee, one fixed amount per week or month, RLUSD or XRP — recurring payments without
 the XLS-78 amendment. ONE check per period, created only when that period starts (never ahead: a check is cashable the moment
-it exists); after the payer's first Xaman signature, each new period's check is pushed to their Xaman app to sign. Unsigned =
+it exists); ${remindersAvailable() ? "after the payer's first Xaman signature, each new period's check is pushed to their Xaman app to sign" : "the payer approves it on their dashboard (push reminders to Xaman are not available yet)"}. Unsigned =
 unpaid. The payer stops by not signing or cancelling an open check before it is cashed. Checks, not escrow, even for XRP: an
 escrow locks the funds and can't be cancelled before its CancelAfter, so a prepaid, uncancellable subscription is avoided.
 - POST ${origin}/api/spend/plans?dryRun=1 — preview a plan (check split, reserve locked up front, funder balance). Subscription:

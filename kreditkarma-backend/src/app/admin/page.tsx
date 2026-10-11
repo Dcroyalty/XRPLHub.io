@@ -359,6 +359,7 @@ function XamanPushPanel() {
   const [tokenFrom, setTokenFrom] = useState('5227b6e5-0320-4fab-ab5c-a28ca47e246f');
   const [out, setOut] = useState('');
   const [sent, setSent] = useState<string | null>(null);
+  const [signin, setSignin] = useState<{ uuid: string; qr_png: string | null; deep_link: string | null } | null>(null);
   const [busy, setBusy] = useState(false);
   const inp: React.CSSProperties = { width:'100%', padding:'8px 10px', borderRadius:8, border:'1px solid rgba(255,255,255,.15)', background:'rgba(255,255,255,.04)', color:'#fff', fontFamily:'monospace', fontSize:12, marginBottom:8 };
   const btn: React.CSSProperties = { padding:'8px 14px', borderRadius:8, border:'1px solid #10b981', background:'rgba(16,185,129,.15)', color:'#10b981', fontWeight:700, cursor:'pointer', marginRight:8 };
@@ -375,9 +376,22 @@ function XamanPushPanel() {
       const j = await r.json(); setOut(JSON.stringify(j, null, 2)); if (j.uuid) setSent(j.uuid);
     } catch (e) { setOut(String(e)); } finally { setBusy(false); }
   };
+  const freshToken = async () => {
+    setBusy(true);
+    try {
+      const r = await fetch(`${API_URL}/api/admin/xaman-push`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'signin' }) });
+      const j = await r.json(); setOut(JSON.stringify(j, null, 2)); if (j.uuid) { setSignin(j); setTokenFrom(j.uuid); }
+    } catch (e) { setOut(String(e)); } finally { setBusy(false); }
+  };
   return (
     <div style={{ ...GLASS, padding:'18px 20px' }}>
       <div style={{ fontSize:13, fontWeight:700, marginBottom:10 }}>Xaman push check</div>
+      <div style={{ fontSize:11, color:'rgba(255,255,255,.45)', marginBottom:6 }}>Step 1 — fresh token: sign a sign-in request (scan or open the link; nothing is sent), then press &quot;Check the sign-in&quot;.</div>
+      <button style={btn} disabled={busy} onClick={() => void freshToken()}>New sign-in request</button>
+      {signin && <button style={btn} disabled={busy} onClick={() => void check(signin.uuid)}>Check the sign-in</button>}
+      {signin?.qr_png && <div style={{ margin:'10px 0' }}><img src={signin.qr_png} alt="Sign-in QR" width={180} height={180} style={{ background:'#fff', borderRadius:8 }} /></div>}
+      {signin?.deep_link && <div style={{ marginBottom:12 }}><a href={signin.deep_link} target="_blank" rel="noreferrer" style={{ color:'#10b981', fontSize:12 }}>Open in Xaman ↗</a></div>}
+      <div style={{ fontSize:11, color:'rgba(255,255,255,.45)', margin:'10px 0 4px' }}>Earlier requests to inspect</div>
       <div style={{ fontSize:11, color:'rgba(255,255,255,.45)', marginBottom:4 }}>Xaman request uuids (comma-separated)</div>
       <input style={inp} value={uuids} onChange={(e) => setUuids(e.target.value)} />
       <div style={{ fontSize:11, color:'rgba(255,255,255,.45)', marginBottom:4 }}>Spend plan id (its stored push token is checked, never shown)</div>

@@ -2,6 +2,8 @@
 //   GET  ?uuids=a,b&planId=…  → for each Xaman request: Xaman's own record (meta.pushed, app_opened, expired, signed…),
 //                               which Xaman app created it, whether it issued a push token and whether that token is
 //                               still active; plus whether the plan's stored token is active. Token values never leave.
+//   POST { action: "signin" } → a SignIn request shown as QR / link (NOT pushed): signing it should make Xaman issue a fresh
+//                               user token (application.issued_user_token) — then GET it to see whether one was issued.
 //   POST { tokenFrom }        → push ONE test request (a SignIn: nothing to sign or submit; the owner taps Decline) using
 //                               the token issued by a request the admin's own wallet signed. Returns Xaman's `pushed`.
 // Fields per https://docs.xaman.dev (payload GET: meta.pushed / application.issued_user_token; POST: "pushed": true).
@@ -66,7 +68,11 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   if (!isAdmin(req)) return adminUnauthorized();
   if (!xummConfigured()) return json({ error: "Xaman not configured" }, 503);
-  const body = (await req.json().catch(() => ({}))) as { tokenFrom?: unknown };
+  const body = (await req.json().catch(() => ({}))) as { tokenFrom?: unknown; action?: unknown };
+  if (body.action === "signin") {
+    const s = await createPayload({ txjson: { TransactionType: "SignIn" }, submit: false, expireMinutes: 10, identifier: `xrplhub_tokentest_${Date.now()}`, instruction: "XRPLHub push test, step 1: sign in so Xaman issues a push token. Nothing is sent." });
+    return json({ uuid: s.uuid, qr_png: s.qrPng, deep_link: s.deepLink });
+  }
   const from = String(body.tokenFrom ?? "");
   if (!UUID_RE.test(from)) return json({ error: "tokenFrom must be a Xaman request uuid" }, 400);
   const src = await describe(from);

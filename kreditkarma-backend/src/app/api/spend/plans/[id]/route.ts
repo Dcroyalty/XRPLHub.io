@@ -7,7 +7,7 @@
 import { prisma } from "@/lib/xrplscore-db";
 import { rateLimit, rateLimited } from "@/lib/rateLimit";
 import { batchAvailability, checkCreateFor, ensurePeriodChecks, fromRipple, funderBalance, ownerReserveXrp, periodWindow, syncPlanChecks, type PlanCurrency, type Period } from "@/lib/spendControls";
-import { SPEND_DISCLOSURE, loadPlan, spendErr, spendJson } from "@/lib/spendApi";
+import { SPEND_DISCLOSURE, loadPlan, remindersAvailable, spendErr, spendJson } from "@/lib/spendApi";
 import { userTokensActive } from "@/lib/xumm";
 import { autopayCovers, autopayView } from "@/lib/spendAutopay";
 
@@ -64,6 +64,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
     // Subscriptions: whether the daily job can push next period's check to the funder's Xaman app (a token exists after
     // their first signed Spend request). The token itself is never returned.
     // Xaman drops a push token 30 days after the payer's last signature, so ask Xaman whether it still works.
+    reminders: remindersAvailable(),
     pushReady: live && !!plan.xamanUserToken && (await userTokensActive([plan.xamanUserToken]).catch(() => null))?.get(plan.xamanUserToken)?.active !== false,
     ledgerSynced: sync.ok,
     batch,

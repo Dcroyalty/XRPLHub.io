@@ -10,7 +10,7 @@
 import { prisma } from "@/lib/xrplscore-db";
 import { rateLimit, rateLimited } from "@/lib/rateLimit";
 import { checkPayeeAccount, fromCents, funderBalance, newShareToken, ownerReserveXrp, validatePlanInput, type PlanInput } from "@/lib/spendControls";
-import { SPEND_DISCLOSURE, spendErr, spendJson } from "@/lib/spendApi";
+import { SPEND_DISCLOSURE, spendErr, spendJson, remindersAvailable } from "@/lib/spendApi";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -56,7 +56,7 @@ export async function POST(req: Request) {
     price: { free: true, note: "Spend Controls is free: no plan fee, no prepay. Merchants cash free. Your wallet pays only the XRP Ledger's network fee." },
     ...(v.kind === "subscription" ? { subscription: {
       amountPerPeriod: fromCents(v.totalBudgetCents),
-      how: "One check per period, created only when that period starts (never ahead — a check can be cashed as soon as it exists). Sign it in Xaman; after your first signature we push each new period's check to your Xaman app. Unsigned = unpaid. Cancel any time: unsigned checks are never created, and an open one can be cancelled until it is cashed.",
+      how: `One check per period, created only when that period starts (never ahead — a check can be cashed as soon as it exists). Sign it in Xaman; ${remindersAvailable() ? "after your first signature we push each new period's check to your Xaman app" : "reminders to your Xaman app aren't available yet, so open your dashboard when each period starts to approve it"}. Unsigned = unpaid. Cancel any time: unsigned checks are never created, and an open one can be cancelled until it is cashed.`,
     } } : {}),
     payeeProblems,
     disclosure: SPEND_DISCLOSURE,

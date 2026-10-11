@@ -36,6 +36,13 @@ export async function pushSignRequest(txjson: Record<string, unknown>, label: st
   }
 }
 
+/** Reminders (a sign request pushed to the payer's Xaman app) are promised ONLY once one was proven to reach a phone.
+ *  Off until the owner sets SPEND_PUSH_VERIFIED=true (2026-10-11: Saturday's push was never delivered — AUTONOMY §21). */
+export function remindersAvailable(): boolean {
+  return process.env.SPEND_PUSH_VERIFIED === "true";
+}
+export const REMINDERS_UNAVAILABLE = "Reminders unavailable: we can't send payments to your Xaman app yet. When each week or month starts, open your dashboard (or Spend Controls in Xaman) to approve that payment.";
+
 /** Shown on every Spend Controls surface (owner copy rules, 2026-10-05). */
 export const SPEND_DISCLOSURE = [
   "XRPLHub is not a bank and doesn't send money for you. We never hold your money or your keys.",
