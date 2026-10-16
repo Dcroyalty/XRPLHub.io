@@ -21,8 +21,18 @@ export async function POST(req: Request) {
     }
 
     const statusMap: Record<string, string> = {
-      APPROVE: 'APPROVED', REJECT: 'REJECTED', PAID: 'PAID', FAIL: 'FAILED',
+      APPROVE: 'APPROVED', REJECT: 'REJECTED', DENY: 'REJECTED', PAID: 'PAID', FAIL: 'FAILED',
     };
+    // ACCEPT_PAYOUT: make the applicant's proposed payout details (from /grants/status) the real ones. Status unchanged.
+    if (String(action).toUpperCase() === 'ACCEPT_PAYOUT') {
+      const g = await prisma.grantRequest.findUnique({ where: { id: String(id) } });
+      if (!g?.proposedAt) return NextResponse.json({ error: 'no proposed payout details' }, { status: 400 });
+      await prisma.grantRequest.update({
+        where: { id: g.id },
+        data: { payoutAddress: g.proposedPayoutAddress, payoutTag: g.proposedPayoutTag, proposedPayoutAddress: null, proposedPayoutTag: null, proposedAt: null },
+      });
+      return NextResponse.json({ ok: true, id: g.id, status: g.status });
+    }
     const newStatus = statusMap[String(action).toUpperCase()];
     if (!newStatus) {
       return NextResponse.json({ error: 'invalid action' }, { status: 400 });

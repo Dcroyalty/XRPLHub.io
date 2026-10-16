@@ -18,7 +18,14 @@ interface Grant {
   urgency: string; status: string; aiScore?: number; aiReasoning?: string;
   approvedAmount?: number; paidAmount?: number; txHash?: string; paidAt?: string;
   createdAt: string; scoreSnapshot?: number;
+  round?: string | null; email?: string | null;
+  payoutAddress?: string | null; payoutTag?: number | null;
+  proposedPayoutAddress?: string | null; proposedPayoutTag?: number | null; proposedAt?: string | null;
 }
+// Grants are paid in RLUSD from the grants pool (owner rule 2026-10-16); the payout goes to the accepted payout
+// address/tag, else the applicant's wallet.
+const GRANTS_POOL_ACCOUNT = 'raiqAnACKxmVY7oCUWnCYdGquSrkMdsMuu';
+const payTo = (g: Grant) => ({ address: g.payoutAddress || g.walletAddress, tag: g.payoutTag ?? null });
 interface ScoreCheck {
   address: string; score: number; tier: string; checkedAt: string;
 }
@@ -119,14 +126,17 @@ function GrantActions({ grant, onUpdate }: { grant: Grant; onUpdate: () => void 
   const startIssue = async () => {
     setLoading('issue'); setIssueMsg('');
     try {
-      const drops = String(Math.round(parseFloat(amount) * 1_000_000));
+      // RLUSD from the grants pool account, with the destination tag when there is one. You sign it in Xaman.
+      const t = payTo(grant);
       const res = await fetch(`${API_URL}/api/admin/pay-link`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          destination: grant.walletAddress,
-          drops,
-          instruction: `XRPLHub grant — ${grant.category} — ${amount} XRP`,
+          destination: t.address,
+          ...(t.tag != null ? { destinationTag: t.tag } : {}),
+          rlusd: String(parseFloat(amount)),
+          account: GRANTS_POOL_ACCOUNT,
+          instruction: `XRPLHub grant — ${grant.category} — ${amount} RLUSD from the grants pool`,
         }),
       });
       const data = await res.json();
@@ -186,21 +196,27 @@ function GrantActions({ grant, onUpdate }: { grant: Grant; onUpdate: () => void 
             </button>
             <button onClick={()=>act('reject',{note})} disabled={!!loading}
               style={{ padding:'8px 14px', borderRadius:8, border:'1px solid rgba(248,113,113,.4)', background:'rgba(248,113,113,.08)', color:'#f87171', fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:'inherit' }}>
-              {loading==='reject' ? '…' : '✗ Reject'}
+              {loading==='reject' ? '…' : '✗ Deny'}
             </button>
           </>
+        )}
+        {grant.proposedAt && (
+          <button onClick={()=>act('accept_payout',{})} disabled={!!loading}
+            style={{ padding:'8px 14px', borderRadius:8, border:'1px solid rgba(212,167,44,.5)', background:'rgba(212,167,44,.12)', color:'#d4a72c', fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:'inherit' }}>
+            Accept payout details: {trunc(grant.proposedPayoutAddress || '', 8)}{grant.proposedPayoutTag != null ? ` tag ${grant.proposedPayoutTag}` : ''}
+          </button>
         )}
         {grant.status === 'APPROVED' && !issueUuid && (
           <button onClick={startIssue} disabled={!!loading}
             style={{ padding:'10px 16px', borderRadius:8, border:'none', background:'#10b981', color:'#000', fontSize:12, fontWeight:800, cursor:loading?'wait':'pointer', opacity:loading?0.6:1, fontFamily:'inherit', width:'100%' }}>
-            {loading==='issue' ? '⚡ Creating…' : loading==='pay' ? '⚡ Recording…' : '📱 Issue — sign in Xaman'}
+            {loading==='issue' ? '⚡ Creating…' : loading==='pay' ? '⚡ Recording…' : '📱 Pay with Xaman (RLUSD from the pool)'}
           </button>
         )}
       </div>
       {issueUuid && (
         <div style={{ background:'rgba(16,185,129,.06)', border:'1px solid rgba(16,185,129,.25)', borderRadius:12, padding:14 }}>
           <XamanPayPrompt theme="light" mode="pay" qrPng={issueQr} deepLink={issueLink} uuid={issueUuid}
-            amount={parseFloat(amount)} currency="XRP" destination={grant.walletAddress} />
+            amount={parseFloat(amount)} currency="RLUSD" destination={payTo(grant).address} destinationTag={payTo(grant).tag} />
           <p style={{ fontSize:11, color:'rgba(255,255,255,.4)', marginTop:8, textAlign:'center' }}>Waiting for your signature — this finishes itself once signed.</p>
         </div>
       )}
@@ -677,7 +693,11 @@ export default function AdminPage() {
                         👛 {copiedAddr===g.id ? 'Copied ✓' : trunc(g.walletAddress, 10)}
                       </button>
                     </div>
-                    <div style={{ fontSize:20, fontWeight:900, color:'#10b981', flexShrink:0 }}>${g.amountRequested}</div>
+                    <div style={{ textAlign:'right', flexShrink:0 }}>
+                      <div style={{ fontSize:20, fontWeight:900, color:'#d4a72c' }}>${g.approvedAmount ?? g.amountRequested} <span style={{ fontSize:11 }}>RLUSD</span></div>
+                      <div style={{ fontSize:11, color:'rgba(255,255,255,.5)', fontFamily:"'IBM Plex Mono',monospace" }}>pay to {trunc(payTo(g).address, 8)}{payTo(g).tag != null ? ` · tag ${payTo(g).tag}` : ''}</div>
+                      {g.round === 'paid-first' && <div style={{ fontSize:11, color:'#d4a72c' }}>approved, paid first</div>}
+                    </div>
                   </div>
                   <GrantActions grant={g} onUpdate={fetchData} />
                 </div>

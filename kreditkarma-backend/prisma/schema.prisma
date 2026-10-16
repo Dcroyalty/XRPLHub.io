@@ -105,6 +105,13 @@ model GrantRequest {
   email          String? // where we email when review starts (and the decision)
   updatesOptIn   Boolean  @default(false) // asked after applying: "email me Yield Desk / wallet-check updates"
   updatesConsent String? // the exact sentence agreed to
+  // Where the grant is paid (defaults to walletAddress). Applicants PROPOSE changes on /grants/status; the owner
+  // accepts them on /admin, so nobody can redirect someone else's grant.
+  payoutAddress         String?
+  payoutTag             Int?
+  proposedPayoutAddress String?
+  proposedPayoutTag     Int?
+  proposedAt            DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

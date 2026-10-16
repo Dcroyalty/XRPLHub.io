@@ -153,6 +153,15 @@ export function TopRated() {
   );
 }
 
+export function GrantsBanner() {
+  return (
+    <a href="/grants" style={{ ...S.card, marginTop: 12, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap", textDecoration: "none" }}>
+      <span style={{ color: B.white, fontWeight: 700 }}>Need help with rent, bills or food? Community grants are open — applying is free.</span>
+      <span style={S.btnPrimary}>Apply for a grant</span>
+    </a>
+  );
+}
+
 export function TrustStrip() {
   const items = ["Methods published", "Data straight from the XRP Ledger", "We never hold your funds", "Never paid by what we grade"];
   return (

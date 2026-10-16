@@ -8,7 +8,7 @@ import WalletPicker from '@/lib/wallet/WalletPicker';
 import XamanPayPrompt from '@/components/XamanPayPrompt';
 import SiteNav from '@/components/SiteNav';
 import DonateBox from '@/components/grants/DonateBox';
-import { WalletCheck, BuyRow, TopRated, TrustStrip, GrantsTeaser } from './home/HomeTop';
+import { WalletCheck, BuyRow, TopRated, TrustStrip, GrantsTeaser, GrantsBanner } from './home/HomeTop';
 import {
   getProvider as getWalletProvider,
   resolveProviderOptions,
@@ -1972,6 +1972,7 @@ export default function XRPLHubHome() {
           <BuyRow />
           <TopRated />
           <TrustStrip />
+          <GrantsBanner />
           <h2 id="products" style={{ fontFamily:"'Iowan Old Style','Palatino Linotype',Palatino,Georgia,serif", fontSize:'clamp(22px,4.6vw,30px)', fontWeight:700, color:'#fff', margin:'28px 0 0', scrollMarginTop:80 }}>More from XRPLHub</h2>
         </div>
 

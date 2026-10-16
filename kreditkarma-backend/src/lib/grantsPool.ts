@@ -209,7 +209,7 @@ export async function paidFirstGrants(prisma: PrismaClient) {
   return prisma.grantRequest.findMany({
     where: { round: "paid-first", status: "APPROVED", paidAt: null },
     orderBy: { createdAt: "asc" },
-    select: { id: true, walletAddress: true, approvedAmount: true, currency: true, createdAt: true },
+    select: { id: true, walletAddress: true, approvedAmount: true, currency: true, createdAt: true, payoutAddress: true, payoutTag: true },
   });
 }
 
@@ -258,3 +258,16 @@ export async function maybeMilestoneShortAlert(prisma: PrismaClient, ping: typeo
   await ping("/fail", `XRPLHub grants pool reached its ${FIRST_MILESTONE_XRP.toLocaleString("en-US")} XRP milestone (${Math.round(t.xrpEquivalent).toLocaleString("en-US")} XRP counting RLUSD), but it holds ${t.rlusd.toFixed(2)} RLUSD and the first grants need about $${needUsd.toFixed(2)}. Grants are paid in RLUSD only: decide whether to convert some of the pool's ${Math.round(t.xrp).toLocaleString("en-US")} XRP. Nothing has been converted.`);
   return true;
 }
+
+/** Can a grant be paid to this target now? RLUSD must be receivable, plus a destination tag if the account requires one. */
+export async function payoutReadiness(address: string, tag: number | null | undefined, amount: number): Promise<{ ready: boolean; reason: string }> {
+  const info = await rpc("account_info", { account: address, ledger_index: "validated" });
+  const flags = Number((info?.account_data as { Flags?: number } | undefined)?.Flags ?? 0);
+  if (flags & 0x20000 && tag == null) return { ready: false, reason: "needs payout details: this address requires a destination tag (it looks like an exchange account)" };
+  const r = await rlusdReceiveStatus(address, amount);
+  if (!r.canReceive) return { ready: false, reason: `needs payout details: ${r.reason}` };
+  return { ready: true, reason: "ready to pay in RLUSD" };
+}
+
+/** Where a grant is paid: the accepted payout address/tag, else the applicant's wallet. */
+export const payoutTarget = (g: { walletAddress: string; payoutAddress?: string | null; payoutTag?: number | null }) => ({ address: g.payoutAddress ?? g.walletAddress, tag: g.payoutTag ?? null });

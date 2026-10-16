@@ -56,6 +56,7 @@ export default function GrantApplyForm() {
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <a href="/#check" style={S.btnSecondary}>Free wallet check</a>
             <a href="/yield" style={S.btnSecondary}>Yield Desk ratings</a>
+            <a href="/grants/status" style={S.btnSecondary}>Check your status</a>
           </div>
         </div>
       </div>

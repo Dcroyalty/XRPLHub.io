@@ -4,7 +4,7 @@
 import type React from "react";
 import type { Metadata } from "next";
 import { prisma } from "@/lib/xrplscore-db";
-import { cardDonations, donationsUsdInYear, cardOwed, paidFirstGrants, CARD_TRANSFER_SOURCE, rlusdReceiveStatus, NOT_DONATION_SOURCES, OWNER_TOPUP_SOURCES } from "@/lib/grantsPool";
+import { cardDonations, donationsUsdInYear, cardOwed, paidFirstGrants, CARD_TRANSFER_SOURCE, payoutReadiness, payoutTarget, NOT_DONATION_SOURCES, OWNER_TOPUP_SOURCES } from "@/lib/grantsPool";
 import { GRANTS_POOL, DONATION_DISCLOSURE } from "@/lib/grantsCopy";
 import SiteNav from "@/components/SiteNav";
 import { B, S } from "@/components/brand";
@@ -28,7 +28,7 @@ export default async function GrantsLedgerPage() {
   ]);
   const year = new Date().getUTCFullYear();
   const [totals, owed, firstQueue] = await Promise.all([donationsUsdInYear(prisma, year, cards), cardOwed(prisma, cards ?? []), paidFirstGrants(prisma)]);
-  const firstReady = await Promise.all(firstQueue.map((g) => rlusdReceiveStatus(g.walletAddress, g.approvedAmount ?? 0)));
+  const firstReady = await Promise.all(firstQueue.map((g) => { const t = payoutTarget(g); return payoutReadiness(t.address, t.tag, g.approvedAmount ?? 0).catch(() => ({ ready: false, reason: "" })); }));
   const movedBy = new Map(owed.rows.map((r) => [r.id, r.movedAt]));
   const transfers = rows.filter((r) => r.direction === "in" && r.counterparty === CARD_TRANSFER_SOURCE);
   const topups = rows.filter((r) => r.direction === "in" && OWNER_TOPUP_SOURCES.includes(r.counterparty));
@@ -67,7 +67,7 @@ export default async function GrantsLedgerPage() {
           {firstQueue.length === 0 ? <p style={{ margin: 0 }}>Nothing waiting.</p> : (
             <>
               <p style={{ margin: "0 0 8px" }}>Approved in July 2026, before this pool existed. They are first in the queue and are paid from the first donations.</p>
-              <ul style={{ margin: 0, paddingLeft: 18 }}>{firstQueue.map((g, i) => <li key={g.id}>{day(g.createdAt)}: ${g.approvedAmount} in RLUSD to {short(g.walletAddress)} — approved, paid first{firstReady[i]?.canReceive ? "" : " — needs payout details (a destination tag or a personal wallet)"}</li>)}</ul>
+              <ul style={{ margin: 0, paddingLeft: 18 }}>{firstQueue.map((g, i) => <li key={g.id}>{day(g.createdAt)}: ${g.approvedAmount} in RLUSD to {short(g.walletAddress)} — approved, paid first{firstReady[i]?.ready ? "" : " — needs payout details (a destination tag or a personal wallet)"}</li>)}</ul>
             </>
           )}
         </section>

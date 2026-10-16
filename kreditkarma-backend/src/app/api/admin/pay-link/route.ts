@@ -25,6 +25,8 @@ export async function POST(req: Request) {
     destination?: string;
     drops?: string | number;
     destinationTag?: number;
+    rlusd?: string; // pay this many RLUSD instead of XRP drops (grants are paid in RLUSD)
+    account?: string; // pre-fill the paying account (the grants pool), so Xaman signs from it
     instruction?: string;
     expireMinutes?: number;
   };
@@ -34,15 +36,22 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "bad_request", message: "destination must be a valid r-address" }, { status: 400 });
   }
   const drops = String(body.drops ?? "").trim();
-  if (!/^[1-9][0-9]*$/.test(drops)) {
+  const rlusd = body.rlusd != null ? String(body.rlusd).trim() : null;
+  if (rlusd != null && !/^[0-9]+(\.[0-9]{1,6})?$/.test(rlusd)) {
+    return NextResponse.json({ error: "bad_request", message: "rlusd must be a positive amount" }, { status: 400 });
+  }
+  if (rlusd == null && !/^[1-9][0-9]*$/.test(drops)) {
     return NextResponse.json({ error: "bad_request", message: "drops must be a positive integer string" }, { status: 400 });
   }
 
   const txjson: Record<string, unknown> = {
     TransactionType: "Payment",
     Destination: destination,
-    Amount: drops,
+    Amount: rlusd != null
+      ? { currency: "524C555344000000000000000000000000000000", issuer: "rMxCKbEDwqr76QuheSUMdEGf4B9xJ8m5De", value: rlusd }
+      : drops,
   };
+  if (body.account && isValidXrplAddress(String(body.account))) txjson.Account = String(body.account);
   if (typeof body.destinationTag === "number" && Number.isInteger(body.destinationTag)) {
     txjson.DestinationTag = body.destinationTag;
   }
@@ -53,7 +62,7 @@ export async function POST(req: Request) {
       submit: true,
       expireMinutes: Math.min(60, Math.max(5, body.expireMinutes ?? 20)),
       identifier: `xrplhub_paylink_${Date.now()}`,
-      instruction: body.instruction ?? `XRPLHub — pay ${Number(drops) / 1_000_000} XRP to ${destination}`,
+      instruction: body.instruction ?? (rlusd != null ? `XRPLHub — pay ${rlusd} RLUSD to ${destination}` : `XRPLHub — pay ${Number(drops) / 1_000_000} XRP to ${destination}`),
     });
     return NextResponse.json({
       uuid: p.uuid,
