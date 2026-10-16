@@ -105,7 +105,7 @@ function ProductCard({ name, line, price, children }: { name: string; line: stri
 
 export function BuyRow() {
   return (
-    <section aria-labelledby="buy-now" style={{ marginTop: 22 }}>
+    <section aria-labelledby="buy-now" style={{ marginTop: 22, fontFamily: B.sans }}>
       <h2 id="buy-now" style={S.h2}>Buy now</h2>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,260px),1fr))", gap: 12 }}>
         <ProductCard name="XRPLHub Pro" price="$49/mo · or 49 RLUSD / 30 days" line="Alerts the moment a yield or lending risk grade changes, plus 20,000 grade API calls a month.">
@@ -130,7 +130,7 @@ export function TopRated() {
     fetch("/api/yield/options").then((r) => r.json()).then((j) => setRows(((j.options ?? []) as YieldRow[]).filter((o) => o.gradeDetail?.grade === "A").slice(0, 4))).catch(() => setRows([]));
   }, []);
   return (
-    <section aria-labelledby="top-rated" style={{ marginTop: 22 }}>
+    <section aria-labelledby="top-rated" style={{ marginTop: 22, fontFamily: B.sans }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
         <h2 id="top-rated" style={S.h2}>Top-rated ways to earn on XRP and RLUSD</h2>
         <a href="/yield" style={{ color: B.accent, fontWeight: 700, fontSize: 14 }}>All yield ratings →</a>
@@ -156,9 +156,9 @@ export function TopRated() {
 export function TrustStrip() {
   const items = ["Methods published", "Data straight from the XRP Ledger", "We never hold your funds", "Never paid by what we grade"];
   return (
-    <section aria-label="Our commitments" style={{ marginTop: 22, background: B.white, color: B.navy, borderRadius: 12, padding: "12px 14px" }}>
-      <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexWrap: "wrap", gap: "6px 18px", justifyContent: "center", fontWeight: 800, fontSize: 13.5 }}>
-        {items.map((t, i) => <li key={t}>{i > 0 && <span aria-hidden="true" style={{ color: B.accent, marginRight: 18 }}>·</span>}{t}</li>)}
+    <section aria-label="Our commitments" style={{ marginTop: 22, background: B.white, color: B.navy, borderRadius: 12, padding: "12px 14px", fontFamily: B.sans }}>
+      <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,150px),1fr))", gap: "8px 16px", fontWeight: 700, fontSize: 13.5, lineHeight: 1.3 }}>
+        {items.map((t) => <li key={t} style={{ display: "flex", gap: 7 }}><span aria-hidden="true" style={{ color: B.accent, fontWeight: 900 }}>✓</span>{t}</li>)}
       </ul>
     </section>
   );
