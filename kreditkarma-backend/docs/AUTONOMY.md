@@ -603,3 +603,23 @@ old ledger — so "do the nodes agree?" stays green; only the validated ledger's
   old price archived, old `lending_pro` keys still accepted) is on sale now. Never test with a real purchase.
 - **Rules:** non-custodial (we never touch funds), general information only, never paid by graded products, no referral
   codes or per-deposit commissions. Every /yield page shows that.
+
+## 25. Grants pool, donations and the ratings redesign (2026-10-16)
+
+- **Pool:** raiqAnACKxmVY7oCUWnCYdGquSrkMdsMuu — keys only in the owner's Xaman; XRPLHub only reads it (src/lib/grantsPool.ts).
+  RLUSD donations appear automatically once the pool has an RLUSD trust line. Public ledger from 2026-10-16 at
+  /grants/ledger (older test history left out); hourly sync `GET /api/cron/grants-sync` (GitHub Actions job `grants`).
+- **Applications:** /grants, free. Round `pool-2026`. Reviewed in order once the pool reaches 1,000 XRP (first 10 grants);
+  the 2 grants approved in July 2026 ($30 + $50 to rHb9CJAW…, round `paid-first`) are paid first from the first donations.
+  They were approved in RLUSD: pay XRP of equal value, or add an RLUSD trust line to the pool first.
+- **Card donations:** uxus `POST /api/billing/donate` (Stripe Checkout, donor picks $5–$10,000), recorded by the webhook
+  in uxus `card_donations`. Move them by paying the pool FROM THE XRPLHUB TREASURY rs59g3amo5iT6T64Cg96XXMAWuw3WPQcLF:
+  those payments are matched to card donations oldest-first and are not counted as new donations. /grants/ledger shows
+  the running "card donations owed to the pool" and the date each was moved. ONE healthchecks.io /fail per card
+  donation left unmoved 30 days (checkpoint `grants-card-unmoved:<ref>`), and ONE per calendar year when total
+  donations pass $20,000 (checkpoint `grants-donations-alert:<year>`) — PA charitable-solicitation registration is needed
+  before $25,000.
+- **Pro by Xaman:** 49 RLUSD → uxus `POST /api/billing/xrpl-redeem` verifies the payment on the ledger and the buyer's
+  claim secret (its SHA-256 is in the memo), then mints a 30-day xrplhub_pro key.
+- **Analytics:** our own devices are excluded by opening https://www.xrplhub.io/?va-disable=1 once per device
+  (?va-disable=0 undoes it); automated browsers are dropped (src/components/AnalyticsClient.tsx).

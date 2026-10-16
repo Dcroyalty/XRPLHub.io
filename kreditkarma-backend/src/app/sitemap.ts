@@ -11,6 +11,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   return [
     { url: `${base}/yield`, lastModified: now, changeFrequency: 'hourly', priority: 0.9 },
+    { url: `${base}/grants`, lastModified: now, changeFrequency: 'daily', priority: 0.8 },
+    { url: `${base}/grants/ledger`, lastModified: now, changeFrequency: 'daily', priority: 0.5 },
+    { url: `${base}/pro`, lastModified: now, changeFrequency: 'monthly', priority: 0.7 },
+    { url: `${base}/developers`, lastModified: now, changeFrequency: 'monthly', priority: 0.7 },
     { url: `${base}/yield/best-xrp-yield`, lastModified: now, changeFrequency: 'daily', priority: 0.9 },
     { url: `${base}/yield/method`, lastModified: now, changeFrequency: 'monthly', priority: 0.6 },
     ...yieldSlugs.map((y) => ({ url: `${base}/yield/${y.slug}`, lastModified: y.updatedAt, changeFrequency: 'daily' as const, priority: 0.7 })),

@@ -1,17 +1,17 @@
 // src/lib/grantsStatus.ts
-// Whether the community-grant APPLICATION form is open. One constant, read by BOTH the page
-// (which shows the paused message instead of the form) and POST /api/grants/submit (which
-// refuses new applications), so the pause can't be bypassed by posting to the API directly.
+// Whether the community-grant APPLICATION form is open. One constant, read by BOTH the pages and
+// POST /api/grants/submit, so a pause can't be bypassed by posting to the API directly.
 //
-// Paused because approved grants are waiting to be paid and the treasury doesn't hold enough
-// to pay them. Donations are unaffected. Flip to true once the treasury is funded.
+// Reopened 2026-10-16 with the new grants pool (raiqAnACKxmVY7oCUWnCYdGquSrkMdsMuu, src/lib/grantsPool.ts):
+// applications are saved and reviewed in order once the pool reaches its first milestone. No timeline is promised
+// before then. Set to false to pause again; the messages below are what people see when paused.
 
-export const GRANT_APPLICATIONS_OPEN = false;
+export const GRANT_APPLICATIONS_OPEN = true;
 
 export const GRANTS_PAUSED_TITLE = 'Grant applications are paused';
 
 export const GRANTS_PAUSED_MESSAGE =
-  "We're not taking new grant applications right now. Grants we've already approved are still waiting to be paid, and the treasury doesn't hold enough to pay them yet — so opening the queue to more people would only make people wait. Applications reopen once the treasury is funded.";
+  "We're not taking new grant applications right now. You can still donate to the grants pool; every donation and every grant is published.";
 
 export const GRANTS_DONATE_NOTE =
-  'You can still donate: every donation goes straight to the public treasury, and you can watch it on XRPScan.';
+  'Every donation goes straight to the public grants pool on the XRP Ledger, and every grant paid is published.';

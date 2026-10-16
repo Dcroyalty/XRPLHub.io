@@ -100,6 +100,12 @@ model GrantRequest {
   reviewedBy      String? // admin address (historical rows may hold a legacy value)
   rejectionReason String?
 
+  // Grants pool (raiqAnACKxmVY7oCUWnCYdGquSrkMdsMuu), reopened 2026-10-16. Older rows have round = null.
+  round          String? // "pool-2026"
+  email          String? // where we email when review starts (and the decision)
+  updatesOptIn   Boolean  @default(false) // asked after applying: "email me Yield Desk / wallet-check updates"
+  updatesConsent String? // the exact sentence agreed to
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -1193,4 +1199,19 @@ model YieldPageView {
   count Int      @default(0)
 
   @@id([day, path])
+}
+
+// Grants pool public ledger (src/lib/grantsPool.ts): every payment into the pool (a donation) and out of it (a grant),
+// read from the XRP Ledger from 2026-10-16 on. Card donations live on uxus and are merged in when shown.
+model GrantsLedgerEntry {
+  txHash       String   @id
+  direction    String // in | out
+  counterparty String
+  currency     String // XRP | RLUSD
+  amount       Float
+  usdValue     Float? // valued when we first saw it (XRP at the then-current price; RLUSD = 1)
+  ledgerIndex  Int
+  at           DateTime
+
+  @@index([direction, at])
 }

@@ -1,6 +1,6 @@
 // src/app/score/page.tsx
 // Compatibility redirect: any /score visit lands on the home page's XRPLScore section.
-// (The full personalized credit report lives inline on home when wallet is connected.)
+// (The full personalized wallet report lives inline on home when wallet is connected.)
 'use client';
 import { useEffect } from 'react';
 

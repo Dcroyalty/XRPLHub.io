@@ -1,65 +1,66 @@
-// src/app/api/grants/submit/route.ts
-// Persist a new grant application. Columns match LIVE Neon schema exactly.
-
+// src/app/api/grants/submit/route.ts — save a grant application (free; there is never a fee to apply).
+//
+// Applications to the grants pool (round "pool-2026", src/lib/grantsPool.ts) are saved and reviewed in order once
+// the pool reaches its first milestone; we email the applicant when review starts. No timeline is promised before
+// that. The applicant's email is kept only for that (and the decision); marketing updates are a separate opt-in
+// after applying (/api/grants/updates).
 import { NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '@/lib/xrplscore-db';
 import { GRANT_APPLICATIONS_OPEN, GRANTS_PAUSED_MESSAGE } from '@/lib/grantsStatus';
-import { isValidXrplAddress } from "@/lib/address";
+import { APPLICANT_STATUS, GRANT_CATEGORIES } from '@/lib/grantsPool';
+import { isValidXrplAddress } from '@/lib/address';
+import { rateLimit, rateLimited } from '@/lib/rateLimit';
 
-const prisma = new PrismaClient();
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
-// Map our form's free-text category to a simple urgency tier
+const EMAIL = /^[^\s@]{1,64}@[^\s@]{1,190}\.[a-z]{2,24}$/i;
+
+
 const urgencyFor = (cat: string): string => {
-  const c = (cat || '').toLowerCase();
-  if (c.includes('medical') || c.includes('rent') || c.includes('housing')) return 'HIGH';
+  const c = cat.toLowerCase();
+  if (c.includes('medical') || c.includes('rent')) return 'HIGH';
   if (c.includes('food') || c.includes('utilities')) return 'MEDIUM';
   return 'NORMAL';
 };
 
 export async function POST(req: Request) {
-  // Applications are paused (src/lib/grantsStatus.ts). Enforced here, not just in the UI, so posting
-  // to this endpoint directly can't add to the queue either.
   if (!GRANT_APPLICATIONS_OPEN) {
     return NextResponse.json({ error: 'grant_applications_paused', message: GRANTS_PAUSED_MESSAGE }, { status: 503 });
   }
-  try {
-    const body = await req.json().catch(() => ({}));
-    // The frontend still sends these field names — we map them to DB columns here.
-    const { name, wallet, email, phone, category, need, amount, currency } = body || {};
+  const rl = rateLimit(req, 'grants-submit', 3, 60 * 60_000);
+  if (!rl.ok) return rateLimited(rl);
+  const b = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+  if (typeof b.website === 'string' && b.website.trim()) return NextResponse.json({ ok: true, status: APPLICANT_STATUS }); // honeypot
+  const wallet = String(b.wallet ?? '').trim();
+  const email = String(b.email ?? '').trim().toLowerCase();
+  const category = String(b.category ?? '');
+  const need = String(b.need ?? '').trim();
+  const name = String(b.name ?? '').trim().slice(0, 80);
+  const amount = Math.round(Number(b.amountXrp));
+  if (!isValidXrplAddress(wallet)) return NextResponse.json({ error: 'Enter a valid XRP Ledger address (starts with r).' }, { status: 400 });
+  if (email.length > 254 || !EMAIL.test(email)) return NextResponse.json({ error: 'Enter an email address — we use it to tell you when review starts.' }, { status: 400 });
+  if (!GRANT_CATEGORIES.includes(category)) return NextResponse.json({ error: 'Choose what the grant is for.' }, { status: 400 });
+  if (need.length < 20 || need.length > 2000) return NextResponse.json({ error: 'Tell us what you need in 20 to 2,000 characters.' }, { status: 400 });
+  if (!Number.isFinite(amount) || amount < 10 || amount > 100) return NextResponse.json({ error: 'Ask for 10 to 100 XRP.' }, { status: 400 });
 
-    if (!wallet || !need || !category) {
-      return NextResponse.json({ error: 'wallet, category, and need are required' }, { status: 400 });
-    }
-    if (!isValidXrplAddress(String(wallet))) {
-      return NextResponse.json({ error: 'invalid XRPL wallet' }, { status: 400 });
-    }
+  // One open application per wallet in this round.
+  const existing = await prisma.grantRequest.findFirst({ where: { walletAddress: wallet, round: 'pool-2026', status: { in: ['PENDING', 'REVIEWING', 'APPROVED'] } }, select: { id: true } });
+  if (existing) return NextResponse.json({ ok: true, id: existing.id, status: APPLICANT_STATUS, duplicate: true });
 
-    const amt = Math.max(0, Math.min(100, Number(amount) || 0));
-
-    // Fold name/email/phone into description so we don't lose them (no columns for them).
-    const contactBlock = [
-      name && name !== 'Anonymous' ? `Name: ${name}` : null,
-      email ? `Email: ${email}` : null,
-      phone ? `Phone: ${phone}` : null,
-    ].filter(Boolean).join(' · ');
-    const description = contactBlock ? `${need}\n\n— ${contactBlock}` : need;
-
-    const grant = await prisma.grantRequest.create({
-      data: {
-        walletAddress:   String(wallet),
-        category:        String(category),
-        amountRequested: amt,
-        currency:        String(currency || 'RLUSD'),
-        description,
-        urgency:         urgencyFor(category),
-        status:          'PENDING',
-      },
-    });
-
-    return NextResponse.json({ ok: true, id: grant.id, status: grant.status });
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'submit failed';
-    console.error('[grants/submit]', message);
-    return NextResponse.json({ error: message }, { status: 500 });
-  }
+  const grant = await prisma.grantRequest.create({
+    data: {
+      walletAddress: wallet,
+      category,
+      amountRequested: amount,
+      currency: 'XRP',
+      description: name ? `${need}\n\n— Name: ${name}` : need,
+      urgency: urgencyFor(category),
+      status: 'PENDING',
+      round: 'pool-2026',
+      email,
+    },
+    select: { id: true },
+  });
+  return NextResponse.json({ ok: true, id: grant.id, status: APPLICANT_STATUS }, { headers: { 'Cache-Control': 'no-store' } });
 }

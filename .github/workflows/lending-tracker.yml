@@ -43,6 +43,18 @@ jobs:
           echo "HTTP $code"
           test "$code" = "200"
 
+  grants:
+    # Grants pool public ledger + the once-a-year $20,000 donations alert (https://www.xrplhub.io/grants/ledger).
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Sync the grants pool ledger
+        run: |
+          code=$(curl -sS -o body.json -w '%{http_code}' --max-time 90 https://www.xrplhub.io/api/cron/grants-sync)
+          cat body.json; echo
+          echo "HTTP $code"
+          test "$code" = "200"
+
   keepalive:
     runs-on: ubuntu-latest
     timeout-minutes: 3

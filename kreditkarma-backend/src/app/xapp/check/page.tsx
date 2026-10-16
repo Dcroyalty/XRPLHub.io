@@ -229,7 +229,7 @@ export default function WalletCheckXapp() {
                       What this means: a wallet that has been used for longer, and more steadily, scores higher. A low score isn&apos;t proof of a scam,
                       and a high score isn&apos;t proof someone is honest. Use it as one check before you pay.
                     </p>
-                    <p style={{ ...s.small, margin: "8px 0 0" }}>XRPLScore uses only public XRP Ledger activity. It is not a credit score and must not be used to decide credit, a job, housing or insurance.</p>
+                    <p style={{ ...s.small, margin: "8px 0 0" }}>XRPLScore uses only public XRP Ledger activity. It is not a consumer score and must not be used to decide credit, a job, housing or insurance.</p>
                     <p style={{ ...s.small, margin: "6px 0 0" }}><ExtLink href="https://www.xrplhub.io/#score" style={{ color: v("accent", "#0f766e") }}>How the score works</ExtLink></p>
                   </div>
                 )}

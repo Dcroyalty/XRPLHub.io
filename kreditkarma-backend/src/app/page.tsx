@@ -6,6 +6,9 @@ import { watchXaman } from '@/lib/wallet/xamanWatch';
 import { GRANT_APPLICATIONS_OPEN, GRANTS_PAUSED_TITLE, GRANTS_PAUSED_MESSAGE, GRANTS_DONATE_NOTE } from '@/lib/grantsStatus';
 import WalletPicker from '@/lib/wallet/WalletPicker';
 import XamanPayPrompt from '@/components/XamanPayPrompt';
+import SiteNav from '@/components/SiteNav';
+import DonateBox from '@/components/grants/DonateBox';
+import { WalletCheck, BuyRow, TopRated, TrustStrip, GrantsTeaser } from './home/HomeTop';
 import {
   getProvider as getWalletProvider,
   resolveProviderOptions,
@@ -70,9 +73,9 @@ const fmt   = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2,
 const trunc = (a: string) => a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '';
 
 // ─── Brand gradient: green -> blue, the same two colors as the hero wordmark
-// (#10b981, #38bdf8). One shared constant so the header logo and the hero
+// (#d4a72c, #38bdf8). One shared constant so the header logo and the hero
 // wordmark can never drift apart. No red — it clashed with the palette.
-const BRAND_GRADIENT = 'linear-gradient(135deg,#10b981,#38bdf8)';
+const BRAND_GRADIENT = 'linear-gradient(135deg,#d4a72c,#38bdf8)';
 const brandGradientText: React.CSSProperties = {
   background: BRAND_GRADIENT,
   WebkitBackgroundClip: 'text',
@@ -140,8 +143,8 @@ interface ScoreData { ledgerScore: number; grade?: string; details?: { txCount?:
 interface User { email: string; name: string }
 
 function gradeScore(n: number) {
-  if (n >= 800) return { label:'Exceptional', color:'#10b981', glow:'rgba(16,185,129,.55)' };
-  if (n >= 740) return { label:'Excellent',   color:'#34d399', glow:'rgba(52,211,153,.5)'  };
+  if (n >= 800) return { label:'Exceptional', color:'#d4a72c', glow:'rgba(212,167,44,.55)' };
+  if (n >= 740) return { label:'Excellent',   color:'#e3bf55', glow:'rgba(52,211,153,.5)'  };
   if (n >= 670) return { label:'Good',         color:'#fbbf24', glow:'rgba(251,191,36,.5)'  };
   if (n >= 580) return { label:'Fair',          color:'#f97316', glow:'rgba(249,115,22,.5)'  };
   return              { label:'Building',       color:'#ef4444', glow:'rgba(239,68,68,.5)'   };
@@ -156,7 +159,7 @@ function tagStyle(tag: string, prodColor: string, pos: React.CSSProperties): Rea
   const palette: Record<string,{bg:string;fg:string;sh:string}> = {
     HOT:     { bg:'#ef4444', fg:'#fff', sh:'0 0 14px rgba(239,68,68,.55)' },
     POPULAR: { bg:'#f59e0b', fg:'#000', sh:'0 0 14px rgba(245,158,11,.5)' },
-    SALE:    { bg:'#10b981', fg:'#000', sh:'0 0 14px rgba(16,185,129,.55)' },
+    SALE:    { bg:'#d4a72c', fg:'#000', sh:'0 0 14px rgba(212,167,44,.55)' },
     NEW:     { bg:'#38bdf8', fg:'#000', sh:'0 0 14px rgba(56,189,248,.55)' },
     '#1':    { bg:'#fde047', fg:'#000', sh:'0 0 16px rgba(253,224,71,.7)' },
     '#2':    { bg:'#e5e7eb', fg:'#000', sh:'0 0 14px rgba(229,231,235,.5)' },
@@ -173,8 +176,8 @@ function tagStyle(tag: string, prodColor: string, pos: React.CSSProperties): Rea
 
 function Btn(v: 'green'|'ghost'|'color', color?: string, extra?: React.CSSProperties): React.CSSProperties {
   const base: React.CSSProperties = { display:'inline-flex', alignItems:'center', justifyContent:'center', gap:7, border:'none', borderRadius:99, fontWeight:700, fontSize:14, cursor:'pointer', fontFamily:'inherit', padding:'12px 26px', transition:'all .18s', ...extra };
-  if (v === 'green') return { ...base, background:'#10b981', color:'#000' };
-  if (v === 'color') return { ...base, background:color||'#10b981', color:'#000' };
+  if (v === 'green') return { ...base, background:'#d4a72c', color:'#000' };
+  if (v === 'color') return { ...base, background:color||'#d4a72c', color:'#000' };
   return { ...base, background:'rgba(255,255,255,.08)', color:'#fff', border:'1px solid rgba(255,255,255,.14)' };
 }
 
@@ -183,14 +186,14 @@ function TickerBar() {
     <div style={{ display:'flex', flexShrink:0 }}>
       {tickerLines().map((m, i) => (
         <span key={`${m}-${i}`} style={{ display:'inline-flex', alignItems:'center', gap:12, padding:'0 26px', fontSize:12, fontWeight:700, letterSpacing:'.06em', color:'#fff', fontFamily:"'IBM Plex Mono',monospace", textTransform:'uppercase' }}>
-          <span style={{ width:6, height:6, borderRadius:'50%', background:'#10b981', boxShadow:'0 0 10px #10b981', flexShrink:0 }} />
+          <span style={{ width:6, height:6, borderRadius:'50%', background:'#d4a72c', boxShadow:'0 0 10px #d4a72c', flexShrink:0 }} />
           <span style={{ whiteSpace:'nowrap' }}>{m}</span>
         </span>
       ))}
     </div>
   );
   return (
-    <div style={{ overflow:'hidden', width:'100%', maxWidth:'100%', background:'linear-gradient(90deg,rgba(16,185,129,.10),rgba(56,189,248,.07),rgba(16,185,129,.10))', borderBottom:'1px solid rgba(16,185,129,.22)', zIndex:50 }}>
+    <div style={{ overflow:'hidden', width:'100%', maxWidth:'100%', background:'linear-gradient(90deg,rgba(212,167,44,.10),rgba(56,189,248,.07),rgba(212,167,44,.10))', borderBottom:'1px solid rgba(212,167,44,.22)', zIndex:50 }}>
       <div className="ticker-track" style={{ display:'flex', width:'max-content', padding:'10px 0', animation:'tickerScroll 90s linear infinite' }}>
         <Half />
         <Half />
@@ -210,7 +213,7 @@ function Overlay({ show, onClose, children, wide=false }: { show:boolean; onClos
   if (!show) return null;
   return (
     <div onClick={onClose} style={{ position:'fixed', inset:0, zIndex:1000, background:'rgba(0,0,0,.9)', backdropFilter:'blur(14px)', display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}>
-      <div onClick={e => e.stopPropagation()} style={{ ...GLASS, borderRadius:26, padding:'32px 28px', width:'100%', maxWidth:wide?700:520, position:'relative', animation:'popIn .26s cubic-bezier(.34,1.56,.64,1) both', maxHeight:'90vh', overflowY:'auto', boxShadow:'0 0 80px rgba(16,185,129,.08),0 40px 100px rgba(0,0,0,.85)' }}>
+      <div onClick={e => e.stopPropagation()} style={{ ...GLASS, borderRadius:26, padding:'32px 28px', width:'100%', maxWidth:wide?700:520, position:'relative', animation:'popIn .26s cubic-bezier(.34,1.56,.64,1) both', maxHeight:'90vh', overflowY:'auto', boxShadow:'0 0 80px rgba(212,167,44,.08),0 40px 100px rgba(0,0,0,.85)' }}>
         <button onClick={onClose} style={{ position:'absolute', top:16, right:16, width:32, height:32, borderRadius:'50%', background:'rgba(255,255,255,.08)', border:'none', color:'rgba(255,255,255,.6)', cursor:'pointer', fontSize:16, display:'flex', alignItems:'center', justifyContent:'center', zIndex:2 }}>✕</button>
         {children}
       </div>
@@ -245,8 +248,8 @@ function MptPowerCheck() {
   };
   const chip = (on: boolean, label: string, bad: boolean) => (
     <span key={label} style={{ fontSize:10,fontWeight:700,padding:'3px 8px',borderRadius:99,fontFamily:"'IBM Plex Mono',monospace",
-      background: on === bad ? 'rgba(239,68,68,.14)' : 'rgba(16,185,129,.12)', color: on === bad ? '#f87171' : '#34d399',
-      border:`1px solid ${on === bad ? 'rgba(239,68,68,.3)' : 'rgba(16,185,129,.28)'}` }}>{label}: {on ? 'yes' : 'no'}</span>
+      background: on === bad ? 'rgba(239,68,68,.14)' : 'rgba(212,167,44,.12)', color: on === bad ? '#f87171' : '#e3bf55',
+      border:`1px solid ${on === bad ? 'rgba(239,68,68,.3)' : 'rgba(212,167,44,.28)'}` }}>{label}: {on ? 'yes' : 'no'}</span>
   );
   return (
     <div>
@@ -326,10 +329,10 @@ function TreasuryStatsBar() {
     </div>
   );
   return (
-    <div style={{ background:'linear-gradient(135deg,rgba(139,92,246,.07),rgba(16,185,129,.06),rgba(6,6,22,.85))',border:'1px solid rgba(139,92,246,.22)',borderRadius:18,padding:'4px 10px',marginBottom:24,backdropFilter:'blur(20px)' }}>
+    <div style={{ background:'linear-gradient(135deg,rgba(139,92,246,.07),rgba(212,167,44,.06),rgba(6,6,22,.85))',border:'1px solid rgba(139,92,246,.22)',borderRadius:18,padding:'4px 10px',marginBottom:24,backdropFilter:'blur(20px)' }}>
       <div style={{ display:'flex',flexWrap:'wrap',alignItems:'center',justifyContent:'center',gap:0 }}>
-        <Cell label="Treasury Total"  value={stats ? fmt(stats.totalXRP) : '—'}       suffix="XRP" color="#10b981" />
-        <Cell label="Spendable"       value={stats ? fmt(stats.spendableXRP) : '—'}   suffix="XRP" color="#34d399" />
+        <Cell label="Treasury Total"  value={stats ? fmt(stats.totalXRP) : '—'}       suffix="XRP" color="#d4a72c" />
+        <Cell label="Spendable"       value={stats ? fmt(stats.spendableXRP) : '—'}   suffix="XRP" color="#e3bf55" />
         <Cell label="Reserved"        value={stats ? fmt(stats.reservedXRP) : '—'}    suffix="XRP" color="rgba(255,255,255,.5)" />
         <Cell label="Received from outside" value={stats && stats.received != null ? `${stats.complete === false ? '≥' : ''}${fmt(stats.received)}` : '—'} suffix="XRP" color="#38bdf8" />
         <Cell label="Grants paid"   value={stats && stats.grantsPaid != null ? fmtCount(stats.grantsPaid) : '—'}           color="#8b5cf6" />
@@ -359,11 +362,11 @@ function TreasuryStatsBar() {
       )}
       <div style={{ display:'flex',flexWrap:'wrap',justifyContent:'center',gap:14,padding:'4px 0 10px' }}>
         <a href={`https://xrpscan.com/account/${TREASURY}`} target="_blank" rel="noopener noreferrer" style={{ fontSize:10,fontWeight:700,color:'rgba(255,255,255,.45)',letterSpacing:'.13em',textTransform:'uppercase',textDecoration:'none',display:'inline-flex',alignItems:'center',gap:6 }}>
-          <span style={{ width:5,height:5,borderRadius:'50%',background:'#10b981',boxShadow:'0 0 8px #10b981',animation:'pulse 2s infinite' }} />
+          <span style={{ width:5,height:5,borderRadius:'50%',background:'#d4a72c',boxShadow:'0 0 8px #d4a72c',animation:'pulse 2s infinite' }} />
           Live on XRPL ↗
         </a>
         <span style={{ fontSize:10,fontWeight:700,color:'rgba(255,255,255,.45)',letterSpacing:'.13em',textTransform:'uppercase',display:'inline-flex',alignItems:'center',gap:6 }}>
-          🟢 Pay to <strong style={{ color:'#10b981',fontFamily:"'IBM Plex Mono',monospace" }}>xrplhub.xrp</strong>
+          🟢 Pay to <strong style={{ color:'#d4a72c',fontFamily:"'IBM Plex Mono',monospace" }}>xrplhub.xrp</strong>
         </span>
       </div>
     </div>
@@ -431,15 +434,15 @@ function ConnectWalletModal({ show, onClose, onConnected }: { show:boolean; onCl
         </p>
         {status === 'creating' && (
           <div style={{ padding:'24px 0' }}>
-            <div style={{ width:50, height:50, borderRadius:'50%', background:'rgba(16,185,129,.15)', border:'2px solid rgba(16,185,129,.4)', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 14px', fontSize:22, animation:'spin 1.5s linear infinite' }}>⚡</div>
-            <p style={{ color:'#10b981', fontWeight:700, fontSize:14 }}>Creating secure connection…</p>
+            <div style={{ width:50, height:50, borderRadius:'50%', background:'rgba(212,167,44,.15)', border:'2px solid rgba(212,167,44,.4)', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 14px', fontSize:22, animation:'spin 1.5s linear infinite' }}>⚡</div>
+            <p style={{ color:'#d4a72c', fontWeight:700, fontSize:14 }}>Creating secure connection…</p>
           </div>
         )}
         {status === 'waiting' && (
           <>
-            <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:8, background:'rgba(16,185,129,.08)', border:'1px solid rgba(16,185,129,.25)', borderRadius:12, padding:'10px 16px', marginBottom:16 }}>
-              <span style={{ width:8, height:8, borderRadius:'50%', background:'#10b981', boxShadow:'0 0 12px #10b981', animation:'pulse 1.4s infinite' }} />
-              <span style={{ fontSize:13, fontWeight:700, color:'#10b981' }}>Waiting for Xaman…</span>
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:8, background:'rgba(212,167,44,.08)', border:'1px solid rgba(212,167,44,.25)', borderRadius:12, padding:'10px 16px', marginBottom:16 }}>
+              <span style={{ width:8, height:8, borderRadius:'50%', background:'#d4a72c', boxShadow:'0 0 12px #d4a72c', animation:'pulse 1.4s infinite' }} />
+              <span style={{ fontSize:13, fontWeight:700, color:'#d4a72c' }}>Waiting for Xaman…</span>
             </div>
             <div style={{ marginBottom:18 }}>
               <XamanPayPrompt theme="light" mode="signin" qrPng={qrUrl} deepLink={deepLnk} uuid={uuid} />
@@ -447,7 +450,7 @@ function ConnectWalletModal({ show, onClose, onConnected }: { show:boolean; onCl
             <div style={{ textAlign:'left', background:'rgba(255,255,255,.04)', border:'1px solid rgba(255,255,255,.07)', borderRadius:14, padding:'14px 18px' }}>
               {[['1','Scan the QR or tap "Open in Xaman"'],['2','Approve the connection request'],['3','Done — wallet linked instantly']].map(([n,t]) => (
                 <div key={n} style={{ display:'flex', alignItems:'flex-start', gap:12, marginBottom:n==='3'?0:10 }}>
-                  <span style={{ width:22, height:22, borderRadius:'50%', background:'rgba(16,185,129,.2)', border:'1px solid rgba(16,185,129,.4)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontWeight:800, color:'#10b981', flexShrink:0 }}>{n}</span>
+                  <span style={{ width:22, height:22, borderRadius:'50%', background:'rgba(212,167,44,.2)', border:'1px solid rgba(212,167,44,.4)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontWeight:800, color:'#d4a72c', flexShrink:0 }}>{n}</span>
                   <span style={{ fontSize:13, color:'rgba(255,255,255,.6)', lineHeight:1.5, paddingTop:2 }}>{t}</span>
                 </div>
               ))}
@@ -457,7 +460,7 @@ function ConnectWalletModal({ show, onClose, onConnected }: { show:boolean; onCl
         {status === 'done' && (
           <div style={{ padding:'20px 0' }}>
             <div style={{ fontSize:50, marginBottom:10 }}>✅</div>
-            <p style={{ color:'#10b981', fontWeight:800, fontSize:18 }}>Wallet Connected!</p>
+            <p style={{ color:'#d4a72c', fontWeight:800, fontSize:18 }}>Wallet Connected!</p>
           </div>
         )}
         {error && status === 'idle' && (
@@ -832,7 +835,7 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
                 </p>
               </div>
             )}
-            {fields.length === 0 && <div style={{ background:'rgba(16,185,129,.05)',border:'1px solid rgba(16,185,129,.15)',borderRadius:12,padding:'13px 16px',marginBottom:16,fontSize:13,color:'rgba(255,255,255,.55)',lineHeight:1.6 }}>No details needed — tap below and we will build your <strong style={{ color:'#10b981' }}>{product.name}</strong> transaction for you to sign in Xaman.</div>}
+            {fields.length === 0 && <div style={{ background:'rgba(212,167,44,.05)',border:'1px solid rgba(212,167,44,.15)',borderRadius:12,padding:'13px 16px',marginBottom:16,fontSize:13,color:'rgba(255,255,255,.55)',lineHeight:1.6 }}>No details needed — tap below and we will build your <strong style={{ color:'#d4a72c' }}>{product.name}</strong> transaction for you to sign in Xaman.</div>}
             {fields.map(f => (
               <div key={f.key} style={{ marginBottom:13 }}>
                 <label style={LBL}>{f.label}{f.required && <span style={{ color:product.color }}> *</span>}</label>
@@ -894,9 +897,9 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
 
         {exStatus === 'signing' && (
           <>
-            <div style={{ display:'flex',alignItems:'center',gap:8,background:'rgba(16,185,129,.08)',border:'1px solid rgba(16,185,129,.25)',borderRadius:12,padding:'10px 16px',marginBottom:14 }}>
-              <span style={{ width:8,height:8,borderRadius:'50%',background:'#10b981',boxShadow:'0 0 12px #10b981',animation:'pulse 1.4s infinite' }} />
-              <span style={{ fontSize:13,fontWeight:700,color:'#10b981' }}>{exPlan && exPlan.total > 1 ? `Step ${exPlan.step} of ${exPlan.total}${exPlan.label ? ' — ' + exPlan.label : ''} · ` : ''}{exUuid ? 'Sign in Xaman to execute…' : 'Sign in your wallet to execute…'}</span>
+            <div style={{ display:'flex',alignItems:'center',gap:8,background:'rgba(212,167,44,.08)',border:'1px solid rgba(212,167,44,.25)',borderRadius:12,padding:'10px 16px',marginBottom:14 }}>
+              <span style={{ width:8,height:8,borderRadius:'50%',background:'#d4a72c',boxShadow:'0 0 12px #d4a72c',animation:'pulse 1.4s infinite' }} />
+              <span style={{ fontSize:13,fontWeight:700,color:'#d4a72c' }}>{exPlan && exPlan.total > 1 ? `Step ${exPlan.step} of ${exPlan.total}${exPlan.label ? ' — ' + exPlan.label : ''} · ` : ''}{exUuid ? 'Sign in Xaman to execute…' : 'Sign in your wallet to execute…'}</span>
             </div>
             {exUuid ? (
               <div style={{ marginBottom:14 }}>
@@ -931,8 +934,8 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
 
         {exStatus === 'nextstep' && exPlan && exNextStep && (
           <div style={{ textAlign:'center', padding:'14px 0' }}>
-            <div style={{ width:64,height:64,borderRadius:'50%',background:'rgba(16,185,129,.15)',border:'2px solid rgba(16,185,129,.5)',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 14px',fontSize:28 }}>✅</div>
-            <h3 style={{ fontSize:19,fontWeight:900,color:'#10b981',marginBottom:6 }}>Step {exNextStep - 1} of {exPlan.total} confirmed</h3>
+            <div style={{ width:64,height:64,borderRadius:'50%',background:'rgba(212,167,44,.15)',border:'2px solid rgba(212,167,44,.5)',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 14px',fontSize:28 }}>✅</div>
+            <h3 style={{ fontSize:19,fontWeight:900,color:'#d4a72c',marginBottom:6 }}>Step {exNextStep - 1} of {exPlan.total} confirmed</h3>
             <p style={{ fontSize:13,color:'rgba(255,255,255,.55)',lineHeight:1.7,marginBottom:6 }}>{exPlan.list[exNextStep - 2]?.label || 'Done'} is on XRPL mainnet.</p>
             <p style={{ fontSize:13,color:'#fff',lineHeight:1.7,marginBottom:14 }}>Next: <strong>{exPlan.list[exNextStep - 1]?.label || `step ${exNextStep}`}</strong></p>
             {exTx && <p style={{ fontSize:11,color:'rgba(255,255,255,.28)',fontFamily:"'IBM Plex Mono',monospace",marginBottom:14,wordBreak:'break-all' }}>TX: {exTx.slice(0,22)}…{exTx.slice(-8)}</p>}
@@ -943,8 +946,8 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
 
         {exStatus === 'delivered' && (
           <div style={{ textAlign:'center', padding:'14px 0' }}>
-            <div style={{ width:72,height:72,borderRadius:'50%',background:'rgba(16,185,129,.15)',border:'2px solid rgba(16,185,129,.5)',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 16px',fontSize:34 }}>✅</div>
-            <h3 style={{ fontSize:22,fontWeight:900,color:'#10b981',marginBottom:8 }}>Service Delivered</h3>
+            <div style={{ width:72,height:72,borderRadius:'50%',background:'rgba(212,167,44,.15)',border:'2px solid rgba(212,167,44,.5)',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 16px',fontSize:34 }}>✅</div>
+            <h3 style={{ fontSize:22,fontWeight:900,color:'#d4a72c',marginBottom:8 }}>Service Delivered</h3>
             <p style={{ fontSize:13,color:'rgba(255,255,255,.55)',lineHeight:1.7,marginBottom:14 }}>Your <strong style={{ color:'#fff' }}>{product.name}</strong> transaction is live and confirmed on XRPL mainnet.</p>
             {exTx && <p style={{ fontSize:11,color:'rgba(255,255,255,.28)',fontFamily:"'IBM Plex Mono',monospace",marginBottom:16,wordBreak:'break-all' }}>TX: {exTx.slice(0,22)}…{exTx.slice(-8)}</p>}
             <div style={{ display:'flex',gap:10,justifyContent:'center',flexWrap:'wrap' }}>
@@ -973,9 +976,9 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
     <Overlay show={show} onClose={handleClose}>
       <div style={{ textAlign:'center', padding:'20px 0' }}>
         <div style={{ width:76,height:76,borderRadius:'50%',background:`${product.color}18`,border:`2px solid ${product.color}45`,display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 18px',fontSize:34,animation:'glow 2s ease-in-out infinite' }}>{product.emoji}</div>
-        <div style={{ display:'inline-flex',alignItems:'center',gap:6,background:'rgba(16,185,129,.1)',border:'1px solid rgba(16,185,129,.25)',borderRadius:99,padding:'4px 14px',marginBottom:14 }}>
-          <span style={{ width:6,height:6,borderRadius:'50%',background:'#10b981',boxShadow:'0 0 8px #10b981',animation:'pulse 2s infinite' }} />
-          <span style={{ fontSize:10,fontWeight:700,color:'#10b981',letterSpacing:'.1em' }}>✅ PAYMENT VERIFIED ON XRPL</span>
+        <div style={{ display:'inline-flex',alignItems:'center',gap:6,background:'rgba(212,167,44,.1)',border:'1px solid rgba(212,167,44,.25)',borderRadius:99,padding:'4px 14px',marginBottom:14 }}>
+          <span style={{ width:6,height:6,borderRadius:'50%',background:'#d4a72c',boxShadow:'0 0 8px #d4a72c',animation:'pulse 2s infinite' }} />
+          <span style={{ fontSize:10,fontWeight:700,color:'#d4a72c',letterSpacing:'.1em' }}>✅ PAYMENT VERIFIED ON XRPL</span>
         </div>
         <h3 style={{ fontSize:24,fontWeight:900,marginBottom:8 }}>Payment Confirmed</h3>
         <div style={{ background:'rgba(255,255,255,.04)',border:'1px solid rgba(255,255,255,.08)',borderRadius:14,padding:18,margin:'14px 0 18px',textAlign:'left' }}>
@@ -1007,10 +1010,10 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
 
       {payStatus === 'waiting' && (
         <>
-          <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',background:'rgba(16,185,129,.08)',border:'1px solid rgba(16,185,129,.25)',borderRadius:12,padding:'10px 16px',marginBottom:14 }}>
+          <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',background:'rgba(212,167,44,.08)',border:'1px solid rgba(212,167,44,.25)',borderRadius:12,padding:'10px 16px',marginBottom:14 }}>
             <div style={{ display:'flex',alignItems:'center',gap:8 }}>
-              <span style={{ width:8,height:8,borderRadius:'50%',background:'#10b981',boxShadow:'0 0 12px #10b981',animation:'pulse 1.4s infinite' }} />
-              <span style={{ fontSize:13,fontWeight:700,color:'#10b981' }}>Waiting for payment…</span>
+              <span style={{ width:8,height:8,borderRadius:'50%',background:'#d4a72c',boxShadow:'0 0 12px #d4a72c',animation:'pulse 1.4s infinite' }} />
+              <span style={{ fontSize:13,fontWeight:700,color:'#d4a72c' }}>Waiting for payment…</span>
             </div>
             <span style={{ fontSize:12,color:'rgba(255,255,255,.4)',fontFamily:"'IBM Plex Mono',monospace" }}>⏱ {fmt(countdown)}</span>
           </div>
@@ -1096,8 +1099,8 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
               <WalletPicker options={walletOpts} selected={walletSel} onSelect={setWalletSel} />
             </div>
           )}
-          <div style={{ background:'rgba(16,185,129,.05)',border:'1px solid rgba(16,185,129,.15)',borderRadius:12,padding:'11px 14px',marginBottom:16,fontSize:12,color:'rgba(255,255,255,.45)',lineHeight:1.6 }}>
-            <strong style={{ color:'#10b981' }}>How it works:</strong> Sign the {currency==='XRP' ? (xrpNow!=null ? '≈'+fmtXrp(xrpNow) : '—') : price} {currency} payment → we verify it on XRPL mainnet → we build your transaction → you sign it. {currency==='XRP' && <>The exact XRP amount is quoted at the live rate when you pay.</>}
+          <div style={{ background:'rgba(212,167,44,.05)',border:'1px solid rgba(212,167,44,.15)',borderRadius:12,padding:'11px 14px',marginBottom:16,fontSize:12,color:'rgba(255,255,255,.45)',lineHeight:1.6 }}>
+            <strong style={{ color:'#d4a72c' }}>How it works:</strong> Sign the {currency==='XRP' ? (xrpNow!=null ? '≈'+fmtXrp(xrpNow) : '—') : price} {currency} payment → we verify it on XRPL mainnet → we build your transaction → you sign it. {currency==='XRP' && <>The exact XRP amount is quoted at the live rate when you pay.</>}
           </div>
           <div style={{ display:'flex',gap:10 }}>
             <button onClick={()=>setStep('info')} style={{ ...Btn('ghost',undefined,{flex:1}) }}>← Back</button>
@@ -1127,8 +1130,8 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
         </div>
       </div>
       <p style={{ fontSize:14,color:'rgba(255,255,255,.62)',lineHeight:1.82,marginBottom:22 }}>{product.desc}</p>
-      <div style={{ background:'rgba(16,185,129,.05)',border:'1px solid rgba(16,185,129,.18)',borderRadius:14,padding:16,marginBottom:22 }}>
-        <p style={{ fontSize:11,fontWeight:700,color:'#10b981',marginBottom:6,textTransform:'uppercase',letterSpacing:'.09em',fontFamily:"'IBM Plex Mono',monospace" }}>What we build for you</p>
+      <div style={{ background:'rgba(212,167,44,.05)',border:'1px solid rgba(212,167,44,.18)',borderRadius:14,padding:16,marginBottom:22 }}>
+        <p style={{ fontSize:11,fontWeight:700,color:'#d4a72c',marginBottom:6,textTransform:'uppercase',letterSpacing:'.09em',fontFamily:"'IBM Plex Mono',monospace" }}>What we build for you</p>
         <p style={{ fontSize:13,color:'rgba(255,255,255,.6)',lineHeight:1.75 }}>{product.aiDetail}</p>
       </div>
       <div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))',gap:9,marginBottom:26 }}>
@@ -1149,7 +1152,7 @@ function ProductModal({ show, onClose, product, connectedWallet }: { show:boolea
         </div>
         <div style={{ textAlign:'right' }}>
           <div style={{ fontSize:11,color:'rgba(255,255,255,.38)',marginBottom:4 }}>You sign in</div>
-          <div style={{ fontSize:15,fontWeight:700,color:'#10b981' }}>Your own wallet ⚡</div>
+          <div style={{ fontSize:15,fontWeight:700,color:'#d4a72c' }}>Your own wallet ⚡</div>
         </div>
       </div>
       <div style={{ background:'rgba(255,255,255,.03)',borderRadius:11,padding:'11px 15px',marginBottom:20 }}>
@@ -1170,8 +1173,8 @@ function ScoreModal({ show, onClose, scoreData, loading, error, onRetry, walletA
 
   return (
     <Overlay show={show} onClose={onClose}>
-      <div style={{ fontSize:10,fontWeight:700,color:'#10b981',letterSpacing:'.12em',textTransform:'uppercase',marginBottom:8,fontFamily:"'IBM Plex Mono',monospace" }}>XRPLScore™ — Live XRPL Scan</div>
-      {loading&&<div style={{ textAlign:'center',padding:'44px 0' }}><div style={{ fontSize:40,animation:'spin 1s linear infinite',display:'inline-block',marginBottom:14 }}>◈</div><p style={{ color:'#10b981',fontWeight:600,fontSize:17 }}>Scanning XRPL Mainnet…</p><p style={{ color:'rgba(255,255,255,.35)',fontSize:13,marginTop:6 }}>Account age · TX history · Trust lines · AMM · NFTs</p><div style={{ width:220,height:3,background:'rgba(255,255,255,.07)',borderRadius:99,margin:'18px auto 0',overflow:'hidden' }}><div style={{ height:'100%',background:'#10b981',animation:'shimmer 1.5s ease-in-out infinite',borderRadius:99 }} /></div></div>}
+      <div style={{ fontSize:10,fontWeight:700,color:'#d4a72c',letterSpacing:'.12em',textTransform:'uppercase',marginBottom:8,fontFamily:"'IBM Plex Mono',monospace" }}>XRPLScore™ — Live XRPL Scan</div>
+      {loading&&<div style={{ textAlign:'center',padding:'44px 0' }}><div style={{ fontSize:40,animation:'spin 1s linear infinite',display:'inline-block',marginBottom:14 }}>◈</div><p style={{ color:'#d4a72c',fontWeight:600,fontSize:17 }}>Scanning XRPL Mainnet…</p><p style={{ color:'rgba(255,255,255,.35)',fontSize:13,marginTop:6 }}>Account age · TX history · Trust lines · AMM · NFTs</p><div style={{ width:220,height:3,background:'rgba(255,255,255,.07)',borderRadius:99,margin:'18px auto 0',overflow:'hidden' }}><div style={{ height:'100%',background:'#d4a72c',animation:'shimmer 1.5s ease-in-out infinite',borderRadius:99 }} /></div></div>}
       {error&&!loading&&<div style={{ textAlign:'center',padding:'28px 0' }}><div style={{ fontSize:44,marginBottom:12 }}>⚠️</div><p style={{ color:'#f87171',fontWeight:600,fontSize:17,marginBottom:8 }}>Scan failed</p><p style={{ color:'rgba(255,255,255,.4)',fontSize:13,marginBottom:22 }}>{error}</p><div style={{ display:'flex',gap:10,justifyContent:'center' }}><button onClick={onRetry} style={Btn('green')}>Retry</button><button onClick={onClose} style={Btn('ghost')}>Close</button></div></div>}
       {scoreData&&!loading&&grade&&(
         <>
@@ -1236,7 +1239,7 @@ function LoginModal({ show, onClose, onLoggedIn }: { show:boolean;onClose:()=>vo
     <Overlay show={show} onClose={()=>{ onClose(); setError(''); setForm({name:'',email:'',password:'',confirm:''}); }}>
       <div style={{ textAlign:'center',marginBottom:22 }}><div style={{ fontSize:32,marginBottom:8 }}>🔐</div><h2 style={{ fontSize:23,fontWeight:900 }}><Wordmark size={23} /></h2><p style={{ fontSize:13,color:'rgba(255,255,255,.4)',marginTop:4 }}>Your on-chain financial identity</p></div>
       <div style={{ display:'flex',gap:8,marginBottom:20 }}>
-        {(['login','signup'] as const).map(t=><button key={t} onClick={()=>{setTab(t);setError('');}} style={{ flex:1,padding:'10px',borderRadius:12,cursor:'pointer',fontFamily:'inherit',fontWeight:600,fontSize:14,border:`1px solid ${tab===t?'#10b981':'rgba(255,255,255,.1)'}`,background:tab===t?'rgba(16,185,129,.12)':'rgba(255,255,255,.04)',color:tab===t?'#10b981':'rgba(255,255,255,.5)' }}>{t==='login'?'Log In':'Sign Up'}</button>)}
+        {(['login','signup'] as const).map(t=><button key={t} onClick={()=>{setTab(t);setError('');}} style={{ flex:1,padding:'10px',borderRadius:12,cursor:'pointer',fontFamily:'inherit',fontWeight:600,fontSize:14,border:`1px solid ${tab===t?'#d4a72c':'rgba(255,255,255,.1)'}`,background:tab===t?'rgba(212,167,44,.12)':'rgba(255,255,255,.04)',color:tab===t?'#d4a72c':'rgba(255,255,255,.5)' }}>{t==='login'?'Log In':'Sign Up'}</button>)}
       </div>
       <div style={{ display:'flex',flexDirection:'column',gap:12 }}>
         {tab==='signup'&&<div><label style={LBL}>Full Name</label><input style={INP} type="text" value={form.name} onChange={e=>set('name',e.target.value)} placeholder="Jane Doe" /></div>}
@@ -1246,7 +1249,7 @@ function LoginModal({ show, onClose, onLoggedIn }: { show:boolean;onClose:()=>vo
       </div>
       {error&&<p style={{ fontSize:12,color:'#f87171',marginTop:10 }}>{error}</p>}
       <button onClick={handleSubmit} disabled={loading} style={{ ...Btn('green',undefined,{width:'100%',padding:'14px',marginTop:18,opacity:loading?0.6:1}) }}>{loading?'⚡ Processing…':tab==='login'?'Log In →':'Create Account →'}</button>
-      <p style={{ fontSize:11,color:'rgba(255,255,255,.3)',textAlign:'center',marginTop:14 }}>Need Xaman? <a href={XAMAN_DL} target="_blank" rel="noopener noreferrer" style={{ color:'#10b981',fontWeight:600 }}>Download free →</a></p>
+      <p style={{ fontSize:11,color:'rgba(255,255,255,.3)',textAlign:'center',marginTop:14 }}>Need Xaman? <a href={XAMAN_DL} target="_blank" rel="noopener noreferrer" style={{ color:'#d4a72c',fontWeight:600 }}>Download free →</a></p>
     </Overlay>
   );
 }
@@ -1314,7 +1317,7 @@ function DonateModal({ show, onClose }: { show:boolean; onClose:()=>void }) {
     <Overlay show={show} onClose={handleClose}>
       <div style={{ textAlign:'center',padding:'28px 0' }}>
         <div style={{ fontSize:60,marginBottom:14 }}>💚</div>
-        <h3 style={{ fontSize:26,fontWeight:900,color:'#10b981',marginBottom:10 }}>Thank You.</h3>
+        <h3 style={{ fontSize:26,fontWeight:900,color:'#d4a72c',marginBottom:10 }}>Thank You.</h3>
         <p style={{ color:'rgba(255,255,255,.55)',fontSize:14,lineHeight:1.8,marginBottom:8 }}><strong style={{ color:'#fff' }}>{amount} {currency}</strong> to the community treasury.</p>
         <p style={{ color:'rgba(255,255,255,.35)',fontSize:13,lineHeight:1.75,marginBottom:26 }}>Verified on the XRP Ledger — not self-reported.</p>
         <div style={{ display:'flex',gap:10,justifyContent:'center',flexWrap:'wrap' }}>
@@ -1328,7 +1331,7 @@ function DonateModal({ show, onClose }: { show:boolean; onClose:()=>void }) {
   if (payStatus === 'waiting') return (
     <Overlay show={show} onClose={handleClose}>
       <div style={{ textAlign:'center' }}>
-        <div style={{ fontSize:10,fontWeight:700,color:'#10b981',letterSpacing:'.12em',textTransform:'uppercase',marginBottom:5 }}>Awaiting Signature</div>
+        <div style={{ fontSize:10,fontWeight:700,color:'#d4a72c',letterSpacing:'.12em',textTransform:'uppercase',marginBottom:5 }}>Awaiting Signature</div>
         <h3 style={{ fontSize:20,fontWeight:900,marginBottom:14 }}>Confirm in Xaman</h3>
         <XamanPayPrompt theme="light" mode="pay" qrPng={qrUrl} deepLink={deepLnk} uuid={uuid}
           amount={amount} currency={currency} destination={TREASURY} />
@@ -1339,22 +1342,22 @@ function DonateModal({ show, onClose }: { show:boolean; onClose:()=>void }) {
 
   return (
     <Overlay show={show} onClose={handleClose}>
-      <div style={{ fontSize:10,fontWeight:700,color:'#10b981',letterSpacing:'.12em',textTransform:'uppercase',marginBottom:5 }}>Donate to Treasury</div>
+      <div style={{ fontSize:10,fontWeight:700,color:'#d4a72c',letterSpacing:'.12em',textTransform:'uppercase',marginBottom:5 }}>Donate to Treasury</div>
       <h3 style={{ fontSize:22,fontWeight:900,marginBottom:4 }}>Fund the community treasury.</h3>
       <p style={{ fontSize:13,color:'rgba(255,255,255,.44)',marginBottom:18 }}>Verified on-chain — no self-reporting.</p>
-      <div style={{ background:'rgba(16,185,129,.05)',border:'1px solid rgba(16,185,129,.15)',borderRadius:12,padding:'9px 12px',marginBottom:14,display:'flex',alignItems:'center',gap:8,flexWrap:'wrap' }}>
-        <code style={{ fontSize:10,color:'#34d399',flex:1,wordBreak:'break-all',fontFamily:"'IBM Plex Mono',monospace" }}>{TREASURY}</code>
+      <div style={{ background:'rgba(212,167,44,.05)',border:'1px solid rgba(212,167,44,.15)',borderRadius:12,padding:'9px 12px',marginBottom:14,display:'flex',alignItems:'center',gap:8,flexWrap:'wrap' }}>
+        <code style={{ fontSize:10,color:'#e3bf55',flex:1,wordBreak:'break-all',fontFamily:"'IBM Plex Mono',monospace" }}>{TREASURY}</code>
         <button onClick={()=>{ navigator.clipboard.writeText(TREASURY).then(()=>{ setCopiedA(true); setTimeout(()=>setCopiedA(false),2000); }).catch(()=>{ alert('Could not copy automatically — long-press the address above to copy it manually.'); }); }} style={{ ...Btn('ghost',undefined,{padding:'4px 9px',fontSize:10}),flexShrink:0 }}>{copiedA?'Copied':'Copy'}</button>
       </div>
       <div style={{ display:'flex',gap:8,marginBottom:12 }}>
         {(['XRP','RLUSD'] as Currency[]).map(c => (
-          <button key={c} onClick={()=>setCurrency(c)} style={{ flex:1,padding:'10px',borderRadius:12,cursor:'pointer',fontFamily:'inherit',fontWeight:700,fontSize:13,border:`1px solid ${currency===c?'#10b981':'rgba(255,255,255,.1)'}`,background:currency===c?'rgba(16,185,129,.12)':'rgba(255,255,255,.04)',color:currency===c?'#10b981':'rgba(255,255,255,.5)' }}>
+          <button key={c} onClick={()=>setCurrency(c)} style={{ flex:1,padding:'10px',borderRadius:12,cursor:'pointer',fontFamily:'inherit',fontWeight:700,fontSize:13,border:`1px solid ${currency===c?'#d4a72c':'rgba(255,255,255,.1)'}`,background:currency===c?'rgba(212,167,44,.12)':'rgba(255,255,255,.04)',color:currency===c?'#d4a72c':'rgba(255,255,255,.5)' }}>
             {c==='XRP'?'XRP':'RLUSD'}
           </button>
         ))}
       </div>
       <div style={{ display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:8,marginBottom:10 }}>
-        {['10','25','50','100'].map(a => <button key={a} onClick={()=>setAmount(a)} style={{ padding:'10px',borderRadius:12,cursor:'pointer',border:`1px solid ${amount===a?'#10b981':'rgba(255,255,255,.1)'}`,background:amount===a?'rgba(16,185,129,.12)':'rgba(255,255,255,.04)',color:amount===a?'#10b981':'rgba(255,255,255,.6)',fontWeight:700,fontSize:13,fontFamily:'inherit' }}>{a}</button>)}
+        {['10','25','50','100'].map(a => <button key={a} onClick={()=>setAmount(a)} style={{ padding:'10px',borderRadius:12,cursor:'pointer',border:`1px solid ${amount===a?'#d4a72c':'rgba(255,255,255,.1)'}`,background:amount===a?'rgba(212,167,44,.12)':'rgba(255,255,255,.04)',color:amount===a?'#d4a72c':'rgba(255,255,255,.6)',fontWeight:700,fontSize:13,fontFamily:'inherit' }}>{a}</button>)}
       </div>
       <input type="number" value={amount} onChange={e=>setAmount(e.target.value)} placeholder={`Amount in ${currency}`} style={{ ...INP, marginBottom:12 }} />
       {payError && <p style={{ fontSize:12,color:'#f87171',marginBottom:10 }}>{payError}</p>}
@@ -1483,15 +1486,15 @@ function GrantModal({ show, onClose, connectedWallet, user }: { show:boolean; on
 function AboutModal({ show, onClose }: { show:boolean; onClose:()=>void }) {
   return (
     <Overlay show={show} onClose={onClose} wide>
-      <div style={{ fontSize:10,fontWeight:700,color:'#10b981',letterSpacing:'.12em',textTransform:'uppercase',marginBottom:8 }}>About XRPLHub</div>
+      <div style={{ fontSize:10,fontWeight:700,color:'#d4a72c',letterSpacing:'.12em',textTransform:'uppercase',marginBottom:8 }}>About XRPLHub</div>
       <h2 style={{ fontSize:24,fontWeight:900,marginBottom:18 }}>Simple tools for people who own XRP.</h2>
       <div style={{ fontSize:14,color:'rgba(255,255,255,.65)',lineHeight:1.9,display:'flex',flexDirection:'column',gap:14 }}>
         <p>XRPLHub is for people who just bought XRP and want to do more with it. You don&apos;t need a bank account or a credit history. You just need an XRP wallet, like Xaman.</p>
         <p>We only build things nobody else offers, and everything here is free for you:</p>
-        <p><strong style={{ color:'#10b981' }}>Wallet Score</strong> (XRPLScore™): a score from 300 to 850 for any XRP wallet, built only from that wallet&apos;s public history. It can be up to 15 minutes old. It scores a wallet, not a person. It isn&apos;t a credit check and doesn&apos;t use your name or ID.</p>
+        <p><strong style={{ color:'#d4a72c' }}>Wallet Score</strong> (XRPLScore™): a score from 300 to 850 for any XRP wallet, built only from that wallet&apos;s public history. It can be up to 15 minutes old. It scores a wallet, not a person. It isn&apos;t a credit check and doesn&apos;t use your name or ID.</p>
         <p><strong style={{ color:'#fff' }}>Spend Controls</strong>: give someone an allowance they can only spend with people you pick, or pay one bill every week or month. You approve each payment in your own wallet. <strong style={{ color:'#fff' }}>Token Check</strong>: before you buy a tokenized asset, see whether its creator can freeze it, take it back or block you from selling it.</p>
-        <p><strong style={{ color:'#10b981' }}>Community Grants</strong>: people donate to a public wallet anyone can see. A person reads every application and decides. Approved grants go straight to the person&apos;s wallet. (Applications are paused until the wallet is funded.)</p>
-        <p style={{ fontSize:12,color:'rgba(255,255,255,.4)',fontStyle:'italic' }}>Businesses can license the XRPLScore™ method. Partnership questions: <a href="mailto:partners@xrplhub.io" style={{ color:'#10b981' }}>partners@xrplhub.io</a></p>
+        <p><strong style={{ color:'#d4a72c' }}>Community Grants</strong>: people donate to a public wallet anyone can see. A person reads every application and decides. Approved grants go straight to the person&apos;s wallet. (Applications are paused until the wallet is funded.)</p>
+        <p style={{ fontSize:12,color:'rgba(255,255,255,.4)',fontStyle:'italic' }}>Businesses can license the XRPLScore™ method. Partnership questions: <a href="mailto:partners@xrplhub.io" style={{ color:'#d4a72c' }}>partners@xrplhub.io</a></p>
       </div>
       <button onClick={onClose} style={{ ...Btn('green',undefined,{marginTop:24}) }}>Close</button>
     </Overlay>
@@ -1505,7 +1508,7 @@ function FAQModal({ show, onClose }: { show:boolean; onClose:()=>void }) {
     ['Do I need to know crypto?','No. If you have an XRP wallet like Xaman, you can use everything here.'],
     ['Does XRPLHub ever hold my money?','No. Your money stays in your wallet, and you approve every payment yourself. We never see your keys.'],
     ["What's free?",'The wallet score, Spend Controls, Token Check, the wallet permissions check and Batch Send are free. Business tools are paid.'],
-    ['What is the Wallet Score?',"A score from 300 to 850 for any XRP wallet, like a credit score, but built only from that wallet's public history: how old it is, how it's been used, how much it keeps on hand. It can be up to 15 minutes old. It scores a wallet, not a person. It isn't a credit check and doesn't use your name, ID or any credit bureau."],
+    ['What is the Wallet Score?',"A score from 300 to 850 for any XRP wallet, built only from that wallet's public history: how old it is, how it's been used, how much it keeps on hand. It can be up to 15 minutes old. It scores a wallet, not a person. It isn't a credit check and doesn't use your name, ID or any consumer reporting agency."],
     ['How does Spend Controls work?',"You pick who can be paid and how much, each week or month. Each payment is a check you approve in your own wallet, and the person you pay cashes it, up to the amount you set. We only ever make this week's or this month's payment, never one ahead. You can cancel any payment that hasn't been cashed."],
     ['How do grants work?',"People donate XRP or RLUSD to a public grants wallet anyone can see on XRPScan. Applications are paused until it is funded. When they reopen, anyone in need can apply for $25–$100. A person reads every application and decides, and approved money goes straight to the person's XRP wallet."],
     ['Which wallet do I need?','Xaman, free on iPhone and Android at xaman.app, is how you sign in here and the wallet we recommend. On a computer you can also approve payments with Crossmark or GemWallet. Use the same wallet address you signed in with.'],
@@ -1513,12 +1516,12 @@ function FAQModal({ show, onClose }: { show:boolean; onClose:()=>void }) {
   ];
   return (
     <Overlay show={show} onClose={onClose} wide>
-      <div style={{ fontSize:10,fontWeight:700,color:'#10b981',letterSpacing:'.12em',textTransform:'uppercase',marginBottom:20 }}>FAQ</div>
+      <div style={{ fontSize:10,fontWeight:700,color:'#d4a72c',letterSpacing:'.12em',textTransform:'uppercase',marginBottom:20 }}>FAQ</div>
       <div style={{ display:'flex',flexDirection:'column',gap:8 }}>
         {faqs.map(([q,a],i)=>(
           <div key={i} style={{ background:'rgba(255,255,255,.03)',border:'1px solid rgba(255,255,255,.07)',borderRadius:14,overflow:'hidden' }}>
             <button onClick={()=>setOpen(open===i?null:i)} style={{ width:'100%',padding:'15px 18px',background:'transparent',border:'none',color:'#fff',fontWeight:700,fontSize:14,cursor:'pointer',textAlign:'left',display:'flex',justifyContent:'space-between',alignItems:'center',fontFamily:'inherit',gap:10 }}>
-              <span style={{ flex:1 }}>{q}</span><span style={{ color:'#10b981',fontSize:18,flexShrink:0 }}>{open===i?'−':'+'}</span>
+              <span style={{ flex:1 }}>{q}</span><span style={{ color:'#d4a72c',fontSize:18,flexShrink:0 }}>{open===i?'−':'+'}</span>
             </button>
             {open===i && <div style={{ padding:'0 18px 16px',fontSize:13,color:'rgba(255,255,255,.55)',lineHeight:1.8 }}>{a}</div>}
           </div>
@@ -1531,11 +1534,11 @@ function FAQModal({ show, onClose }: { show:boolean; onClose:()=>void }) {
 
 // ─── TERMS ───
 function TermsModal({ show, onClose }: { show:boolean; onClose:()=>void }) {
-  const H:React.CSSProperties = { color:'#10b981',fontWeight:800,display:'block',marginTop:20,marginBottom:6,fontSize:13,textTransform:'uppercase',letterSpacing:'.04em' };
+  const H:React.CSSProperties = { color:'#d4a72c',fontWeight:800,display:'block',marginTop:20,marginBottom:6,fontSize:13,textTransform:'uppercase',letterSpacing:'.04em' };
   const P:React.CSSProperties = { fontSize:13,color:'rgba(255,255,255,.58)',lineHeight:1.85,marginBottom:8 };
   return (
     <Overlay show={show} onClose={onClose} wide>
-      <div style={{ fontSize:10,fontWeight:700,color:'#10b981',letterSpacing:'.12em',textTransform:'uppercase',marginBottom:6 }}>Legal</div>
+      <div style={{ fontSize:10,fontWeight:700,color:'#d4a72c',letterSpacing:'.12em',textTransform:'uppercase',marginBottom:6 }}>Legal</div>
       <h2 style={{ fontSize:22,fontWeight:900,marginBottom:4 }}>Terms of Service</h2>
       <p style={{ fontSize:11,color:'rgba(255,255,255,.28)',marginBottom:18 }}>xrplhub.io · Last updated {new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}</p>
       <div style={{ maxHeight:'60vh',overflowY:'auto',paddingRight:8 }}>
@@ -1547,7 +1550,7 @@ function TermsModal({ show, onClose }: { show:boolean; onClose:()=>void }) {
         <span style={H}>3. Transactions We Build</span>
         <p style={P}>XRPLHub builds transactions only inside its own products (Spend Controls checks, MPT issuance with a recorded backing declaration, XRPLScore-gated Permissioned Domains), and charges nothing for them. We build the exact transaction for your wallet and you sign and submit it yourself. XRPLHub never holds your keys and cannot sign for you. <strong style={{ color:'rgba(255,255,255,.8)' }}>All XRPL transactions are final and irrevocable</strong>, and if the ledger rejects a transaction you may need to correct your details and try again. These are not insurance contracts, securities, or financial instruments.</p>
         <span style={H}>4. XRPLScore™</span>
-        <p style={P}>XRPLScore™ is our proprietary on-chain assessment derived from public XRPL wallet data. It is not a FICO score, consumer credit report, or NRSRO rating, and has no affiliation with any credit bureau. The XRPLScore™ name, methodology, signal weighting, and underlying framework are intellectual property of XRPLHub and are available for commercial licensing.</p>
+        <p style={P}>XRPLScore™ is our proprietary on-chain assessment derived from public XRPL wallet data. It is not a FICO score, consumer report, or NRSRO rating, and has no affiliation with any consumer reporting agency. The XRPLScore™ name, methodology, signal weighting, and underlying framework are intellectual property of XRPLHub and are available for commercial licensing.</p>
 
         <span style={H}>4A. Continuous Monitoring (addendum)</span>
         <p style={P}>Continuous monitoring is an optional service that reports observed changes in public XRP Ledger data (account activity, an XRPLScore recomputed from that data, an exact-match comparison against the OFAC SDN list, and — only if the XRPL Lending Protocol is enabled — loan status) for wallets you choose, checked about once a day; it is not real-time. It is layered on top of your own underwriting and does not replace it: it cannot see borrower credit, collateral, legal structure, or anything off the ledger, it gives no recommendation, and it does not estimate the probability that any wallet will default. Absence of a reported change is not a statement that a wallet is safe. You may not use any output of the monitoring service, alone or combined with other data, to make or communicate any decision about a consumer&apos;s eligibility for credit, insurance, employment, housing, or any other purpose governed by the U.S. Fair Credit Reporting Act (FCRA) or the Equal Credit Opportunity Act (ECOA); you confirm this by accepting the acknowledgement required when you subscribe, which we store with a timestamp and version. You are responsible for your webhook endpoint and for verifying webhook signatures; we may disable a webhook that repeatedly fails to acknowledge deliveries, and monitoring capacity is limited and may be full. Monitoring records are append-only and are retained. This addendum is effective 2026-09-20.</p>
@@ -1560,7 +1563,7 @@ function TermsModal({ show, onClose }: { show:boolean; onClose:()=>void }) {
         <span style={H}>8. Disclaimers & Liability</span>
         <p style={P}>PLATFORM PROVIDED "AS IS." LIABILITY CAPPED AT THE GREATER OF $100 OR 12-MONTH PAYMENTS. NO INDIRECT, CONSEQUENTIAL, OR PUNITIVE DAMAGES.</p>
         <span style={H}>9. Contact</span>
-        <p style={P}><a href="mailto:legal@xrplhub.io" style={{ color:'#10b981' }}>legal@xrplhub.io</a></p>
+        <p style={P}><a href="mailto:legal@xrplhub.io" style={{ color:'#d4a72c' }}>legal@xrplhub.io</a></p>
       </div>
       <button onClick={onClose} style={{ ...Btn('ghost',undefined,{marginTop:18,width:'100%'}) }}>Close</button>
     </Overlay>
@@ -1569,11 +1572,11 @@ function TermsModal({ show, onClose }: { show:boolean; onClose:()=>void }) {
 
 // ─── PRIVACY ───
 function PrivacyModal({ show, onClose }: { show:boolean; onClose:()=>void }) {
-  const H:React.CSSProperties = { color:'#10b981',fontWeight:800,display:'block',marginTop:20,marginBottom:6,fontSize:13,textTransform:'uppercase',letterSpacing:'.04em' };
+  const H:React.CSSProperties = { color:'#d4a72c',fontWeight:800,display:'block',marginTop:20,marginBottom:6,fontSize:13,textTransform:'uppercase',letterSpacing:'.04em' };
   const P:React.CSSProperties = { fontSize:13,color:'rgba(255,255,255,.58)',lineHeight:1.85,marginBottom:8 };
   return (
     <Overlay show={show} onClose={onClose} wide>
-      <div style={{ fontSize:10,fontWeight:700,color:'#10b981',letterSpacing:'.12em',textTransform:'uppercase',marginBottom:6 }}>Legal</div>
+      <div style={{ fontSize:10,fontWeight:700,color:'#d4a72c',letterSpacing:'.12em',textTransform:'uppercase',marginBottom:6 }}>Legal</div>
       <h2 style={{ fontSize:22,fontWeight:900,marginBottom:4 }}>Privacy Policy</h2>
       <p style={{ fontSize:11,color:'rgba(255,255,255,.28)',marginBottom:18 }}>xrplhub.io · Last updated {new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}</p>
       <div style={{ maxHeight:'60vh',overflowY:'auto',paddingRight:8 }}>
@@ -1590,20 +1593,20 @@ function PrivacyModal({ show, onClose }: { show:boolean; onClose:()=>void }) {
         <span style={H}>6. Security</span>
         <p style={P}>TLS in transit · encryption at rest · role-based access controls. No system is 100% secure.</p>
         <span style={H}>7. Your Rights</span>
-        <p style={P}>Access · correction · deletion (subject to retention laws) · data portability. Contact: <a href="mailto:privacy@xrplhub.io" style={{ color:'#10b981' }}>privacy@xrplhub.io</a> — 30-day response.</p>
+        <p style={P}>Access · correction · deletion (subject to retention laws) · data portability. Contact: <a href="mailto:privacy@xrplhub.io" style={{ color:'#d4a72c' }}>privacy@xrplhub.io</a> — 30-day response.</p>
         <span style={H}>8. California (CCPA)</span>
         <p style={P}>CA residents: right to know, delete, and opt out of sale (we do not sell data).</p>
         <span style={H}>9. Children</span>
         <p style={P}>Service is for 18+. We do not knowingly collect data from minors.</p>
         <span style={H}>10. Contact</span>
-        <p style={P}><a href="mailto:privacy@xrplhub.io" style={{ color:'#10b981' }}>privacy@xrplhub.io</a></p>
+        <p style={P}><a href="mailto:privacy@xrplhub.io" style={{ color:'#d4a72c' }}>privacy@xrplhub.io</a></p>
       </div>
       <button onClick={onClose} style={{ ...Btn('ghost',undefined,{marginTop:18,width:'100%'}) }}>Close</button>
     </Overlay>
   );
 }
 
-// ─── PERSONAL XRPLScore CREDIT REPORT (inline, replaces section when wallet connects) ───
+// ─── PERSONAL XRPLScore WALLET REPORT (inline, replaces section when wallet connects) ───
 type SignalRow = { signal:string; label:string; score:number; weight?:string; desc?:string };
 interface PersonalData {
   ledgerScore: number;
@@ -1617,8 +1620,8 @@ interface PersonalData {
 }
 
 const GRADE_THEME: Record<string,{primary:string;glow:string;label:string}> = {
-  Exceptional: { primary:'#10b981', glow:'rgba(16,185,129,.55)', label:'Top of the ledger' },
-  Excellent:   { primary:'#34d399', glow:'rgba(52,211,153,.5)',  label:'Strong on-chain reputation' },
+  Exceptional: { primary:'#d4a72c', glow:'rgba(212,167,44,.55)', label:'Top of the ledger' },
+  Excellent:   { primary:'#e3bf55', glow:'rgba(52,211,153,.5)',  label:'Strong on-chain reputation' },
   Good:        { primary:'#38bdf8', glow:'rgba(56,189,248,.5)',  label:'Healthy XRPL profile' },
   Fair:        { primary:'#f59e0b', glow:'rgba(245,158,11,.5)',  label:'Room to grow' },
   Building:    { primary:'#a78bfa', glow:'rgba(167,139,250,.5)', label:'Early stage — build from here' },
@@ -1663,7 +1666,7 @@ function PersonalCreditReport({ wallet, data, history, loading }: {
     return (
       <div style={{ textAlign:'center', padding:'56px 20px' }}>
         <div style={{ fontSize:42, marginBottom:12, animation:'spin 1.5s linear infinite', display:'inline-block' }}>📡</div>
-        <p style={{ color:'#10b981', fontWeight:700, fontSize:15 }}>Pulling your live XRPLScore™ from the ledger…</p>
+        <p style={{ color:'#d4a72c', fontWeight:700, fontSize:15 }}>Pulling your live XRPLScore™ from the ledger…</p>
       </div>
     );
   }
@@ -1738,7 +1741,7 @@ function PersonalCreditReport({ wallet, data, history, loading }: {
               <div key={i} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, padding:'12px 14px', background:'rgba(255,255,255,.03)', border:'1px solid rgba(255,255,255,.06)', borderRadius:11, flexWrap:'wrap' }}>
                 <div style={{ flex:1, minWidth:180 }}>
                   <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                    <span style={{ fontSize:9, fontWeight:800, padding:'2px 7px', borderRadius:99, background: r.priority==='high'?'#ef4444':r.priority==='medium'?'#f59e0b':'#34d399', color: r.priority==='high'?'#fff':'#000', textTransform:'uppercase', letterSpacing:'.08em', fontFamily:"'IBM Plex Mono',monospace" }}>{r.priority}</span>
+                    <span style={{ fontSize:9, fontWeight:800, padding:'2px 7px', borderRadius:99, background: r.priority==='high'?'#ef4444':r.priority==='medium'?'#f59e0b':'#e3bf55', color: r.priority==='high'?'#fff':'#000', textTransform:'uppercase', letterSpacing:'.08em', fontFamily:"'IBM Plex Mono',monospace" }}>{r.priority}</span>
                     <span style={{ fontSize:13, fontWeight:600, color:'#fff' }}>{r.action}</span>
                   </div>
                 </div>
@@ -1754,7 +1757,7 @@ function PersonalCreditReport({ wallet, data, history, loading }: {
 
 function ReportSignal({ b }: { b: SignalRow }) {
   const pct = Math.max(0, Math.min(100, b.score));
-  const color = pct >= 70 ? '#10b981' : pct >= 45 ? '#f59e0b' : '#ef4444';
+  const color = pct >= 70 ? '#d4a72c' : pct >= 45 ? '#f59e0b' : '#ef4444';
   return (
     <div>
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:5, gap:8, flexWrap:'wrap' }}>
@@ -1792,7 +1795,7 @@ function ReportSparkline({ points, color }: { points: Array<{score:number;scanne
       </svg>
       <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, color:'rgba(255,255,255,.42)', marginTop:6, fontFamily:"'IBM Plex Mono',monospace" }}>
         <span>First scan: {first.score}</span>
-        <span style={{ color: delta >= 0 ? '#10b981' : '#ef4444', fontWeight:800 }}>{delta >= 0 ? '▲' : '▼'} {Math.abs(delta)} pts</span>
+        <span style={{ color: delta >= 0 ? '#d4a72c' : '#ef4444', fontWeight:800 }}>{delta >= 0 ? '▲' : '▼'} {Math.abs(delta)} pts</span>
         <span>Latest: <strong style={{ color }}>{last.score}</strong></span>
       </div>
     </>
@@ -1869,7 +1872,7 @@ export default function XRPLHubHome() {
   }, [walletInput, connectedWallet]);
 
   // ─── Auto-fetch personalized XRPLScore the moment a wallet connects ───
-  // Silent, inline. Populates the home XRPLScore section as a personal credit report.
+  // Silent, inline. Populates the home XRPLScore section as a personal wallet report.
   useEffect(() => {
     if (!connectedWallet) { setPersonalScore(null); setScoreHistory([]); return; }
     let cancelled = false;
@@ -1915,14 +1918,14 @@ export default function XRPLHubHome() {
         ::placeholder{color:rgba(255,255,255,.18)!important}
         input,textarea,button,select{font-family:inherit}
         ::-webkit-scrollbar{width:4px}::-webkit-scrollbar-thumb{background:rgba(255,255,255,.1);border-radius:99px}
-        ::selection{background:rgba(16,185,129,.28);color:#fff}
+        ::selection{background:rgba(212,167,44,.28);color:#fff}
         @keyframes popIn{from{opacity:0;transform:scale(.93) translateY(12px)}to{opacity:1;transform:scale(1) translateY(0)}}
         @keyframes shimmer{0%{width:0%;margin-left:0}50%{width:70%;margin-left:0}100%{width:0%;margin-left:100%}}
         @keyframes spin{to{transform:rotate(360deg)}}
-        @keyframes pulse{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(16,185,129,.7)}50%{opacity:.75;box-shadow:0 0 0 6px rgba(16,185,129,0)}}
-        @keyframes glow{0%,100%{box-shadow:0 0 20px rgba(16,185,129,.25)}50%{box-shadow:0 0 55px rgba(16,185,129,.6)}}
+        @keyframes pulse{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(212,167,44,.7)}50%{opacity:.75;box-shadow:0 0 0 6px rgba(212,167,44,0)}}
+        @keyframes glow{0%,100%{box-shadow:0 0 20px rgba(212,167,44,.25)}50%{box-shadow:0 0 55px rgba(212,167,44,.6)}}
         @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
-        @keyframes borderPulse{0%,100%{border-color:rgba(16,185,129,.22)}50%{border-color:rgba(16,185,129,.55)}}
+        @keyframes borderPulse{0%,100%{border-color:rgba(212,167,44,.22)}50%{border-color:rgba(212,167,44,.55)}}
         @keyframes tickerScroll{from{transform:translate3d(0,0,0)}to{transform:translate3d(-50%,0,0)}}
         @keyframes scoreReveal{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
         @keyframes numberPop{0%{transform:scale(.4);opacity:0}60%{transform:scale(1.08);opacity:1}100%{transform:scale(1);opacity:1}}
@@ -1933,14 +1936,14 @@ export default function XRPLHubHome() {
         @media(max-width:640px){.pcard-hero-row{grid-template-columns:1fr;text-align:center}.pcard-hero-row > div:last-child{text-align:center}}
         .ticker-track{will-change:transform;backface-visibility:hidden;-webkit-backface-visibility:hidden}
         .ticker-track:hover{animation-play-state:paused}
-        .pcard-featured{transition:transform .22s,box-shadow .22s;cursor:pointer}.pcard-featured:hover{transform:translateY(-6px);box-shadow:0 0 60px rgba(16,185,129,.18),0 28px 70px rgba(0,0,0,.6)!important}
-        .pcard{transition:transform .22s,box-shadow .22s;cursor:pointer}.pcard:hover{transform:translateY(-4px);box-shadow:0 0 40px rgba(16,185,129,.1),0 20px 50px rgba(0,0,0,.5)!important}
+        .pcard-featured{transition:transform .22s,box-shadow .22s;cursor:pointer}.pcard-featured:hover{transform:translateY(-6px);box-shadow:0 0 60px rgba(212,167,44,.18),0 28px 70px rgba(0,0,0,.6)!important}
+        .pcard{transition:transform .22s,box-shadow .22s;cursor:pointer}.pcard:hover{transform:translateY(-4px);box-shadow:0 0 40px rgba(212,167,44,.1),0 20px 50px rgba(0,0,0,.5)!important}
         .navbtn{padding:8px 16px;border-radius:99px;font-weight:600;font-size:13px;cursor:pointer;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05);color:rgba(255,255,255,.62);transition:all .15s;white-space:nowrap}.navbtn:hover{background:rgba(255,255,255,.1);color:#fff}
         .hero-p:hover{transform:scale(1.04);box-shadow:0 0 55px rgba(255,255,255,.25)!important}
         .hero-g:hover{background:rgba(255,255,255,.1)!important;border-color:rgba(255,255,255,.35)!important}
-        .score-inp:focus{border-color:rgba(16,185,129,.5)!important}
+        .score-inp:focus{border-color:rgba(212,167,44,.5)!important}
         .footer-lnk{background:none;border:none;color:rgba(255,255,255,.38);font-size:13px;cursor:pointer;font-family:inherit;padding:0;transition:color .15s}.footer-lnk:hover{color:#fff}
-        .wallet-btn{padding:8px 18px;border-radius:99px;font-family:inherit;font-weight:700;font-size:13px;cursor:pointer;border:1px solid rgba(16,185,129,.35);background:rgba(16,185,129,.12);color:#10b981;transition:all .15s;white-space:nowrap;display:inline-flex;align-items:center;gap:6px}.wallet-btn:hover{background:rgba(16,185,129,.22);border-color:#10b981}
+        .wallet-btn{padding:8px 18px;border-radius:99px;font-family:inherit;font-weight:700;font-size:13px;cursor:pointer;border:1px solid rgba(212,167,44,.35);background:rgba(212,167,44,.12);color:#d4a72c;transition:all .15s;white-space:nowrap;display:inline-flex;align-items:center;gap:6px}.wallet-btn:hover{background:rgba(212,167,44,.22);border-color:#d4a72c}
         .bg-surface{background-image:linear-gradient(to bottom,rgba(3,4,14,.82) 0%,rgba(3,4,14,.92) 100%),url('${BG}');background-size:cover;background-position:center;background-repeat:no-repeat;background-attachment:fixed}
         @media(max-width:900px){.bg-surface{background-attachment:scroll}}
         .nav-desktop{display:flex}.nav-mobile-toggle{display:none}.nav-mobile-drawer{display:none}
@@ -1952,105 +1955,46 @@ export default function XRPLHubHome() {
 
       <div style={{ minHeight:'100vh',fontFamily:"'Syne',sans-serif",color:'#eeeef5',maxWidth:'100%',overflowX:'hidden' }}>
 
-        {/* NAV */}
-        <nav style={{ position:'sticky',top:0,zIndex:100,background:'rgba(3,4,14,.72)',backdropFilter:'blur(22px)',WebkitBackdropFilter:'blur(22px)',borderBottom:'1px solid rgba(16,185,129,.18)' }}>
-          <div style={{ padding:'0 20px',minHeight:68,display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,flexWrap:'wrap' }}>
-            <div style={{ display:'flex',alignItems:'center',gap:9 }}>
-              <img src="/hub-logo.png" alt="XRPLHub" style={{ width:34,height:34,borderRadius:9,flexShrink:0,objectFit:'cover' }} onError={e=>{(e.currentTarget as HTMLImageElement).style.display='none';}} />
-              <div style={{ display:'flex',flexDirection:'column',gap:1 }}>
-                <Wordmark size={18} />
-                <span style={{ fontSize:9,color:'rgba(255,255,255,.45)',letterSpacing:'.07em',textTransform:'uppercase',lineHeight:1 }}>{connectedWallet ? '· xApp Mode' : 'Wallet Score · Spend Controls · Token Check'}</span>
-              </div>
-            </div>
-            <div className="nav-desktop" style={{ alignItems:'center',gap:7,flexWrap:'wrap' }}>
-              {connectedWallet
-                ? <button className="wallet-btn" onClick={disconnectWallet} title="Disconnect"><span style={{ width:6,height:6,borderRadius:'50%',background:'#10b981',boxShadow:'0 0 6px #10b981' }} />{trunc(connectedWallet)} ✕</button>
-                : <button className="wallet-btn" onClick={()=>setShowConnect(true)}>🔐 Connect Wallet</button>}
-              <a className="navbtn" href="/pricing">Score API</a>
-              <button className="navbtn" onClick={()=>setShowDonate(true)}>Donate</button>
-              <button className="navbtn" onClick={()=>setShowGrant(true)}>{GRANT_APPLICATIONS_OPEN ? 'Apply for Grant' : 'Grants (paused)'}</button>
-              <button onClick={()=>fetchScore()} style={{ padding:'8px 18px',borderRadius:99,fontFamily:'inherit',fontWeight:700,fontSize:13,cursor:'pointer',border:'none',background:'#10b981',color:'#000',whiteSpace:'nowrap' }}>Get XRPLScore</button>
-            </div>
-            <button className="nav-mobile-toggle" onClick={()=>setMM(!mobileMenu)} style={{ alignItems:'center',justifyContent:'center',width:42,height:42,borderRadius:10,background:'rgba(16,185,129,.12)',border:'1px solid rgba(16,185,129,.28)',color:'#10b981',cursor:'pointer',fontSize:20,fontWeight:700 }} aria-label="Menu">{mobileMenu?'✕':'☰'}</button>
-          </div>
-          {mobileMenu && (
-            <div className="nav-mobile-drawer">
-              {connectedWallet
-                ? <button className="wallet-btn" onClick={()=>{disconnectWallet();setMM(false);}}><span style={{ width:6,height:6,borderRadius:'50%',background:'#10b981',boxShadow:'0 0 6px #10b981' }} />{trunc(connectedWallet)} ✕</button>
-                : <button className="wallet-btn" onClick={()=>{setShowConnect(true);setMM(false);}}>🔐 Connect Wallet</button>}
-              <a className="navbtn" href="/pricing" onClick={()=>setMM(false)}>Score API</a>
-              <button className="navbtn" onClick={()=>{setShowDonate(true);setMM(false);}}>Donate</button>
-              <button className="navbtn" onClick={()=>{setShowGrant(true);setMM(false);}}>{GRANT_APPLICATIONS_OPEN ? 'Apply for Grant' : 'Grants (paused)'}</button>
-              <button onClick={()=>{fetchScore();setMM(false);}} style={{ padding:'12px',borderRadius:99,fontFamily:'inherit',fontWeight:700,fontSize:14,cursor:'pointer',border:'none',background:'#10b981',color:'#000' }}>Get XRPLScore</button>
-            </div>
-          )}
-        </nav>
+        <SiteNav active="check" right={connectedWallet
+          ? <button className="wallet-btn" onClick={disconnectWallet} title="Disconnect">{trunc(connectedWallet)} ✕</button>
+          : <button className="wallet-btn" onClick={()=>setShowConnect(true)}>Connect wallet</button>} />
 
         {TEST_MODE && (
-          <div style={{ background:'linear-gradient(90deg,#f59e0b,#ef4444,#f59e0b)', color:'#000', textAlign:'center', padding:'6px 12px', fontSize:11, fontWeight:900, letterSpacing:'.12em', textTransform:'uppercase', fontFamily:"'IBM Plex Mono',monospace" }}>
-            ⚠️ Test Mode Active · All purchases charge ~1 drop · Flip TEST_MODE=false in page.tsx before launch
+          <div style={{ background:'#d4a72c', color:'#0b1d3f', textAlign:'center', padding:'6px 12px', fontSize:11, fontWeight:900 }}>
+            Test mode: all purchases charge ~1 drop. Set TEST_MODE=false in page.tsx before launch.
           </div>
         )}
-        <TickerBar />
         <div style={{ padding: "0 16px" }}><LedgerBanner dark /></div>
 
-        {/* HERO */}
-        <section className="section-pad" style={{ textAlign:'center',padding:'72px 24px 56px',position:'relative',overflow:'hidden' }}>
-          <div style={{ position:'absolute',top:'35%',left:'50%',transform:'translate(-50%,-50%)',width:'min(700px,95vw)',height:'min(700px,95vw)',borderRadius:'50%',background:'radial-gradient(circle,rgba(16,185,129,.08) 0%,transparent 68%)',pointerEvents:'none',animation:'float 9s ease-in-out infinite' }} />
-          <h1 style={{ fontSize:'clamp(40px,8vw,96px)',fontWeight:900,letterSpacing:'-3px',lineHeight:.95,marginBottom:20 }}>
-            <span style={brandGradientText}>Do more with your XRP.</span>
-          </h1>
-          <p style={{ margin:'0 auto 28px',maxWidth:640,fontSize:'clamp(17px,2.4vw,22px)',fontWeight:600,color:'rgba(255,255,255,.75)',lineHeight:1.5 }}>
-            Check any wallet. Give money with rules. Look before you buy. Free.
-          </p>
-
-          <div style={{ marginBottom:24 }}>
-            {connectedWallet
-              ? <div style={{ display:'inline-flex',alignItems:'center',gap:10,background:'rgba(16,185,129,.12)',border:'1px solid rgba(16,185,129,.3)',borderRadius:99,padding:'10px 22px' }}>
-                  <span style={{ width:8,height:8,borderRadius:'50%',background:'#10b981',boxShadow:'0 0 10px #10b981',animation:'pulse 2s infinite' }} />
-                  <span style={{ fontSize:14,fontWeight:700,color:'#10b981',fontFamily:"'IBM Plex Mono',monospace" }}>{trunc(connectedWallet)}</span>
-                  <span style={{ fontSize:12,color:'rgba(255,255,255,.4)' }}>connected</span>
-                </div>
-              : <button onClick={()=>setShowConnect(true)} style={{ display:'inline-flex',alignItems:'center',gap:10,background:'rgba(16,185,129,.14)',border:'1px solid rgba(16,185,129,.3)',borderRadius:99,padding:'12px 26px',fontSize:15,fontWeight:700,color:'#10b981',cursor:'pointer',fontFamily:'inherit' }}>🔐 Connect Xaman Wallet</button>}
-          </div>
-
-          <div className="hero-buttons" style={{ display:'flex',gap:12,justifyContent:'center',flexWrap:'wrap',marginBottom:36 }}>
-            <button className="hero-p" onClick={()=>document.getElementById('score')?.scrollIntoView({behavior:'smooth'})} style={{ display:'inline-flex',alignItems:'center',gap:8,padding:'16px 32px',background:'#fff',color:'#000',fontSize:16,fontWeight:700,borderRadius:99,border:'none',cursor:'pointer',boxShadow:'0 4px 28px rgba(255,255,255,.12)' }}>
-              Check a wallet →
-            </button>
-            <a className="hero-g" href="/spend" style={{ display:'inline-flex',alignItems:'center',gap:8,padding:'16px 32px',border:'1.5px solid rgba(255,255,255,.22)',color:'#fff',fontSize:16,fontWeight:600,borderRadius:99,background:'transparent',cursor:'pointer',backdropFilter:'blur(8px)',textDecoration:'none' }}>
-              Give money with rules →
-            </a>
-            <a className="hero-g" href="#mpt" style={{ display:'inline-flex',alignItems:'center',gap:8,padding:'16px 32px',border:'1.5px solid rgba(255,255,255,.22)',color:'#fff',fontSize:16,fontWeight:600,borderRadius:99,background:'transparent',cursor:'pointer',backdropFilter:'blur(8px)',textDecoration:'none' }}>
-              Check a token →
-            </a>
-          </div>
-
-          <a href={XAMAN_DL} target="_blank" rel="noopener noreferrer" style={{ display:'inline-flex',alignItems:'center',gap:8,fontSize:13,color:'#10b981',fontWeight:600,textDecoration:'none' }}>
-            📲 Works with the free Xaman wallet app (iPhone and Android). Crossmark and GemWallet work on a computer. →
-          </a>
-        </section>
+        {/* TOP: the free wallet check, then Buy now, top-rated yield, and the trust strip (src/app/home/HomeTop.tsx) */}
+        <div style={{ maxWidth:1180, margin:'0 auto', padding:'18px 16px 36px' }}>
+          <WalletCheck initial={connectedWallet} onFullReport={(a)=>{ setWI(a); fetchScore(a); }} />
+          <BuyRow />
+          <TopRated />
+          <TrustStrip />
+          <h2 id="products" style={{ fontFamily:"'Iowan Old Style','Palatino Linotype',Palatino,Georgia,serif", fontSize:'clamp(22px,4.6vw,30px)', fontWeight:700, color:'#fff', margin:'28px 0 0', scrollMarginTop:80 }}>More from XRPLHub</h2>
+        </div>
 
         {/* THREE FREE TOOLS — the three products nobody else offers (competitive map, 2026-10-06), in plain English */}
         <section id="only" className="section-pad" style={{ padding:'0 24px 56px',maxWidth:1240,margin:'0 auto' }}>
           <div style={{ textAlign:'center',marginBottom:30 }}>
             <div style={{ display:'inline-flex',alignItems:'center',gap:6,marginBottom:12 }}>
-              <span style={{ width:5,height:5,borderRadius:'50%',background:'#10b981',boxShadow:'0 0 8px #10b981' }} />
-              <span style={{ fontSize:11,fontWeight:700,color:'#10b981',letterSpacing:'.14em',textTransform:'uppercase' }}>Free</span>
+              <span style={{ width:5,height:5,borderRadius:'50%',background:'#d4a72c',boxShadow:'0 0 8px #d4a72c' }} />
+              <span style={{ fontSize:11,fontWeight:700,color:'#d4a72c',letterSpacing:'.14em',textTransform:'uppercase' }}>Free</span>
             </div>
             <h2 style={{ fontSize:'clamp(24px,4vw,42px)',fontWeight:900,letterSpacing:'-2px',marginBottom:12 }}>Three free tools</h2>
             <p style={{ fontSize:14,color:'rgba(255,255,255,.48)',maxWidth:600,margin:'0 auto',lineHeight:1.7 }}>Your money stays in your own wallet, and you approve every payment yourself. We never see your keys.</p>
           </div>
           <div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(300px,1fr))',gap:18 }}>
-            <div style={{ background:'linear-gradient(135deg,rgba(16,185,129,.1),rgba(6,6,22,.85))',border:'1px solid rgba(16,185,129,.28)',borderRadius:22,padding:'26px 24px',display:'flex',flexDirection:'column' }}>
-              <div style={{ fontSize:10,fontWeight:700,color:'#10b981',letterSpacing:'.13em',textTransform:'uppercase',marginBottom:8,fontFamily:"'IBM Plex Mono',monospace" }}>What&apos;s this wallet&apos;s track record?</div>
+            <div style={{ background:'linear-gradient(135deg,rgba(212,167,44,.1),rgba(6,6,22,.85))',border:'1px solid rgba(212,167,44,.28)',borderRadius:22,padding:'26px 24px',display:'flex',flexDirection:'column' }}>
+              <div style={{ fontSize:10,fontWeight:700,color:'#d4a72c',letterSpacing:'.13em',textTransform:'uppercase',marginBottom:8,fontFamily:"'IBM Plex Mono',monospace" }}>What&apos;s this wallet&apos;s track record?</div>
               <h3 style={{ fontSize:22,fontWeight:900,marginBottom:10 }}>Wallet Score</h3>
-              <p style={{ fontSize:13,color:'rgba(255,255,255,.55)',lineHeight:1.7,marginBottom:14 }}>Paste any XRP wallet address. You get a score from 300 to 850, like a credit score, but built only from that wallet&apos;s public history: how old it is, how it&apos;s been used, how much it keeps on hand. It scores a wallet, not a person. It isn&apos;t a credit check and doesn&apos;t use your name or ID.</p>
+              <p style={{ fontSize:13,color:'rgba(255,255,255,.55)',lineHeight:1.7,marginBottom:14 }}>Paste any XRP wallet address. You get a score from 300 to 850, built only from that wallet&apos;s public history: how old it is, how it&apos;s been used, how much it keeps on hand. It scores a wallet, not a person. It isn&apos;t a credit check and doesn&apos;t use your name or ID.</p>
               <div style={{ display:'flex',flexDirection:'column',gap:6,marginBottom:18,fontSize:12,color:'rgba(255,255,255,.55)' }}>
-                {['Free for any wallet, no sign-up','Look up an address before you send money to it','Connect your own wallet to see your full report'].map(f=><div key={f}><span style={{ color:'#10b981' }}>✓</span> {f}</div>)}
+                {['Free for any wallet, no sign-up','Look up an address before you send money to it','Connect your own wallet to see your full report'].map(f=><div key={f}><span style={{ color:'#d4a72c' }}>✓</span> {f}</div>)}
               </div>
               <div style={{ display:'flex',gap:8,flexWrap:'wrap',marginTop:'auto' }}>
-                <button onClick={()=>document.getElementById('score')?.scrollIntoView({behavior:'smooth'})} style={{ padding:'11px 18px',borderRadius:99,background:'#10b981',color:'#000',border:'none',fontWeight:800,fontSize:13,cursor:'pointer',fontFamily:'inherit' }}>Check a wallet →</button>
+                <button onClick={()=>document.getElementById('score')?.scrollIntoView({behavior:'smooth'})} style={{ padding:'11px 18px',borderRadius:99,background:'#d4a72c',color:'#000',border:'none',fontWeight:800,fontSize:13,cursor:'pointer',fontFamily:'inherit' }}>Check a wallet →</button>
               </div>
             </div>
             <div style={{ background:'linear-gradient(135deg,rgba(56,189,248,.1),rgba(6,6,22,.85))',border:'1px solid rgba(56,189,248,.28)',borderRadius:22,padding:'26px 24px',display:'flex',flexDirection:'column' }}>
@@ -2072,13 +2016,13 @@ export default function XRPLHubHome() {
               <MptPowerCheck />
             </div>
           </div>
-          <a href="/yield" style={{ display:'flex',alignItems:'center',justifyContent:'space-between',gap:14,flexWrap:'wrap',marginTop:18,padding:'18px 22px',borderRadius:18,border:'1px solid rgba(16,185,129,.35)',background:'linear-gradient(135deg,rgba(16,185,129,.09),rgba(6,6,22,.85))',color:'#fff',textDecoration:'none' }}>
+          <a href="/yield" style={{ display:'flex',alignItems:'center',justifyContent:'space-between',gap:14,flexWrap:'wrap',marginTop:18,padding:'18px 22px',borderRadius:18,border:'1px solid rgba(212,167,44,.35)',background:'linear-gradient(135deg,rgba(212,167,44,.09),rgba(6,6,22,.85))',color:'#fff',textDecoration:'none' }}>
             <span>
-              <span style={{ display:'block',fontSize:10,fontWeight:700,color:'#10b981',letterSpacing:'.13em',textTransform:'uppercase',marginBottom:4,fontFamily:"'IBM Plex Mono',monospace" }}>New · free</span>
+              <span style={{ display:'block',fontSize:10,fontWeight:700,color:'#d4a72c',letterSpacing:'.13em',textTransform:'uppercase',marginBottom:4,fontFamily:"'IBM Plex Mono',monospace" }}>New · free</span>
               <span style={{ display:'block',fontSize:18,fontWeight:900,marginBottom:4 }}>XRP Yield Desk</span>
               <span style={{ display:'block',fontSize:13,color:'rgba(255,255,255,.55)',lineHeight:1.6 }}>Every way to earn on XRP and RLUSD we can verify — rates, lockups, who holds the keys — each with an A–F risk grade. Not advice; we&apos;re never paid by what we grade.</span>
             </span>
-            <span style={{ padding:'11px 18px',borderRadius:99,background:'#10b981',color:'#000',fontWeight:800,fontSize:13,whiteSpace:'nowrap' }}>Compare yields →</span>
+            <span style={{ padding:'11px 18px',borderRadius:99,background:'#d4a72c',color:'#000',fontWeight:800,fontSize:13,whiteSpace:'nowrap' }}>Compare yields →</span>
           </a>
           <a href="/lending" style={{ display:'flex',alignItems:'center',justifyContent:'space-between',gap:14,flexWrap:'wrap',marginTop:12,padding:'18px 22px',borderRadius:18,border:'1px solid rgba(167,139,250,.35)',background:'linear-gradient(135deg,rgba(167,139,250,.09),rgba(6,6,22,.85))',color:'#fff',textDecoration:'none' }}>
             <span>
@@ -2106,9 +2050,9 @@ export default function XRPLHubHome() {
           </a>
         </section>
 
-        {/* XRPLSCORE — anonymous pitch + checker (or personalized credit report when wallet connected) */}
+        {/* XRPLSCORE — anonymous pitch + checker (or personalized wallet report when wallet connected) */}
         <section id="score" className="section-pad" style={{ padding:'0 24px 48px',maxWidth:1240,margin:'0 auto' }}>
-          <div style={{ background:'linear-gradient(135deg,rgba(16,185,129,.07),rgba(6,6,22,.85))',border:'1px solid rgba(16,185,129,.18)',borderRadius:24,padding:'40px 32px',backdropFilter:'blur(20px)',animation:'borderPulse 4s ease-in-out infinite' }}>
+          <div style={{ background:'linear-gradient(135deg,rgba(212,167,44,.07),rgba(6,6,22,.85))',border:'1px solid rgba(212,167,44,.18)',borderRadius:24,padding:'40px 32px',backdropFilter:'blur(20px)',animation:'borderPulse 4s ease-in-out infinite' }}>
           {connectedWallet ? (
             <PersonalCreditReport
               wallet={connectedWallet}
@@ -2119,8 +2063,8 @@ export default function XRPLHubHome() {
           ) : (
             <div style={{ maxWidth:560,margin:'0 auto' }}>
                 <div style={{ display:'inline-flex',alignItems:'center',gap:6,marginBottom:14 }}>
-                  <span style={{ width:5,height:5,borderRadius:'50%',background:'#10b981',boxShadow:'0 0 8px #10b981',animation:'pulse 2s infinite' }} />
-                  <span style={{ fontSize:11,fontWeight:700,color:'#10b981',letterSpacing:'.14em',textTransform:'uppercase' }}>Wallet Score · free, no sign-up</span>
+                  <span style={{ width:5,height:5,borderRadius:'50%',background:'#d4a72c',boxShadow:'0 0 8px #d4a72c',animation:'pulse 2s infinite' }} />
+                  <span style={{ fontSize:11,fontWeight:700,color:'#d4a72c',letterSpacing:'.14em',textTransform:'uppercase' }}>Wallet Score · free, no sign-up</span>
                 </div>
                 <h2 style={{ fontSize:'clamp(22px,3.3vw,36px)',fontWeight:900,letterSpacing:'-2px',marginBottom:14 }}>Check any XRP wallet.</h2>
                 <p style={{ fontSize:13,color:'rgba(255,255,255,.5)',lineHeight:1.8,marginBottom:20 }}>
@@ -2131,59 +2075,19 @@ export default function XRPLHubHome() {
                 {/* score checker */}
                 <div style={{ display:'flex',gap:9,flexWrap:'wrap' }}>
                   <input className="score-inp" type="text" value={walletInput} onChange={e=>setWI(e.target.value)} onKeyDown={e=>e.key==='Enter'&&fetchScore(walletInput)} placeholder="Paste an XRP wallet address (starts with r)…" style={{ ...INP,flex:1,minWidth:180,borderRadius:99,paddingLeft:20,fontFamily:"'IBM Plex Mono',monospace",fontSize:12 }} />
-                  <button onClick={()=>fetchScore(walletInput)} style={{ padding:'12px 22px',borderRadius:99,background:'#10b981',color:'#000',border:'none',fontWeight:800,fontSize:13,cursor:'pointer',fontFamily:'inherit',whiteSpace:'nowrap' }}>Check →</button>
+                  <button onClick={()=>fetchScore(walletInput)} style={{ padding:'12px 22px',borderRadius:99,background:'#d4a72c',color:'#000',border:'none',fontWeight:800,fontSize:13,cursor:'pointer',fontFamily:'inherit',whiteSpace:'nowrap' }}>Check →</button>
                 </div>
-                <p style={{ fontSize:11,color:'rgba(255,255,255,.28)',marginTop:10 }}>or <button onClick={()=>setShowConnect(true)} style={{ background:'none',border:'none',color:'#10b981',cursor:'pointer',fontWeight:700,fontSize:11,fontFamily:'inherit',padding:0 }}>connect your Xaman wallet</button> to see your own wallet&apos;s full report</p>
+                <p style={{ fontSize:11,color:'rgba(255,255,255,.28)',marginTop:10 }}>or <button onClick={()=>setShowConnect(true)} style={{ background:'none',border:'none',color:'#d4a72c',cursor:'pointer',fontWeight:700,fontSize:11,fontFamily:'inherit',padding:0 }}>connect your Xaman wallet</button> to see your own wallet&apos;s full report</p>
             </div>
           )}
           </div>
         </section>
 
-        {/* GRANTS */}
-        <section id="grants" className="section-pad" style={{ padding:'0 24px 72px',maxWidth:1100,margin:'0 auto' }}>
-          <div style={{ textAlign:'center',marginBottom:34 }}>
-            <div style={{ display:'inline-flex',alignItems:'center',gap:6,marginBottom:12 }}><span style={{ width:5,height:5,borderRadius:'50%',background:'#8b5cf6',boxShadow:'0 0 8px #8b5cf6' }} /><span style={{ fontSize:11,fontWeight:700,color:'#8b5cf6',letterSpacing:'.14em',textTransform:'uppercase' }}>Community Grants</span></div>
-            <h2 style={{ fontSize:'clamp(22px,3.5vw,34px)',fontWeight:900,letterSpacing:'-2px',marginBottom:12 }}>Real people. Real money. Straight to their wallet.</h2>
-            <p style={{ fontSize:13,color:'rgba(255,255,255,.48)',lineHeight:1.8,maxWidth:580,margin:'0 auto' }}>People donate to a public wallet anyone can look at. A person reads every application and decides. Approved grants go straight to the person&apos;s own wallet, and every payment in and out is public.{!GRANT_APPLICATIONS_OPEN && ' Applications are currently paused until the treasury is funded.'}</p>
-          </div>
-          <TreasuryStatsBar />
-          <div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(300px,1fr))',gap:20 }}>
-
-            {/* Donate */}
-            <div style={{ background:'linear-gradient(135deg,rgba(16,185,129,.08),rgba(6,6,22,.8))',border:'1px solid rgba(16,185,129,.2)',borderRadius:22,padding:'30px 26px',backdropFilter:'blur(20px)' }}>
-              <div style={{ fontSize:40,marginBottom:14,animation:'float 4s ease-in-out infinite' }}>💚</div>
-              <h3 style={{ fontSize:21,fontWeight:900,marginBottom:10 }}>Fund the Treasury</h3>
-              <p style={{ fontSize:13,color:'rgba(255,255,255,.48)',lineHeight:1.8,marginBottom:20 }}>Send XRP or RLUSD to our public grants wallet. It goes straight there, with no one in between, and anyone can see it on XRPScan.</p>
-              <div style={{ background:'rgba(16,185,129,.08)',border:'1px solid rgba(16,185,129,.22)',borderRadius:11,padding:'11px 14px',marginBottom:10,textAlign:'center' }}>
-                <div style={{ fontSize:9,fontWeight:700,color:'rgba(255,255,255,.4)',letterSpacing:'.13em',textTransform:'uppercase',marginBottom:4 }}>Pay in Xaman to</div>
-                <div style={{ fontSize:18,fontWeight:900,color:'#10b981',fontFamily:"'IBM Plex Mono',monospace",letterSpacing:'-.5px' }}>xrplhub.xrp</div>
-                <div style={{ fontSize:10,color:'rgba(255,255,255,.32)',marginTop:4,fontFamily:"'IBM Plex Mono',monospace" }}>XRPNS · resolves to {TREASURY.slice(0,10)}…{TREASURY.slice(-6)}</div>
-              </div>
-              <div style={{ background:'rgba(16,185,129,.04)',border:'1px solid rgba(16,185,129,.12)',borderRadius:11,padding:'8px 12px',marginBottom:16 }}>
-                <code style={{ fontSize:10,color:'rgba(255,255,255,.5)',wordBreak:'break-all',lineHeight:1.5,fontFamily:"'IBM Plex Mono',monospace" }}>{TREASURY}</code>
-              </div>
-              <button onClick={()=>setShowDonate(true)} style={{ ...Btn('green',undefined,{width:'100%',padding:'14px',fontSize:15,marginBottom:8}) }}>💚 Donate via Xaman →</button>
-              <a href={`https://xrpscan.com/account/${TREASURY}`} target="_blank" rel="noopener noreferrer" style={{ ...Btn('ghost',undefined,{width:'100%',padding:'12px',fontSize:13,textDecoration:'none'}) }}>View Treasury on XRPScan ↗</a>
-            </div>
-
-            {/* Apply */}
-            <div style={{ background:'linear-gradient(135deg,rgba(139,92,246,.08),rgba(6,6,22,.8))',border:'1px solid rgba(139,92,246,.2)',borderRadius:22,padding:'30px 26px',backdropFilter:'blur(20px)' }}>
-              <div style={{ fontSize:40,marginBottom:14,animation:'float 4s ease-in-out infinite',animationDelay:'1s' }}>❤️</div>
-              <h3 style={{ fontSize:21,fontWeight:900,marginBottom:10 }}>{GRANT_APPLICATIONS_OPEN ? 'Apply for a Grant' : GRANTS_PAUSED_TITLE}</h3>
-              <p style={{ fontSize:13,color:'rgba(255,255,255,.48)',lineHeight:1.8,marginBottom:18 }}>{GRANT_APPLICATIONS_OPEN ? 'Need help? Apply for $25–$100. A person reads every application and decides. If approved, the money goes to your XRP wallet.' : GRANTS_PAUSED_MESSAGE}</p>
-              <div style={{ display:'flex',flexDirection:'column',gap:7,marginBottom:20 }}>
-                {(GRANT_APPLICATIONS_OPEN
-                  ? ['Fill in a short application','A person reads it and decides','Approved money goes straight to your wallet','No bank account or ID needed']
-                  : ['Grants are $25–$100 when applications reopen','A person reads every application','Approved grants are paid from the public grants wallet','You can still donate now']
-                ).map(f=>(
-                  <div key={f} style={{ display:'flex',alignItems:'center',gap:8,fontSize:12,color:'rgba(255,255,255,.52)' }}>
-                    <span style={{ color:'#8b5cf6',fontSize:11 }}>✓</span>{f}
-                  </div>
-                ))}
-              </div>
-              <button onClick={()=>setShowGrant(true)} style={{ ...Btn('color','#8b5cf6',{width:'100%',padding:'14px',fontSize:15}) }}>{GRANT_APPLICATIONS_OPEN ? 'Apply for a Grant →' : 'Read the update →'}</button>
-            </div>
-
+        {/* GRANTS — the grants pool (src/lib/grantsPool.ts); full page at /grants */}
+        <section id="grants" className="section-pad" style={{ padding:'0 16px 56px',maxWidth:1100,margin:'0 auto' }}>
+          <div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(min(100%,320px),1fr))',gap:16,alignItems:'start' }}>
+            <GrantsTeaser />
+            <DonateBox />
           </div>
         </section>
 
@@ -2211,7 +2115,7 @@ export default function XRPLHubHome() {
   "https://www.xrplhub.io/api/v1/score?wallet=rXXXX..."`}</code>
             </div>
             <div style={{ display:'flex',gap:12,flexWrap:'wrap',marginBottom:22 }}>
-              <a href="/pricing" style={{ display:'inline-flex',alignItems:'center',gap:8,padding:'13px 26px',background:'#10b981',color:'#000',fontSize:14,fontWeight:800,borderRadius:99,textDecoration:'none' }}>See pricing & get a key →</a>
+              <a href="/pricing" style={{ display:'inline-flex',alignItems:'center',gap:8,padding:'13px 26px',background:'#d4a72c',color:'#000',fontSize:14,fontWeight:800,borderRadius:99,textDecoration:'none' }}>See pricing & get a key →</a>
               <a href="/openapi.json" style={{ display:'inline-flex',alignItems:'center',gap:8,padding:'13px 26px',border:'1.5px solid rgba(255,255,255,.22)',color:'#fff',fontSize:14,fontWeight:600,borderRadius:99,textDecoration:'none' }}>OpenAPI spec ↗</a>
               <a href="/.well-known/x402" style={{ display:'inline-flex',alignItems:'center',gap:8,padding:'13px 26px',border:'1.5px solid rgba(255,255,255,.22)',color:'#fff',fontSize:14,fontWeight:600,borderRadius:99,textDecoration:'none' }}>x402 discovery ↗</a>
             </div>
@@ -2254,7 +2158,7 @@ export default function XRPLHubHome() {
                 <p style={{ fontSize:10,color:'rgba(255,255,255,.16)',marginTop:2 }}>Not a bank · Not a broker · We never hold your money · You approve every payment</p>
               </div>
               <div style={{ display:'flex',gap:'10px 18px',flexWrap:'wrap',alignItems:'center' }}>
-                <a href={XAMAN_DL} target="_blank" rel="noopener noreferrer" className="footer-lnk" style={{ color:'#10b981',textDecoration:'none' }}>📲 Get Xaman</a>
+                <a href={XAMAN_DL} target="_blank" rel="noopener noreferrer" className="footer-lnk" style={{ color:'#d4a72c',textDecoration:'none' }}>📲 Get Xaman</a>
                 <a href="/pricing" className="footer-lnk" style={{ textDecoration:'none' }}>Score API</a>
                 <a href="/openapi.json" className="footer-lnk" style={{ textDecoration:'none' }}>API Docs</a>
                 <button className="footer-lnk" onClick={()=>setShowAbout(true)}>About</button>
@@ -2262,8 +2166,8 @@ export default function XRPLHubHome() {
                 <button className="footer-lnk" onClick={()=>setShowTerms(true)}>Terms</button>
                 <button className="footer-lnk" onClick={()=>setShowPrivacy(true)}>Privacy</button>
                 <a href="mailto:support@xrplhub.io" style={{ fontSize:13,color:'rgba(255,255,255,.38)',textDecoration:'none' }}>support@xrplhub.io</a>
-                <a href={`https://xrpscan.com/account/${TREASURY}`} target="_blank" rel="noopener noreferrer" style={{ fontSize:11,color:'#10b981',textDecoration:'none',display:'flex',alignItems:'center',gap:5,fontFamily:"'IBM Plex Mono',monospace" }}>
-                  <span style={{ width:5,height:5,borderRadius:'50%',background:'#10b981',animation:'pulse 2.5s infinite' }} />Treasury Live ↗
+                <a href={`https://xrpscan.com/account/${TREASURY}`} target="_blank" rel="noopener noreferrer" style={{ fontSize:11,color:'#d4a72c',textDecoration:'none',display:'flex',alignItems:'center',gap:5,fontFamily:"'IBM Plex Mono',monospace" }}>
+                  <span style={{ width:5,height:5,borderRadius:'50%',background:'#d4a72c',animation:'pulse 2.5s infinite' }} />Treasury Live ↗
                 </a>
               </div>
             </div>

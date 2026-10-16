@@ -1,5 +1,5 @@
 // app/api/checkout/xaman/status/route.ts
-// GET ?uuid= -> { state: "pending" | "signed" | "rejected" | "expired" | "not_found" }
+// GET ?uuid= -> { state: "pending" | "signed" | "rejected" | "expired" | "not_found", txid }
 //
 // Fast UX feedback only ("you rejected it", "request expired") so the buyer
 // isn't staring at an unexplained wait. The AUTHORITATIVE check is
@@ -22,7 +22,7 @@ export async function GET(req: Request) {
   }
   try {
     const s = await getPayloadStatus(uuid);
-    return NextResponse.json({ state: s.state });
+    return NextResponse.json({ state: s.state, txid: s.txid ?? null });
   } catch {
     return NextResponse.json({ state: "pending" });
   }
