@@ -525,6 +525,24 @@ old ledger — so "do the nodes agree?" stays green; only the validated ledger's
   list") promises ONE email at mainnet activation, then deleting the list (keeping unsubscribed addresses as do-not-email).
   Count: `select count(*) from "LendingSignup" where "unsubscribedAt" is null`. Unsubscribe link:
   `/api/lending/signup?unsubscribe=<unsubscribeToken>`.
+- **"Set up email now" reminder (one-time, decided 2026-10-16):** the first hour any lending amendment has 25+ yes
+  votes, or the list has 25+ signups, while `RESEND_API_KEY` is unset, the hourly job sends ONE healthchecks.io `/fail`
+  whose body says why (`maybeResendAlert`, `src/lib/lendingOps.ts`). Recorded in IndexerCheckpoint
+  `lending-resend-alert` so it never repeats; the next daily cron's success ping turns the check green again, so real
+  failures still email. To re-arm it: `delete from "IndexerCheckpoint" where id = 'lending-resend-alert'`.
+- **Resend setup — do this when that reminder arrives (free plan: 3,000 emails/month, 100/day):**
+  1. Create an account at https://resend.com (support@xrplhub.io).
+  2. Domains → Add domain → `xrplhub.io` (region us-east-1). Resend shows DNS records: an MX and a TXT (SPF) on the
+     `send` subdomain, and a TXT `resend._domainkey` (DKIM). Add all of them at the DNS host for xrplhub.io, exactly as
+     shown. Optional but recommended: a TXT `_dmarc` with `v=DMARC1; p=none;`.
+  3. Back in Resend press Verify; wait until the domain shows "Verified" (minutes to a few hours).
+  4. API Keys → Create API key → permission "Sending access", domain `xrplhub.io`. Copy it once.
+  5. Vercel → project `kreditkarma-obi2` → Settings → Environment Variables → add `RESEND_API_KEY` (Production,
+     Sensitive). Redeploy with the build cache UNCHECKED.
+  6. Then the one-time launch email still has to be built (it is not written yet): send each `LendingSignup` row with
+     `unsubscribedAt` null one plain email when lending is enabled, with its unsubscribe link, set `notifiedAt`, then delete
+     the list except unsubscribed addresses (what privacy §11 promises). At 100/day, more than 100 signups means sending
+     over several days.
 - **Phase 2 (dormant until `lendingLive()`):** the same hourly run calls `runLendingIndex` (`src/lib/lendingIndex.ts`):
   a resumable `ledger_data type=vault` walk (checkpoint `lending-walk:mainnet`, pinned to xrplcluster) for discovery,
   then each vault → its brokers (vault owner's `loan_broker` objects) → each broker's loans (broker pseudo-account's
@@ -541,3 +559,12 @@ old ledger — so "do the nodes agree?" stays green; only the validated ledger's
   `https://uxus.finance/api/billing/entitlement` (cached 5 min) and stores only its SHA-256. The paid per-call grade API
   is `GET https://uxus.finance/api/lending/grade?id=` ($0.02 x402; 503 before the paywall until lending is live) and MCP
   tool `lending_grade` on uxus.
+- **Schedule keepalive (2026-10-16):** the repo is public, and GitHub disables scheduled workflows after 60 days with no
+  repository activity. The workflow's `keepalive` job checks the newest commit on main every hour and, if it is 40+ days
+  old, pushes one empty commit ("keepalive: …") with the workflow's own token (no secret, no human). That push also
+  triggers a Vercel deploy, which is harmless. If the schedule stops anyway, the `lending-tracker` watchdog finding goes RED.
+- **Activation self-test (phase 2):** once `lendingLive()`, the hourly job runs `runLendingSelfTest` (`src/lib/lendingOps.ts`)
+  daily (hourly while failing): `/lending/vaults` and a vault page, the uxus grade API's $0.02 402 challenge, MCP
+  `lending_grade` returning the paid resource, and the Lending Pro pricing card + a Stripe Checkout session (created, never
+  paid; it expires). No purchases. Result in IndexerCheckpoint `lending-selftest`; watchdog `lending-selftest` is RED while it
+  fails, so healthchecks.io emails. It waits up to 48 h after activation for the first vault to be discovered.

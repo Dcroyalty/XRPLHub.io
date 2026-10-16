@@ -17,6 +17,7 @@ import { runTracker, lendingLive } from "@/lib/lendingTracker";
 import { recordHeartbeat } from "@/lib/watchdog";
 import { notifyError } from "@/lib/notify";
 import { runLendingIndex } from "@/lib/lendingIndex";
+import { maybeResendAlert, runLendingSelfTest } from "@/lib/lendingOps";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -38,9 +39,19 @@ export async function GET() {
     const t = await runTracker(prisma);
     if (t.fresh && t.stored) await recordHeartbeat(prisma, "lending-tracker", t.snapshot.source);
 
+    // One-time "set up email" reminder (src/lib/lendingOps.ts). Never blocks the job.
+    const resendAlert = t.fresh ? await maybeResendAlert(prisma, t.snapshot).catch(() => null) : null;
+
     let index: unknown = { skipped: "lending is not enabled on mainnet yet" };
+    let selfTest: unknown = null;
     if (await lendingLive()) {
-      index = await runLendingIndex(prisma, { network: "mainnet", budgetMs: 40_000 }).catch(async (e) => {
+      // Activation self-test first (it is skipped unless due), then the index with whatever time is left.
+      selfTest = await runLendingSelfTest(prisma).catch(async (e) => {
+        await notifyError("cron lending-tracker: self-test", e);
+        return { error: e instanceof Error ? e.message : String(e) };
+      });
+      const budgetMs = Math.max(10_000, 50_000 - (Date.now() - started));
+      index = await runLendingIndex(prisma, { network: "mainnet", budgetMs }).catch(async (e) => {
         await notifyError("cron lending-tracker: index", e);
         return { error: e instanceof Error ? e.message : String(e) };
       });
@@ -53,6 +64,8 @@ export async function GET() {
       source: t.snapshot.source,
       amendments: t.snapshot.amendments.map((a) => ({ name: a.name, state: a.state, yes: a.yes, needed: a.needed })),
       index,
+      selfTest,
+      resendAlert: resendAlert ? "sent" : null,
       ms: Date.now() - started,
     };
     if (t.fresh) await pingHourly(!t.stored, JSON.stringify(body));

@@ -50,34 +50,37 @@ function Progress({ yes, needed, total, color }: { yes: number; needed: number; 
 }
 
 function VoteChart({ series, total, needed }: { series: SeriesPoint[]; total: number; needed: number }) {
-  const W = 600, H = 220, padL = 30, padR = 10, padT = 10, padB = 26;
+  const W = 600, H = 260, padL = 44, padR = 12, padT = 16, padB = 38;
   const t0 = new Date(series[0].at).getTime();
   const t1 = Math.max(new Date(series[series.length - 1].at).getTime(), t0 + 86_400_000);
   const x = (iso: string) => padL + ((new Date(iso).getTime() - t0) / (t1 - t0)) * (W - padL - padR);
   const y = (v: number) => padT + (1 - v / total) * (H - padT - padB);
   const ticks = [0, Math.round(total / 2), total];
+  const first = fmtDate(series[0].at), last = fmtDate(series[series.length - 1].at);
+  // Phone-first sizing: the SVG never renders wider than 600px, so a 17-unit label is ~10px on a 360px phone and
+  // 17px on desktop. Bare tick numbers are hidden from text readers; the aria-label carries the meaning.
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label={`Yes votes over time; ${needed} of ${total} needed`} style={{ display: "block" }}>
+    <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label={`Yes votes over time, out of ${total} validators; ${needed} needed`} style={{ display: "block", maxWidth: 600 }}>
       {ticks.map((t) => (
-        <g key={t}>
-          <line x1={padL} x2={W - padR} y1={y(t)} y2={y(t)} stroke={C.row} />
-          <text x={padL - 6} y={y(t) + 4} fontSize="11" textAnchor="end" fill={C.small}>{t}</text>
+        <g key={t} aria-hidden="true">
+          <line x1={padL} x2={W - padR} y1={y(t)} y2={y(t)} stroke={C.row} strokeWidth="1.5" />
+          <text x={padL - 8} y={y(t) + 6} fontSize="17" textAnchor="end" fill={C.small}>{t}</text>
         </g>
       ))}
-      <line x1={padL} x2={W - padR} y1={y(needed)} y2={y(needed)} stroke={C.fg} strokeDasharray="5 4" />
-      <text x={W - padR} y={y(needed) - 5} fontSize="11" textAnchor="end" fill={C.fg}>{needed} needed</text>
+      <line x1={padL} x2={W - padR} y1={y(needed)} y2={y(needed)} stroke={C.fg} strokeWidth="2" strokeDasharray="8 6" />
+      <text x={W - padR} y={y(needed) - 8} fontSize="17" fontWeight="700" textAnchor="end" fill={C.fg}>{needed} votes needed</text>
       {ORDER.map((n) => {
         const pts = series.filter((p) => p.yes[n] != null).map((p) => [x(p.at), y(p.yes[n] as number)] as const);
         if (!pts.length) return null;
         return (
           <g key={n}>
-            {pts.length > 1 && <polyline points={pts.map((p) => p.join(",")).join(" ")} fill="none" stroke={COLORS[n]} strokeWidth="2.5" />}
-            {pts.length <= 3 && pts.map((p, i) => <circle key={i} cx={p[0]} cy={p[1]} r="4" fill={COLORS[n]} />)}
+            {pts.length > 1 && <polyline points={pts.map((p) => p.join(",")).join(" ")} fill="none" stroke={COLORS[n]} strokeWidth="3.5" />}
+            {pts.length <= 3 && pts.map((p, i) => <circle key={i} cx={p[0]} cy={p[1]} r="6" fill={COLORS[n]} />)}
           </g>
         );
       })}
-      <text x={padL} y={H - 6} fontSize="11" fill={C.small}>{fmtDate(series[0].at)}</text>
-      <text x={W - padR} y={H - 6} fontSize="11" textAnchor="end" fill={C.small}>{fmtDate(series[series.length - 1].at)}</text>
+      <text x={padL} y={H - 10} fontSize="16" fill={C.small}>{first}</text>
+      {last !== first && <text x={W - padR} y={H - 10} fontSize="16" textAnchor="end" fill={C.small}>{last}</text>}
     </svg>
   );
 }

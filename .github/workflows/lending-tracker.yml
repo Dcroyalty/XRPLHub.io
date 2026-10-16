@@ -3,16 +3,18 @@ name: Lending tracker (hourly)
 # Calls https://www.xrplhub.io/api/cron/lending-tracker once an hour (Vercel Hobby crons can only run daily).
 # The route is public and stores at most one snapshot per hour, so no secret is needed here.
 #
-# GitHub pauses scheduled workflows in a public repo after 60 days without a commit. If that happens the
-# XRPLHub watchdog raises a RED "lending-tracker" finding (healthchecks.io emails you): open the Actions tab,
-# pick this workflow and press "Enable workflow". Can also be run by hand (workflow_dispatch).
+# Keepalive: GitHub disables scheduled workflows in a public repo after 60 days with no repository activity.
+# Each run checks the date of the newest commit on main; if it is more than 40 days old, the job pushes one
+# empty commit ("keepalive") so the schedule never lapses while nobody is committing. The XRPLHub watchdog still
+# raises a RED "lending-tracker" finding (healthchecks.io emails) if snapshots stop for any other reason.
 
 on:
   schedule:
     - cron: "7 * * * *"
   workflow_dispatch:
 
-permissions: {}
+permissions:
+  contents: write # only for the keepalive empty commit
 
 jobs:
   ping:
@@ -25,3 +27,23 @@ jobs:
           cat body.json; echo
           echo "HTTP $code"
           test "$code" = "200"
+
+  keepalive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+      - name: Push an empty commit if main has been quiet for 40 days
+        run: |
+          last=$(git log -1 --format=%ct)
+          age_days=$(( ($(date +%s) - last) / 86400 ))
+          echo "newest commit on main is ${age_days} days old"
+          if [ "$age_days" -ge 40 ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit --allow-empty -m "keepalive: keep the hourly lending tracker schedule enabled (no changes)"
+            git push origin HEAD:main
+          fi

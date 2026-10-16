@@ -37,6 +37,7 @@ import { TREASURY } from "./pricing";
 import { maxTotalSubjects } from "./monitorEngine";
 import { checkCredentialAnomalies } from "./credentialAnomalyWatch";
 import { userTokensActive, xummConfigured } from "./xumm";
+import { lastSelfTest } from "./lendingOps";
 
 export type Level = "ok" | "warn" | "red";
 export interface Finding {
@@ -134,6 +135,17 @@ async function checkLendingTracker(prisma: PrismaClient): Promise<Finding> {
   if (h > 3) return { key: "lending-tracker", level: "red", message: `the /lending tracker last stored a snapshot ${h.toFixed(1)}h ago (expected hourly) — check the lending-tracker GitHub Actions workflow (re-enable it if GitHub paused it) and GET /api/cron/lending-tracker` };
   if (last.source !== "ledger+xrpscan") return { key: "lending-tracker", level: "warn", message: "the latest lending snapshot has no validator votes (XRPScan's validator registry could not be read); enabled status is still read from the ledger" };
   return { key: "lending-tracker", level: "ok", message: `last snapshot ${h.toFixed(1)}h ago` };
+}
+
+// XRPL Lending phase 2 activation self-test (src/lib/lendingOps.ts, run by the hourly job once lending is live):
+// explorer, the $0.02 grade API's 402, the MCP tool, the Lending Pro checkout. RED while it fails.
+async function checkLendingSelfTest(prisma: PrismaClient): Promise<Finding> {
+  const t = await lastSelfTest(prisma);
+  if (!t) return { key: "lending-selftest", level: "ok", message: "lending is not live yet — nothing to test" };
+  const hours = (Date.now() - Date.parse(t.at)) / 3_600_000;
+  if (!t.ok) return { key: "lending-selftest", level: "red", message: `XRPL Lending live self-test failing: ${t.steps.filter((s) => !s.ok).map((s) => `${s.name}: ${s.detail}`).join("; ")}` };
+  if (hours > 30) return { key: "lending-selftest", level: "warn", message: `the lending self-test last ran ${hours.toFixed(0)}h ago (expected daily) — is the hourly lending job running?` };
+  return { key: "lending-selftest", level: "ok", message: `passed ${hours.toFixed(1)}h ago: ${t.steps.map((s) => s.name).join(", ")}` };
 }
 
 async function checkAmendments(prisma: PrismaClient): Promise<Finding> {
@@ -585,6 +597,7 @@ export async function runWatchdog(prisma: PrismaClient, opts: WatchdogOptions = 
   add("monitor-backlog", () => checkMonitorBacklog(prisma));
   add("amendment-reader", () => checkAmendments(prisma));
   add("lending-tracker", () => checkLendingTracker(prisma));
+  add("lending-selftest", () => checkLendingSelfTest(prisma));
   add("ledger-halt", () => checkLedgerHalt(), 9000);
   add("db-size", () => checkDbSize(prisma));
   add("spend-push-tokens", () => checkSpendPushTokens(prisma));
