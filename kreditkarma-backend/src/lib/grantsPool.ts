@@ -259,8 +259,18 @@ export async function maybeMilestoneShortAlert(prisma: PrismaClient, ping: typeo
   return true;
 }
 
+/** Well-known addresses nobody can use as their own wallet. A grant must never be paid to one of these. */
+export const NOT_A_PERSONAL_WALLET: Record<string, string> = {
+  rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh: "this is the XRP Ledger's genesis account (its address comes from a public test key), not a personal wallet",
+  rrrrrrrrrrrrrrrrrrrrrhoLvTp: "this is the XRP Ledger's zero (black hole) address",
+  rrrrrrrrrrrrrrrrrrrrBZbvji: "this is a black hole address",
+  rrrrrrrrrrrrrrrrrNAMEtxvNvQ: "this is a black hole address",
+  rrrrrrrrrrrrrrrrrrrn5RM1rHd: "this is a black hole address",
+};
+
 /** Can a grant be paid to this target now? RLUSD must be receivable, plus a destination tag if the account requires one. */
 export async function payoutReadiness(address: string, tag: number | null | undefined, amount: number): Promise<{ ready: boolean; reason: string }> {
+  if (NOT_A_PERSONAL_WALLET[address]) return { ready: false, reason: `needs payout details: ${NOT_A_PERSONAL_WALLET[address]}` };
   const info = await rpc("account_info", { account: address, ledger_index: "validated" });
   const flags = Number((info?.account_data as { Flags?: number } | undefined)?.Flags ?? 0);
   if (flags & 0x20000 && tag == null) return { ready: false, reason: "needs payout details: this address requires a destination tag (it looks like an exchange account)" };

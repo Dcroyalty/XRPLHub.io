@@ -11,6 +11,7 @@ import { NextResponse } from "next/server";
 import { isAdmin, adminUnauthorized } from "@/lib/adminAuth";
 import { createPayload, xummConfigured, XummRateLimitError } from "@/lib/xumm";
 import { isValidXrplAddress } from "@/lib/address";
+import { NOT_A_PERSONAL_WALLET } from "@/lib/grantsPool";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -34,6 +35,9 @@ export async function POST(req: Request) {
   const destination = String(body.destination ?? "").trim();
   if (!isValidXrplAddress(destination)) {
     return NextResponse.json({ error: "bad_request", message: "destination must be a valid r-address" }, { status: 400 });
+  }
+  if (NOT_A_PERSONAL_WALLET[destination]) {
+    return NextResponse.json({ error: "refused", message: `Not paying ${destination}: ${NOT_A_PERSONAL_WALLET[destination]}.` }, { status: 400 });
   }
   const drops = String(body.drops ?? "").trim();
   const rlusd = body.rlusd != null ? String(body.rlusd).trim() : null;
