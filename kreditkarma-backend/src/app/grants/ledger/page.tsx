@@ -4,7 +4,7 @@
 import type React from "react";
 import type { Metadata } from "next";
 import { prisma } from "@/lib/xrplscore-db";
-import { cardDonations, donationsUsdInYear, cardOwed, paidFirstGrants, CARD_TRANSFER_SOURCE, rlusdReceiveStatus } from "@/lib/grantsPool";
+import { cardDonations, donationsUsdInYear, cardOwed, paidFirstGrants, CARD_TRANSFER_SOURCE, rlusdReceiveStatus, NOT_DONATION_SOURCES, OWNER_TOPUP_SOURCES } from "@/lib/grantsPool";
 import { GRANTS_POOL, DONATION_DISCLOSURE } from "@/lib/grantsCopy";
 import SiteNav from "@/components/SiteNav";
 import { B, S } from "@/components/brand";
@@ -31,9 +31,10 @@ export default async function GrantsLedgerPage() {
   const firstReady = await Promise.all(firstQueue.map((g) => rlusdReceiveStatus(g.walletAddress, g.approvedAmount ?? 0)));
   const movedBy = new Map(owed.rows.map((r) => [r.id, r.movedAt]));
   const transfers = rows.filter((r) => r.direction === "in" && r.counterparty === CARD_TRANSFER_SOURCE);
+  const topups = rows.filter((r) => r.direction === "in" && OWNER_TOPUP_SOURCES.includes(r.counterparty));
   type Row = { at: string; kind: string; amount: string; detail: React.ReactNode };
   const donations: Row[] = [
-    ...rows.filter((r) => r.direction === "in" && r.counterparty !== CARD_TRANSFER_SOURCE).map((r) => ({ at: r.at.toISOString(), kind: r.currency, amount: `${r.amount.toLocaleString("en-US", { maximumFractionDigits: 6 })} ${r.currency}${r.usdValue != null ? ` (${usd(r.usdValue)})` : ""}`, detail: <a href={`https://xrpscan.com/tx/${r.txHash}`} rel="noopener" style={{ color: B.accent }}>from {short(r.counterparty)}</a> })),
+    ...rows.filter((r) => r.direction === "in" && !NOT_DONATION_SOURCES.includes(r.counterparty)).map((r) => ({ at: r.at.toISOString(), kind: r.currency, amount: `${r.amount.toLocaleString("en-US", { maximumFractionDigits: 6 })} ${r.currency}${r.usdValue != null ? ` (${usd(r.usdValue)})` : ""}`, detail: <a href={`https://xrpscan.com/tx/${r.txHash}`} rel="noopener" style={{ color: B.accent }}>from {short(r.counterparty)}</a> })),
     ...(cards ?? []).map((c) => ({ at: c.received_at, kind: "Card", amount: usd(c.amount_usd), detail: <span>card fee {c.fee_usd == null ? "pending" : usd(c.fee_usd)} · net {c.net_usd == null ? "pending" : usd(c.net_usd)} · {movedBy.get(c.id) ? <>moved to the pool {day(movedBy.get(c.id)!)}</> : <strong style={{ color: B.accent }}>not yet moved to the pool</strong>} · ref …{c.id}</span> })),
   ].sort((a, b) => b.at.localeCompare(a.at));
   const grants = rows.filter((r) => r.direction === "out");
@@ -94,6 +95,13 @@ export default async function GrantsLedgerPage() {
             </table>
           )}
         </section>
+        {topups.length > 0 && (
+          <section style={{ ...S.card, marginTop: 16 }}>
+            <h2 style={{ ...S.h2, fontSize: 18 }}>Top-ups from the owner (not donations)</h2>
+            <p style={{ ...S.small, margin: "0 0 6px" }}>Payments from XRPLHub's owner, for example to cover the account reserve. Not counted as donations.</p>
+            <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13 }}>{topups.map((t) => <li key={t.txHash}>{day(t.at)}: {t.amount.toLocaleString("en-US", { maximumFractionDigits: 6 })} {t.currency} · <a href={`https://xrpscan.com/tx/${t.txHash}`} style={{ color: B.accent }}>transaction</a></li>)}</ul>
+          </section>
+        )}
         <p style={{ ...S.small, marginTop: 14 }}>{DONATION_DISCLOSURE}</p>
       </main>
     </div>

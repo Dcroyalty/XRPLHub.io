@@ -2,6 +2,7 @@
 // Public, shareable credential verification page.
 // A borrower/counterparty sends this link; anyone can open it and see whether
 // the credential is authentic. No login, no wallet, no friction.
+import BrandLogo from "@/components/BrandLogo";
 
 import { PrismaClient } from '@prisma/client';
 import crypto from 'crypto';

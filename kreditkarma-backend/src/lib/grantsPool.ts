@@ -127,7 +127,7 @@ export async function cardDonations(): Promise<CardDonation[] | null> {
 export async function donationsUsdInYear(prisma: PrismaClient, year: number, cards: CardDonation[] | null): Promise<{ total: number; ledger: number; card: number; cardKnown: boolean }> {
   const from = new Date(Date.UTC(year, 0, 1)), to = new Date(Date.UTC(year + 1, 0, 1));
   // Transfers of card donations from the XRPLHub treasury are not new donations (the card amount is already counted).
-  const rows = await prisma.grantsLedgerEntry.findMany({ where: { direction: "in", at: { gte: from, lt: to }, NOT: { counterparty: CARD_TRANSFER_SOURCE } }, select: { usdValue: true } });
+  const rows = await prisma.grantsLedgerEntry.findMany({ where: { direction: "in", at: { gte: from, lt: to }, counterparty: { notIn: NOT_DONATION_SOURCES } }, select: { usdValue: true } });
   const ledger = rows.reduce((s, r) => s + (r.usdValue ?? 0), 0);
   const card = (cards ?? []).filter((c) => { const t = Date.parse(c.received_at); return t >= from.getTime() && t < to.getTime(); }).reduce((s, c) => s + c.amount_usd, 0);
   return { total: ledger + card, ledger, card, cardKnown: cards != null };
@@ -153,6 +153,10 @@ export async function maybeDonationsAlert(prisma: PrismaClient, ping: typeof pin
 // fee is known). A card donation counts as moved on the date the transfer that covers it arrived. If one sits
 // unmoved for 30 days we send ONE healthchecks.io /fail alert for it (checkpoint `grants-card-unmoved:<ref>`).
 export const CARD_TRANSFER_SOURCE = "rs59g3amo5iT6T64Cg96XXMAWuw3WPQcLF";
+// The owner's own wallets (owner, 2026-10-16): payments into the pool from these are top-ups (e.g. reserve), never
+// donations. The treasury above counts only as moving card donations.
+export const OWNER_TOPUP_SOURCES = ["rKM3a1zj7w3i9BiEpsvXEqjozYdqjt8SdY"];
+export const NOT_DONATION_SOURCES = [CARD_TRANSFER_SOURCE, ...OWNER_TOPUP_SOURCES];
 
 export interface CardOwed { id: string; receivedAt: string; owedUsd: number; movedAt: string | null }
 

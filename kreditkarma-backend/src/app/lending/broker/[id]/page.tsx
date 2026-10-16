@@ -1,4 +1,5 @@
 // src/app/lending/broker/[id]/page.tsx — one XRPL loan broker: debt, first-loss cover, loan health, grade.
+import BrandLogo from "@/components/BrandLogo";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { lendingLive } from "@/lib/lendingTracker";
@@ -21,9 +22,12 @@ export default async function BrokerPage({ params }: { params: Promise<{ id: str
   return (
     <div style={L.shell}>
       <div style={L.page}>
-        <nav style={L.nav}>
-          <a href={`/lending/vault/${b.vaultId}`} style={L.link}>← Its vault</a>
-          <a href="/lending/method" style={L.link}>How grades work</a>
+        <nav style={{ ...L.nav, flexWrap: "wrap" }}>
+          <BrandLogo />
+          <span style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "center" }}>
+            <a href={`/lending/vault/${b.vaultId}`} style={L.link}>← Its vault</a>
+            <a href="/lending/method" style={L.link}>How grades work</a>
+            </span>
         </nav>
         <h1 style={L.h1}>Loan broker</h1>
         <p style={{ ...L.mono, color: C.small, margin: "0 0 14px" }}>{b.id}</p>

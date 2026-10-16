@@ -1,5 +1,6 @@
 // src/app/lending/method/page.tsx — the published risk-grade method. Rendered from RULES in
 // src/lib/lendingGrade.ts, the same table the grading code applies, so the two can't drift apart.
+import BrandLogo from "@/components/BrandLogo";
 import type { Metadata } from "next";
 import { RULES, METHOD_VERSION, DISCLAIMER } from "@/lib/lendingGrade";
 import { L, C } from "../ui";
@@ -15,9 +16,12 @@ export default function MethodPage() {
   return (
     <div style={L.shell}>
       <div style={L.page}>
-        <nav style={L.nav}>
-          <a href="/lending" style={L.link}>← Lending tracker</a>
-          <span style={L.small}>{METHOD_VERSION}</span>
+        <nav style={{ ...L.nav, flexWrap: "wrap" }}>
+          <BrandLogo />
+          <span style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "center" }}>
+            <a href="/lending" style={L.link}>← Lending tracker</a>
+            <span style={L.small}>{METHOD_VERSION}</span>
+            </span>
         </nav>
         <h1 style={L.h1}>How we grade lending vaults and loan brokers</h1>
         <p style={L.sub}>

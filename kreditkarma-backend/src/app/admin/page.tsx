@@ -1,4 +1,5 @@
 'use client';
+import BrandLogo from "@/components/BrandLogo";
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { watchXaman } from '@/lib/wallet/xamanWatch';
 import WalletPicker from '@/lib/wallet/WalletPicker';
@@ -571,7 +572,7 @@ export default function AdminPage() {
       {/* ── HEADER (wraps on phone widths) ── */}
       <div style={{ background:'rgba(6,6,22,.9)', backdropFilter:'blur(20px)', borderBottom:'1px solid rgba(16,185,129,.18)', padding:'10px 16px', display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:10, position:'sticky', top:0, zIndex:50 }}>
         <div style={{ display:'flex', alignItems:'center', gap:10, flexWrap:'wrap' }}>
-          <span style={{ fontSize:18, fontWeight:900 }}>XRPLHub</span>
+          <BrandLogo />
           <span style={{ fontSize:10, fontWeight:700, color:'#10b981', background:'rgba(16,185,129,.12)', border:'1px solid rgba(16,185,129,.25)', borderRadius:99, padding:'2px 8px', fontFamily:"'IBM Plex Mono',monospace" }}>ADMIN</span>
           <span style={{ fontSize:10, color:'rgba(255,255,255,.3)', fontFamily:"'IBM Plex Mono',monospace" }}>{trunc(wallet,8)}</span>
           {loading && <span style={{ fontSize:11, color:'#10b981', animation:'pulse 1s infinite' }}>⟳</span>}

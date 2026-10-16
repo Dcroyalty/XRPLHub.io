@@ -1,4 +1,5 @@
 // src/app/lending/vault/[id]/page.tsx — one XRPL lending vault: size, utilization, loss, yield, brokers, grade.
+import BrandLogo from "@/components/BrandLogo";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/xrplscore-db";
@@ -38,9 +39,12 @@ export default async function VaultPage({ params }: { params: Promise<{ id: stri
   return (
     <div style={L.shell}>
       <div style={L.page}>
-        <nav style={L.nav}>
-          <a href="/lending/vaults" style={L.link}>← All vaults</a>
-          <a href="/lending/method" style={L.link}>How grades work</a>
+        <nav style={{ ...L.nav, flexWrap: "wrap" }}>
+          <BrandLogo />
+          <span style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "center" }}>
+            <a href="/lending/vaults" style={L.link}>← All vaults</a>
+            <a href="/lending/method" style={L.link}>How grades work</a>
+            </span>
         </nav>
         <h1 style={L.h1}>{v.assetLabel || "Vault"} vault{v.deleted ? " (closed)" : ""}</h1>
         <p style={{ ...L.mono, color: C.small, margin: "0 0 14px" }}>{v.id}</p>

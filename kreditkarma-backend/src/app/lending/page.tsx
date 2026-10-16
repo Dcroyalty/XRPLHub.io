@@ -1,6 +1,7 @@
 // src/app/lending/page.tsx — XRPL Lending: is it live yet, who is voting for it, and what it means.
 // Server-rendered from the hourly snapshots (src/lib/lendingTracker.ts). Phase 2 (vault explorer + risk
 // grades) appears here automatically once the amendments are enabled on mainnet.
+import BrandLogo from "@/components/BrandLogo";
 import type { Metadata } from "next";
 import { prisma } from "@/lib/xrplscore-db";
 import {
@@ -98,7 +99,7 @@ export default async function LendingPage() {
     <div style={L.shell}>
       <div style={L.page}>
         <nav style={L.nav}>
-          <a href="/" style={{ ...L.link, color: C.fg, fontWeight: 800 }}>XRPLHub</a>
+          <BrandLogo />
           <a href="/lending/method" style={L.link}>How we&apos;ll grade vaults</a>
         </nav>
 

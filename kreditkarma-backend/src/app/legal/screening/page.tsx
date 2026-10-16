@@ -1,3 +1,4 @@
+import BrandLogo from "@/components/BrandLogo";
 export const metadata = {
   title: "Sanctions Screening Attestation — Scope & Limits | XRPLHub",
   description:
@@ -45,25 +46,7 @@ export default function ScreeningLegalPage() {
           zIndex: 100,
         }}
       >
-        <a href="/" style={{ display: "flex", alignItems: "center", gap: 10, textDecoration: "none", color: "#fff" }}>
-          <div
-            style={{
-              width: 32,
-              height: 32,
-              background: "linear-gradient(135deg,#10b981,#059669)",
-              borderRadius: 8,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontWeight: 900,
-              fontSize: 15,
-              color: "#000",
-            }}
-          >
-            X
-          </div>
-          <span style={{ fontWeight: 900, fontSize: 17, letterSpacing: "-.5px" }}>XRPLHub</span>
-        </a>
+        <BrandLogo />
         <a href="/" style={{ fontSize: 13, color: "#10b981", textDecoration: "none", fontWeight: 600 }}>
           ← Back to Home
         </a>

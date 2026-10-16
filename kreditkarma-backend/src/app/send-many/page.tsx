@@ -2,6 +2,7 @@
 // src/app/send-many/page.tsx — BATCH SEND for people: "pay up to 8 people with one approval — everyone or no one."
 // Steps: 1) sign in with Xaman (no typing your own address), 2) add who you pay, 3) approve the batch in Xaman (QR right
 // there), 4) DONE only when the XRP Ledger shows every payment (GET /api/batch-send?uuid=…). Free.
+import BrandLogo from "@/components/BrandLogo";
 
 import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
@@ -78,7 +79,7 @@ export default function SendManyPage() {
   return (
     <div style={s.shell}>
       <main style={s.page}><LedgerBanner />
-        <Link href="/" style={s.small}>← XRPLHub</Link>
+        <BrandLogo />
         <h1 style={s.h1}>Pay up to 8 people with one approval</h1>
         <p style={s.sub}>
           Send XRP or RLUSD (a digital US dollar) to several people at once. You approve it once in your own wallet. Either

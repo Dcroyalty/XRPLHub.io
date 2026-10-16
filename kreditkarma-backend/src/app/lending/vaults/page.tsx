@@ -1,5 +1,6 @@
 // src/app/lending/vaults/page.tsx — every XRPL lending vault and its risk grade (phase 2).
 // Until LendingProtocol + SingleAssetVault are enabled on mainnet this page only says so.
+import BrandLogo from "@/components/BrandLogo";
 import type { Metadata } from "next";
 import { lendingLive } from "@/lib/lendingTracker";
 import { vaultList, GRADE_COLOR, fmtNum } from "../explorer";
@@ -16,9 +17,12 @@ export default async function VaultsPage() {
   return (
     <div style={L.shell}>
       <div style={L.page}>
-        <nav style={L.nav}>
-          <a href="/lending" style={L.link}>← Lending tracker</a>
-          <a href="/lending/method" style={L.link}>How grades work</a>
+        <nav style={{ ...L.nav, flexWrap: "wrap" }}>
+          <BrandLogo />
+          <span style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "center" }}>
+            <a href="/lending" style={L.link}>← Lending tracker</a>
+            <a href="/lending/method" style={L.link}>How grades work</a>
+            </span>
         </nav>
         <h1 style={L.h1}>XRPL lending vaults</h1>
         {!live ? (

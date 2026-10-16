@@ -1,4 +1,5 @@
 "use client";
+import BrandLogo from "@/components/BrandLogo";
 import type React from "react";
 // src/components/SiteNav.tsx — the site navigation: Wallet check, Yield ratings, Lending tracker, Pro, API, Grants.
 // Navy bar, white type, gold for the current page. Collapses to a menu button under 760px.
@@ -26,13 +27,7 @@ export default function SiteNav({ active, right }: { active?: (typeof NAV)[numbe
     <header style={{ position: "sticky", top: 0, zIndex: 50, background: "rgba(7,18,40,.94)", borderBottom: `1px solid ${B.navyLine}`, backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)", fontFamily: B.sans }}>
       <style>{`.sn-desk{display:flex}.sn-mob{display:none}@media(max-width:760px){.sn-desk{display:none}.sn-mob{display:inline-flex}}`}</style>
       <div style={{ maxWidth: 1180, margin: "0 auto", padding: "0 16px", minHeight: 60, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-        <a href="/" style={{ display: "flex", alignItems: "center", gap: 9, textDecoration: "none" }} aria-label="XRPLHub home">
-          <span aria-hidden="true" style={{ width: 30, height: 30, borderRadius: 7, background: B.white, color: B.navy, display: "inline-flex", alignItems: "center", justifyContent: "center", fontFamily: B.serif, fontWeight: 800, fontSize: 17 }}>X</span>
-          <span style={{ display: "flex", flexDirection: "column", lineHeight: 1.05 }}>
-            <span style={{ color: B.white, fontFamily: B.serif, fontWeight: 700, fontSize: 19 }}>XRPLHub</span>
-            <span style={{ color: B.accent, fontSize: 9.5, fontWeight: 800, letterSpacing: ".16em", textTransform: "uppercase" }}>Ratings</span>
-          </span>
-        </a>
+        <BrandLogo />
         <nav className="sn-desk" aria-label="Main" style={{ alignItems: "center", gap: 2 }}>{NAV.map((n) => link(n))}{right}</nav>
         <button className="sn-mob" onClick={() => setOpen(!open)} aria-expanded={open} aria-label="Menu"
           style={{ alignItems: "center", justifyContent: "center", width: 44, height: 44, borderRadius: 10, background: "transparent", border: `1px solid ${B.navyLine}`, color: B.white, fontSize: 20, cursor: "pointer" }}>

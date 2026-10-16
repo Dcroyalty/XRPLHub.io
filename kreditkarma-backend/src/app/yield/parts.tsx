@@ -1,4 +1,5 @@
 // src/app/yield/parts.tsx — shared pieces for the /yield pages (server components). Same look as /lending.
+import BrandLogo from "@/components/BrandLogo";
 import { L, C, fmtTime } from "../lending/ui";
 import { DISCLAIMER, pct, usd } from "@/lib/yieldGrade";
 import type { StoredYield } from "@/lib/yieldDesk";
@@ -27,8 +28,9 @@ export function Disclaimer() {
 export function YieldNav({ back }: { back?: { href: string; label: string } }) {
   return (
     <nav style={L.nav}>
-      <a href={back?.href ?? "/"} style={L.link}>← {back?.label ?? "XRPLHub"}</a>
-      <span style={{ display: "flex", gap: 14 }}>
+      <BrandLogo />
+      <span style={{ display: "flex", gap: 14, flexWrap: "wrap", justifyContent: "flex-end" }}>
+        {back && <a href={back.href} style={L.link}>← {back.label}</a>}
         <a href="/yield" style={L.link}>Yield Desk</a>
         <a href="/yield/method" style={L.link}>Method</a>
       </span>

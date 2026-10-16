@@ -2,6 +2,7 @@
 // src/app/permissions/page.tsx — WALLET PERMISSIONS CHECK for people: "who can move money out of this wallet?"
 // Free. Reads GET /api/permissions/:address; the free fixes (remove a delegation, cancel a check) go through
 // POST /api/permissions/fix and are signed in the owner's own wallet.
+import BrandLogo from "@/components/BrandLogo";
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
@@ -57,7 +58,7 @@ export default function PermissionsPage() {
   return (
     <div style={s.shell}>
       <main style={s.page}><LedgerBanner />
-        <Link href="/" style={s.small}>← XRPLHub</Link>
+        <BrandLogo />
         <h1 style={s.h1}>Who can move money from my wallet?</h1>
         <p style={s.sub}>
           Paste any XRP wallet address. We read the XRP Ledger and list everyone who can move money out of it — a second key,

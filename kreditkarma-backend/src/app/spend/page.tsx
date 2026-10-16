@@ -3,6 +3,7 @@
 // (the check split, the XRP reserve that locks up front, and whether the funder's wallet covers a period).
 // Two kinds: a BUDGET (approved payees, a budget each, RLUSD) or a SUBSCRIPTION (one payee, one check per period,
 // RLUSD or XRP — created only when each period starts, never ahead).
+import BrandLogo from "@/components/BrandLogo";
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
@@ -75,7 +76,7 @@ export default function SpendPage() {
   return (
     <div style={s.shell}>
       <main style={s.page}><LedgerBanner />
-        {xapp ? <a href="/xapp/spend" style={s.small}>← My plans</a> : <Link href="/" style={s.small}>← XRPLHub</Link>}
+        {xapp ? <a href="/xapp/spend" style={s.small}>← My plans</a> : <BrandLogo />}
         <h1 style={s.h1}>Spend Controls</h1>
         <p style={s.sub}>
           Give money with rules. An allowance someone can only spend at places you pick, up to amounts you set, paid in RLUSD (a digital US dollar).
