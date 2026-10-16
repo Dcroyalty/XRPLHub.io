@@ -73,6 +73,7 @@ export default async function GrantsPage({ searchParams }: Props) {
           <Bar value={bal} max={FIRST_MILESTONE_XRP} label={`First milestone: the first ${FIRST_MILESTONE_GRANTS} grants go out at ${FIRST_MILESTONE_XRP.toLocaleString("en-US")} XRP`} />
           <Bar value={bal} max={LONG_TERM_GOAL_XRP} label="Long-term goal" />
           <p style={{ margin: "8px 0 0", color: B.white, fontWeight: 700 }}>{PAYOUT_LINE}</p>
+          <p style={{ margin: "6px 0 0", color: B.ink, fontSize: 14 }}>Grants are paid at XRPLHub's discretion when the pool has funds. Applying doesn't guarantee a grant. You can check your status any time with your wallet address.</p>
           <p style={{ ...S.small, margin: "6px 0 0" }}>Milestones count RLUSD at the current XRP price{price ? ` ($${price.toFixed(4)})` : ""}. Read {new Date(pool.readAt).toUTCString().slice(17, 22)} UTC. The pool&apos;s keys are held by its owner in Xaman; XRPLHub&apos;s servers can&apos;t move this money.</p>
         </section>
 
@@ -84,7 +85,7 @@ export default async function GrantsPage({ searchParams }: Props) {
               <div style={S.eyebrow}>How it works</div>
               <ol style={{ margin: "8px 0 0", paddingLeft: 18, lineHeight: 1.6, fontSize: 14 }}>
                 <li>{APPLICANT_STATUS}</li>
-                {firstQueue.length > 0 && <li>First in the queue: {firstQueue.length} grants approved in July 2026 (${firstQueue.reduce((s, g) => s + (g.approvedAmount ?? 0), 0)} in total, paid in RLUSD), marked &quot;approved, paid first&quot; and paid from the first donations.{firstReady.some((r) => !r.canReceive) ? " Waiting for the recipient to add an RLUSD trust line." : ""}</li>}
+                {firstQueue.length > 0 && <li>First in the queue: {firstQueue.length} grants approved in July 2026 (${firstQueue.reduce((s, g) => s + (g.approvedAmount ?? 0), 0)} in total, paid in RLUSD), marked &quot;approved, paid first&quot; and paid from the first donations.{firstReady.some((r) => !r.canReceive) ? " Marked \"needs payout details\" until the applicant adds a destination tag or a personal wallet." : ""}</li>}
                 <li>When the pool reaches {FIRST_MILESTONE_XRP.toLocaleString("en-US")} XRP, the first {FIRST_MILESTONE_GRANTS} grants are paid, in the order applications came in.</li>
                 <li>A person reads every application. Grants are paid in RLUSD on the XRP Ledger, straight to your wallet, and published. Your wallet needs an RLUSD trust line.</li>
                 <li>We never ask for a fee, your keys or your seed. Anyone who does is not us.</li>

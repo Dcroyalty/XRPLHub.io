@@ -67,7 +67,7 @@ export default async function GrantsLedgerPage() {
           {firstQueue.length === 0 ? <p style={{ margin: 0 }}>Nothing waiting.</p> : (
             <>
               <p style={{ margin: "0 0 8px" }}>Approved in July 2026, before this pool existed. They are first in the queue and are paid from the first donations.</p>
-              <ul style={{ margin: 0, paddingLeft: 18 }}>{firstQueue.map((g, i) => <li key={g.id}>{day(g.createdAt)}: ${g.approvedAmount} in RLUSD to {short(g.walletAddress)} — approved, paid first{firstReady[i]?.canReceive ? "" : " (waiting for the recipient to add an RLUSD trust line)"}</li>)}</ul>
+              <ul style={{ margin: 0, paddingLeft: 18 }}>{firstQueue.map((g, i) => <li key={g.id}>{day(g.createdAt)}: ${g.approvedAmount} in RLUSD to {short(g.walletAddress)} — approved, paid first{firstReady[i]?.canReceive ? "" : " — needs payout details (a destination tag or a personal wallet)"}</li>)}</ul>
             </>
           )}
         </section>
@@ -97,7 +97,7 @@ export default async function GrantsLedgerPage() {
         </section>
         {topups.length > 0 && (
           <section style={{ ...S.card, marginTop: 16 }}>
-            <h2 style={{ ...S.h2, fontSize: 18 }}>Top-ups from the owner (not donations)</h2>
+            <h2 style={{ ...S.h2, fontSize: 18 }}>Owner contributions (not public donations)</h2>
             <p style={{ ...S.small, margin: "0 0 6px" }}>Payments from XRPLHub's owner, for example to cover the account reserve. Not counted as donations.</p>
             <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13 }}>{topups.map((t) => <li key={t.txHash}>{day(t.at)}: {t.amount.toLocaleString("en-US", { maximumFractionDigits: 6 })} {t.currency} · <a href={`https://xrpscan.com/tx/${t.txHash}`} style={{ color: B.accent }}>transaction</a></li>)}</ul>
           </section>
