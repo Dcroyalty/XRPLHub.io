@@ -21,7 +21,7 @@ export interface SourceItem {
   extra?: Record<string, unknown>; // stored with today's observation
   externalGrade?: { grade: string; score: number; url: string } | null;
 }
-export interface SourceResult { name: string; items: SourceItem[] }
+export interface SourceResult { name: string; items: SourceItem[]; keep?: string[] } // keep: slugs skipped this run (not unlisted)
 
 const UA = { "user-agent": "xrplhub-yield-desk (+https://www.xrplhub.io/yield)" };
 

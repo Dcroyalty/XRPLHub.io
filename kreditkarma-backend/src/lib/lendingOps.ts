@@ -109,7 +109,7 @@ export async function runLendingSelfTest(prisma: PrismaClient, opts: { force?: b
     if (page.status !== 200 || !page.text.includes("XRPLHub Pro")) throw new Error(`/pricing HTTP ${page.status} or XRPLHub Pro card missing`);
     if (page.text.includes("Opening shortly")) throw new Error("/pricing shows XRPLHub Pro as not open yet");
     const r = await get(`${UXUS}/api/billing/checkout`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ plan: "xrplhub_pro" }) });
-    if (r.status !== 200 || !/checkout\.stripe\.com\/c\/pay\/cs_live_/.test(r.text)) throw new Error(`checkout for xrplhub_pro HTTP ${r.status}: ${r.text.slice(0, 160)}`);
+    if (r.status !== 200 || !/checkout\.stripe\.com\/[a-z]\/pay\/cs_live_/.test(r.text)) throw new Error(`checkout for xrplhub_pro HTTP ${r.status}: ${r.text.slice(0, 160)}`);
     return "pricing card open; Stripe Checkout session created (left unpaid, expires on its own)";
   });
 

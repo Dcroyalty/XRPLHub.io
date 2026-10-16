@@ -129,7 +129,7 @@ export async function runYieldRefresh(prisma: PrismaClient, opts: { budgetMs: nu
       await prisma.indexerCheckpoint.upsert({ where: { id: cpId }, create: { id: cpId, status: "failing", marker: error.slice(0, 500) }, update: { status: "failing", marker: error.slice(0, 500) } });
       continue;
     }
-    const seen = new Set<string>();
+    const seen = new Set<string>(s.value.keep ?? []);
     for (const it of s.value.items) {
       const o = it.option;
       seen.add(o.slug);
@@ -156,8 +156,9 @@ export async function runYieldRefresh(prisma: PrismaClient, opts: { budgetMs: nu
     // Options this source no longer returns stay on the site, marked unlisted. (A source that returned nothing
     // at all — e.g. xls66 before lending is live — unlists nothing it never listed.)
     await prisma.yieldOption.updateMany({ where: { source: name, listed: true, slug: { notIn: [...seen] } }, data: { listed: false } });
-    rep.sources[name] = { ok: true, options: seen.size };
-    rep.options += seen.size;
+    const fresh = s.value.items.length;
+    rep.sources[name] = { ok: true, options: fresh, ...(s.value.keep?.length ? { error: `skipped this run: ${s.value.keep.join(", ")}` } : {}) };
+    rep.options += fresh;
     await prisma.indexerCheckpoint.upsert({ where: { id: cpId }, create: { id: cpId, status: "idle", lastCompletedPassAt: new Date() }, update: { status: "idle", marker: null, lastCompletedPassAt: new Date() } });
   }
 

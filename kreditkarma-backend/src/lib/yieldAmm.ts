@@ -105,13 +105,23 @@ async function poolCreatedAt(amm: string, rpc: Rpc): Promise<string | null> {
 export async function ammSource(
   prisma: PrismaClient,
   opts: { xrpUsd: number; deadline: number; knownLaunch: Record<string, string | null>; rpc?: Rpc }
-): Promise<{ name: string; items: SourceItem[] }> {
+): Promise<{ name: string; items: SourceItem[]; keep: string[] }> {
   const rpc = opts.rpc ?? defaultRpc;
   const items: SourceItem[] = [];
+  const errors: string[] = [];
+  const keep: string[] = [];
   for (const p of AMM_POOLS) {
-    const info = await rpc("amm_info", { asset: { currency: "XRP" }, asset2: { currency: p.currency, issuer: p.issuer } });
-    const amm = info?.amm as { account: string; amount: string; amount2: { value: string }; trading_fee: number } | undefined;
-    if (!amm) throw new Error(`amm_info failed for ${p.pair}`);
+    // One pool failing (a node hiccup) must not hide the others: retry once, then skip it this run.
+    let amm: { account: string; amount: string; amount2: { value: string }; trading_fee: number } | undefined;
+    for (let attempt = 0; attempt < 2 && !amm; attempt++) {
+      const info = await rpc("amm_info", { asset: { currency: "XRP" }, asset2: { currency: p.currency, issuer: p.issuer } }).catch(() => null);
+      amm = info?.amm as typeof amm;
+    }
+    if (!amm) {
+      errors.push(`amm_info failed for ${p.pair}`);
+      keep.push(`xrpl-amm-${p.pair.toLowerCase().replace("/", "-")}`);
+      continue;
+    }
     const xrp = Number(amm.amount) / 1e6;
     const poolUsd = 2 * xrp * opts.xrpUsd;
     if (poolUsd < MIN_POOL_USD) continue;
@@ -173,5 +183,6 @@ export async function ammSource(
       extra: { amm: amm.account, tradingFee: amm.trading_fee, xrp, spanDays: Math.round(spanDays * 10) / 10 },
     });
   }
-  return { name: "xrpl-amm", items };
+  if (!items.length && errors.length) throw new Error(errors.join("; "));
+  return { name: "xrpl-amm", items, keep };
 }
