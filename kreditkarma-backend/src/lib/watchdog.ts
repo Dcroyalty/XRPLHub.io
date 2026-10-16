@@ -124,6 +124,18 @@ async function checkAnchorWallet(): Promise<Finding> {
   return { key: "anchor-wallet", level: "ok", message: `${spendable.toFixed(3)} XRP spendable` };
 }
 
+// The hourly XRPL Lending tracker (/lending, GitHub Actions → /api/cron/lending-tracker). A snapshot older than
+// 3 hours means the hourly trigger stopped (GitHub disables scheduled workflows after 60 days without a push to a
+// public repo) or the job is failing.
+async function checkLendingTracker(prisma: PrismaClient): Promise<Finding> {
+  const last = await prisma.lendingAmendmentSnapshot.findFirst({ orderBy: { hourBucket: "desc" }, select: { takenAt: true, source: true } });
+  if (!last) return { key: "lending-tracker", level: "warn", message: "the lending tracker has not stored a snapshot yet" };
+  const h = (Date.now() - last.takenAt.getTime()) / 3_600_000;
+  if (h > 3) return { key: "lending-tracker", level: "red", message: `the /lending tracker last stored a snapshot ${h.toFixed(1)}h ago (expected hourly) — check the lending-tracker GitHub Actions workflow (re-enable it if GitHub paused it) and GET /api/cron/lending-tracker` };
+  if (last.source !== "ledger+xrpscan") return { key: "lending-tracker", level: "warn", message: "the latest lending snapshot has no validator votes (XRPScan's validator registry could not be read); enabled status is still read from the ledger" };
+  return { key: "lending-tracker", level: "ok", message: `last snapshot ${h.toFixed(1)}h ago` };
+}
+
 async function checkAmendments(prisma: PrismaClient): Promise<Finding> {
   const s = await getAmendmentStatuses(["LendingProtocol", "SingleAssetVault"] as const);
   if (s.LendingProtocol.state === "unknown") return { key: "amendment-reader", level: "warn", message: "the on-ledger Amendments object could not be read — XLS-66 activation cannot be detected until it can" };
@@ -572,6 +584,7 @@ export async function runWatchdog(prisma: PrismaClient, opts: WatchdogOptions = 
   add("anchors-behind", () => checkUnanchored(prisma));
   add("monitor-backlog", () => checkMonitorBacklog(prisma));
   add("amendment-reader", () => checkAmendments(prisma));
+  add("lending-tracker", () => checkLendingTracker(prisma));
   add("ledger-halt", () => checkLedgerHalt(), 9000);
   add("db-size", () => checkDbSize(prisma));
   add("spend-push-tokens", () => checkSpendPushTokens(prisma));

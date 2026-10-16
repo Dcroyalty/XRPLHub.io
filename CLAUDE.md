@@ -62,6 +62,12 @@ The live production app is a single Next.js project in **`kreditkarma-backend/`*
 - **Batch Send** (`src/lib/batchSend.ts`, `/send-many`, `POST /api/batch-send`, MCP `prepare_batch_send`, 2026-10-09) — pay
   2–8 people with one all-or-nothing XRPL Batch. Free, preflighted, amendment-gated. Tested on Devnet (Testnet has no Batch).
 
+- **XRPL Lending** (`/lending`, 2026-10-16) — PHASE 1 LIVE: hourly tracker of the LendingProtocol / LendingProtocolV1_1 /
+  SingleAssetVault votes (ledger + XRPScan validator registry), history chart, per-validator votes, "email me when it goes
+  live" list (stored only; no email sender yet). PHASE 2 BUILT, OFF until LendingProtocol + SingleAssetVault are enabled
+  (`lendingLive()`, read from the ledger): vault/broker/loan index, explorer pages, A–F RISK GRADES (never "credit rating";
+  method at `/lending/method` from `src/lib/lendingGrade.ts`). Paid grade API lives on uxus. See docs/AUTONOMY.md §23.
+
 - **Continuous monitoring** — `/api/monitor/*`: watched wallets, HMAC-signed webhooks, sparse attested
   observations (canon `monitor-observation-v1`). Layered on top of underwriting, never a replacement; no default
   probability, no default score-drop threshold, consumer-use (FCRA/ECOA) acknowledgement required. See

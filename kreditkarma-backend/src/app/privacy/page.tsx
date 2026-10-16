@@ -66,10 +66,13 @@ export default function PrivacyPage() {
         <span style={H}>10. Cookies & Tracking</span>
         <p style={P}>We use minimal cookies essential to platform function (session management, wallet-state persistence in localStorage). We do not use third-party advertising trackers and do not sell behavioral data to advertisers.</p>
 
-        <span style={H}>11. Changes to This Policy</span>
+        <span style={H} id="lending-list">11. XRPL Lending launch list</span>
+        <p style={P}>If you sign up on <a href="/lending" style={{ color:'#10b981' }}>xrplhub.io/lending</a> to hear when XRPL lending goes live, we store your email address, the date you signed up, the exact sentence you agreed to, and a one-way hash of your IP address (used only to stop abuse; we can&apos;t turn it back into your IP). We use your email for one thing: a single email when lending is enabled on the XRP Ledger mainnet. We don&apos;t add you to any other list, don&apos;t share or sell the address, and don&apos;t use it for marketing. Every email has an unsubscribe link, and you can ask us to delete your address at any time at <a href="mailto:privacy@xrplhub.io" style={{ color:'#10b981' }}>privacy@xrplhub.io</a>. If we use an email delivery provider to send that email, it receives your address only to deliver it. We delete the list once the launch email has been sent, except for addresses we must keep on a do-not-email list after an unsubscribe.</p>
+
+        <span style={H}>12. Changes to This Policy</span>
         <p style={P}>We may update this Privacy Policy periodically. Material changes will be communicated via email to registered users. Continued use of the platform after changes constitutes acceptance of the updated policy.</p>
 
-        <span style={H}>12. Contact Us</span>
+        <span style={H}>13. Contact Us</span>
         <p style={P}>Privacy inquiries: <a href="mailto:privacy@xrplhub.io" style={{ color:'#10b981' }}>privacy@xrplhub.io</a><br />General: <a href="mailto:support@xrplhub.io" style={{ color:'#10b981' }}>support@xrplhub.io</a></p>
 
         <div style={{ marginTop:48, paddingTop:24, borderTop:'1px solid rgba(255,255,255,.07)', display:'flex', gap:16, flexWrap:'wrap' }}>

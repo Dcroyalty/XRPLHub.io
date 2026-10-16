@@ -965,3 +965,157 @@ model SpendAutopayPayment {
   @@unique([planId, ticket])
   @@index([status, periodStart])
 }
+
+// ─── XRPL Lending (2026-10-16) — /lending ─────────────────────────────────────
+// Phase 1: the amendment tracker (one snapshot per hour) and the "email me when lending goes live" list.
+// Phase 2 (switched off until LendingProtocol + SingleAssetVault are enabled on mainnet): an index of every
+// Vault, LoanBroker and Loan entry plus the lending transactions, and the risk grades computed from them.
+// src/lib/lendingTracker.ts, src/lib/lendingIndex.ts, src/lib/lendingGrade.ts. Non-custodial: read-only.
+
+// One row per hour (hourBucket = the hour, UTC). `data` is JSON: per amendment yes votes, votes needed, enabled,
+// majority dates. `voters` is JSON: each default-list validator and how it votes on each amendment.
+model LendingAmendmentSnapshot {
+  id          String   @id @default(cuid())
+  hourBucket  DateTime @unique
+  takenAt     DateTime @default(now())
+  ledgerIndex Int?
+  unlSize     Int?
+  data        String
+  voters      String?
+  source      String // "ledger+xrpscan" | "ledger-only" (vote data unavailable that hour)
+}
+
+// "Email me when lending goes live." No email is sent until an email sender is configured (RESEND_API_KEY).
+model LendingSignup {
+  id               String    @id @default(cuid())
+  email            String    @unique // lower-cased
+  createdAt        DateTime  @default(now())
+  source           String    @default("lending-tracker")
+  consentText      String // the exact sentence the person agreed to
+  unsubscribeToken String    @unique
+  unsubscribedAt   DateTime?
+  notifiedAt       DateTime?
+  ipHash           String? // sha256 of the IP — abuse checks only, never shown
+}
+
+// Phase 2 index. Amounts are kept as the ledger's decimal strings. `network` keeps any test data apart.
+model LendingVault {
+  id                String   @id // Vault ledger index (VaultID)
+  network           String   @default("mainnet")
+  account           String // the vault's pseudo-account
+  owner             String
+  asset             String // JSON of the ledger's Asset field
+  assetLabel        String
+  assetsTotal       String
+  assetsAvailable   String
+  assetsMaximum     String
+  lossUnrealized    String
+  sharesOutstanding String?
+  shareMptId        String
+  isPrivate         Boolean
+  withdrawalPolicy  Int
+  firstSeenAt       DateTime @default(now())
+  lastLedger        Int
+  deleted           Boolean  @default(false)
+  raw               String
+  updatedAt         DateTime @updatedAt
+
+  @@index([network, deleted])
+}
+
+model LendingBroker {
+  id                   String   @id // LoanBroker ledger index
+  network              String   @default("mainnet")
+  account              String // the broker's pseudo-account
+  owner                String
+  vaultId              String
+  debtTotal            String
+  debtMaximum          String
+  coverAvailable       String
+  coverRateMinimum     Int // 1/10 basis points
+  coverRateLiquidation Int // 1/10 basis points
+  managementFeeRate    Int // 1/10 basis points
+  ownerCount           Int
+  loanSequence         Int
+  firstSeenAt          DateTime @default(now())
+  lastLedger           Int
+  deleted              Boolean  @default(false)
+  raw                  String
+  updatedAt            DateTime @updatedAt
+
+  @@index([network, vaultId])
+}
+
+model LendingLoan {
+  id                    String    @id // Loan ledger index
+  network               String    @default("mainnet")
+  brokerId              String
+  borrower              String
+  flags                 Int
+  principalOutstanding  String
+  totalValueOutstanding String
+  periodicPayment       String
+  interestRate          Int // 1/10 basis points, annualised
+  paymentInterval       Int // seconds
+  gracePeriod           Int // seconds
+  nextPaymentDueDate    Int? // Ripple-epoch seconds
+  paymentRemaining      Int
+  startDate             Int // Ripple-epoch seconds
+  closed                Boolean   @default(false) // gone from the ledger (repaid / deleted)
+  defaultedAt           DateTime? // first time we saw lsfLoanDefault
+  impairedAt            DateTime? // first time we saw lsfLoanImpaired
+  firstSeenAt           DateTime  @default(now())
+  lastLedger            Int
+  raw                   String
+  updatedAt             DateTime  @updatedAt
+
+  @@index([network, brokerId])
+}
+
+model LendingTx {
+  hash        String   @id
+  network     String   @default("mainnet")
+  txType      String
+  ledgerIndex Int
+  closeTime   DateTime
+  account     String
+  result      String
+  brokerId    String?
+  vaultId     String?
+  loanId      String?
+  amount      String?
+  raw         String
+
+  @@index([network, brokerId, ledgerIndex])
+  @@index([network, vaultId, ledgerIndex])
+}
+
+// One grade per subject per indexer run — the history Lending Pro serves and the alerts compare against.
+model LendingGrade {
+  id            String   @id @default(cuid())
+  network       String   @default("mainnet")
+  subjectType   String // vault | broker
+  subjectId     String
+  grade         String // A B C D F, or "N/A"
+  score         Int
+  metrics       String // JSON
+  methodVersion String
+  takenAt       DateTime @default(now())
+
+  @@index([network, subjectType, subjectId, takenAt])
+}
+
+// Lending Pro alert subscriptions. The uxus API key itself is never stored — only its SHA-256.
+model LendingAlertWatch {
+  id                String    @id @default(cuid())
+  apiKeyHash        String
+  subjectType       String // vault | broker
+  subjectId         String
+  webhookUrl        String
+  secret            String // HMAC-SHA256 signing secret, shown once at creation
+  lastNotifiedGrade String?
+  lastNotifiedAt    DateTime?
+  createdAt         DateTime  @default(now())
+
+  @@unique([apiKeyHash, subjectType, subjectId])
+}

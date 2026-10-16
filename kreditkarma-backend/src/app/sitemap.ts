@@ -18,6 +18,18 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority:         0.8,
     },
     {
+      url:              `${base}/lending`,
+      lastModified:     now,
+      changeFrequency:  'hourly',
+      priority:         0.9,
+    },
+    {
+      url:              `${base}/lending/method`,
+      lastModified:     now,
+      changeFrequency:  'monthly',
+      priority:         0.6,
+    },
+    {
       url:              `${base}/permissions`,
       lastModified:     now,
       changeFrequency:  'monthly',

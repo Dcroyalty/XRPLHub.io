@@ -62,6 +62,7 @@ read the answer is `unknown` and lending **fails closed** while MPT copy fails t
 | **DynamicMPT (XLS-94)** and **ConfidentialTransfer (XLS-96)** | `getAmendmentStatuses([...])` in `src/lib/mptPermanence.ts` | `/api/mpt/permanence`, `/api/mpt/search`, `/api/mpt/issuer` — the permanence / confidential-holder copy flips by itself |
 | **PermissionDelegationV1_1 (XLS-75)** | `serviceAvailability()` in `src/lib/serviceAmendments.ts` (map `SERVICE_REQUIRED_AMENDMENT`) | storefront service `delegate`: the builder (so `/api/execute`, `/api/x402/tx` and the free preview), `/api/create-payment` (no payment can be created while inactive), `/api/x402/tx` `refuse()` (no 402 challenge while inactive), the free revoke `/api/delegate`, the Buy button (`/api/services/availability`). Majority since 2026-09-24 21:25 UTC → earliest activation **2026-10-08 21:25 UTC**. Nothing to do at activation. |
 | SingleAssetVault (XLS-65) | not consumed by product code (vault profiles are not built) | the watchdog only announces its activation |
+| **LendingProtocol + SingleAssetVault together** | `lendingLive()` in `src/lib/lendingTracker.ts` | XRPL Lending phase 2 (§23): the vault/broker/loan index and risk grades in the hourly job, `/lending/vaults`, `/lending/vault/[id]`, `/lending/broker/[id]`, the Lending Pro routes. Nothing to do at activation. |
 
 When LendingProtocol or SingleAssetVault first reads `active`, the watchdog posts one message ("XLS-66 is now ACTIVE …")
 to the error webhook. If the amendment reader itself cannot read the ledger for a run, the watchdog warns
@@ -504,3 +505,32 @@ old ledger — so "do the nodes agree?" stays green; only the validated ledger's
   phone, §21).
 - **Audit:** the Xaman checklist runs headless against production at 320/360/390/412 px in LIGHT, DARK, MOONLIGHT and
   ROYAL. It records every message sent to Xaman, proving nothing opens without a tap.
+
+## 23. XRPL Lending — tracker (live) and vault grades (switched on by the ledger) (2026-10-16)
+
+- **What runs:** `.github/workflows/lending-tracker.yml` (repo root) calls `GET /api/cron/lending-tracker` at :07 every
+  hour (Vercel Hobby crons are daily-only). The route is public and stores at most one `LendingAmendmentSnapshot` per hour
+  (`hourBucket` is unique), so a stray call only refreshes the page early. Each stored snapshot writes the
+  `lending-tracker` heartbeat.
+- **Data sources:** enabled status and majority dates from the ledger's Amendments object (`src/lib/amendments.ts`). Votes
+  per validator from XRPScan's public validator registry (`api.xrpscan.com/api/v1/validatorregistry`), counted for the
+  validators on `vl.ripple.com`. Votes needed = floor(n × 0.8) + 1 (rippled: more than 80%), 29 of 35 today. If XRPScan
+  can't be read the snapshot is stored with `source = "ledger-only"` and no votes (watchdog warns).
+- **Alerts:** watchdog finding `lending-tracker` goes RED when the newest snapshot is older than 3 hours → healthchecks.io
+  `/fail` email. Most likely cause: GitHub paused the schedule (public repos, after 60 days without a commit) — Actions tab →
+  "Lending tracker (hourly)" → Enable workflow. Optional: set `LENDING_HEALTHCHECK_PING_URL` to an hourly healthchecks.io
+  check (period 1 h, grace 30 min) and every run pings it.
+- **Signups:** `/api/lending/signup` stores emails in `LendingSignup` (unique, lower-cased, consent sentence, IP hash).
+  NO email sender is configured (`RESEND_API_KEY` unset), so nothing is sent. The privacy policy (§11 "XRPL Lending launch
+  list") promises ONE email at mainnet activation, then deleting the list (keeping unsubscribed addresses as do-not-email).
+  Count: `select count(*) from "LendingSignup" where "unsubscribedAt" is null`. Unsubscribe link:
+  `/api/lending/signup?unsubscribe=<unsubscribeToken>`.
+- **Phase 2 (dormant until `lendingLive()`):** the same hourly run calls `runLendingIndex` (`src/lib/lendingIndex.ts`):
+  a resumable `ledger_data type=vault` walk (checkpoint `lending-walk:mainnet`, pinned to xrplcluster) for discovery,
+  then each vault → its brokers (vault owner's `loan_broker` objects) → each broker's loans (broker pseudo-account's
+  `loan` objects) → lending transactions (`account_tx` on the pseudo-accounts, cursor `lending-tx:mainnet:<account>`).
+  Grades: `src/lib/lendingGrade.ts`, method published at `/lending/method` from the same `RULES` table
+  (`METHOD_VERSION = lending-grade-v1`). Stored per run in `LendingGrade`. Lending Pro webhooks (`LendingAlertWatch`)
+  fire when a watched grade changes. Tested end to end against XRPL Devnet on 2026-10-16 (lending is enabled on Devnet;
+  Ripple's lending tutorials use Devnet).
+- **Copies:** `lendingGrade.ts` and `lendingFacts.ts` are copied into the uxus repo for the paid grade API. Change both.
