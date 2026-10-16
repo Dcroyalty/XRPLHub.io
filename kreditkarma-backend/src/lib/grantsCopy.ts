@@ -2,7 +2,7 @@
 // (no server imports here). The pool itself is read in src/lib/grantsPool.ts.
 
 export const GRANTS_POOL = "raiqAnACKxmVY7oCUWnCYdGquSrkMdsMuu";
-export const FIRST_MILESTONE_XRP = 1_000; // the first 10 grants go out when the pool reaches this
+export const FIRST_MILESTONE_XRP = 1_000; // the first 10 grants go out when the pool reaches this (RLUSD counted at the XRP price)
 export const FIRST_MILESTONE_GRANTS = 10;
 export const LONG_TERM_GOAL_XRP = 100_000;
 export const DONATION_DISCLOSURE =
@@ -11,3 +11,4 @@ export const APPLICANT_STATUS =
   "Applications are saved and reviewed in order once the pool reaches its first milestone. We'll email you when review starts.";
 export const GRANT_UPDATES_CONSENT = "Email me occasional XRPLHub updates (new free tools and grant news). Unsubscribe any time.";
 export const GRANT_CATEGORIES = ["Rent or housing", "Utilities", "Food", "Medical", "School", "Small business", "Other"];
+export const PAYOUT_LINE = "Grants are paid in RLUSD. XRP donations are held in the pool.";

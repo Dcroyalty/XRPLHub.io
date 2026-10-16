@@ -12,7 +12,7 @@ type Created = { uuid: string; qr_png: string | null; deep_link: string | null; 
 
 export default function DonateBox({ rlusdEnabled: given }: { rlusdEnabled?: boolean }) {
   const [rlusdEnabled, setRlusd] = useState(!!given);
-  const [currency, setCurrency] = useState<"XRP" | "RLUSD">("XRP");
+  const [currency, setCurrency] = useState<"XRP" | "RLUSD">(given ? "RLUSD" : "XRP");
   const [amount, setAmount] = useState("25");
   const [usd, setUsd] = useState("25");
   const [created, setCreated] = useState<Created | null>(null);
@@ -23,7 +23,7 @@ export default function DonateBox({ rlusdEnabled: given }: { rlusdEnabled?: bool
 
   useEffect(() => {
     if (given !== undefined) return;
-    fetch("/api/grants/pool").then((r) => r.json()).then((j) => setRlusd(!!j?.rlusd?.enabled)).catch(() => {});
+    fetch("/api/grants/pool").then((r) => r.json()).then((j) => { const on = !!j?.rlusd?.enabled; setRlusd(on); if (on) setCurrency("RLUSD"); }).catch(() => {});
   }, [given]);
   useEffect(() => () => stopRef.current(), []);
 
@@ -58,8 +58,8 @@ export default function DonateBox({ rlusdEnabled: given }: { rlusdEnabled?: bool
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 <input aria-label="Amount" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ""))} style={{ ...S.input, flex: "1 1 100px" }} />
                 <select aria-label="Currency" value={currency} onChange={(e) => setCurrency(e.target.value as "XRP" | "RLUSD")} style={{ ...S.input, flex: "0 0 104px" }}>
-                  <option value="XRP">XRP</option>
                   {rlusdEnabled && <option value="RLUSD">RLUSD</option>}
+                  <option value="XRP">XRP</option>
                 </select>
               </div>
               <button onClick={donateXaman} disabled={state === "creating" || !(Number(amount) > 0)} style={{ ...S.btnPrimary, width: "100%", marginTop: 8 }}>
@@ -67,7 +67,7 @@ export default function DonateBox({ rlusdEnabled: given }: { rlusdEnabled?: bool
               </button>
               <p style={{ ...S.small, margin: "8px 0 0" }}>
                 Or send any amount from any wallet to <button onClick={copy} style={{ background: "none", border: "none", padding: 0, color: B.accent, cursor: "pointer", fontFamily: "ui-monospace,monospace", fontSize: 12, wordBreak: "break-all", textAlign: "left" }}>{GRANTS_POOL}</button>{copied ? " (copied)" : ""}.
-                {!rlusdEnabled && " XRP only for now; RLUSD appears here once the pool has an RLUSD trust line."}
+                {rlusdEnabled ? " Grants are paid in RLUSD, so RLUSD goes furthest; XRP donations are held in the pool." : " XRP only for now; RLUSD appears here once the pool has an RLUSD trust line."}
               </p>
             </>
           )}

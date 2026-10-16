@@ -12,7 +12,7 @@
 import type { PrismaClient } from "@prisma/client";
 import { xrpUsd } from "./xrpPrice";
 import { pingHealthcheck } from "./notify";
-import { GRANTS_POOL } from "./grantsCopy";
+import { GRANTS_POOL, FIRST_MILESTONE_XRP, FIRST_MILESTONE_GRANTS } from "./grantsCopy";
 export * from "./grantsCopy";
 
 
@@ -148,7 +148,7 @@ export async function maybeDonationsAlert(prisma: PrismaClient, ping: typeof pin
 
 // ── Card donations owed to the pool ────────────────────────────────────────────────────────────────────────────
 // Card donations land in Morrbiz LLC's Stripe balance. The owner moves them into the pool by paying it from the
-// XRPLHub treasury (rs59g3amo5iT6T64Cg96XXMAWuw3WPQcLF). Those payments are transfers, not new donations: they are
+// XRPLHub treasury (rs59g3amo5iT6T64Cg96XXMAWuw3WPQcLF), as RLUSD at 1 RLUSD per dollar. Those payments are transfers, not new donations: they are
 // left out of the donation totals and matched to card donations oldest-first by USD value (net of card fees when the
 // fee is known). A card donation counts as moved on the date the transfer that covers it arrived. If one sits
 // unmoved for 30 days we send ONE healthchecks.io /fail alert for it (checkpoint `grants-card-unmoved:<ref>`).
@@ -195,7 +195,7 @@ export async function maybeCardUnmovedAlert(prisma: PrismaClient, ping: typeof p
     fresh.push(r);
   }
   if (fresh.length) {
-    await ping("/fail", `XRPLHub grants pool: ${fresh.length} card donation(s) received over 30 days ago are still not moved to the pool: ${fresh.map((r) => `$${r.owedUsd.toFixed(2)} (ref …${r.id}, received ${r.receivedAt.slice(0, 10)})`).join("; ")}. Send the amount from the XRPLHub treasury ${CARD_TRANSFER_SOURCE} to ${GRANTS_POOL}. One alert per donation.`);
+    await ping("/fail", `XRPLHub grants pool: ${fresh.length} card donation(s) received over 30 days ago are still not moved to the pool: ${fresh.map((r) => `$${r.owedUsd.toFixed(2)} (ref …${r.id}, received ${r.receivedAt.slice(0, 10)})`).join("; ")}. Send the amount as RLUSD (1 RLUSD per dollar) from the XRPLHub treasury ${CARD_TRANSFER_SOURCE} to ${GRANTS_POOL}. One alert per donation.`);
   }
   return fresh.length;
 }
@@ -207,4 +207,50 @@ export async function paidFirstGrants(prisma: PrismaClient) {
     orderBy: { createdAt: "asc" },
     select: { id: true, walletAddress: true, approvedAmount: true, currency: true, createdAt: true },
   });
+}
+
+// ── Payout rules (owner decision 2026-10-16) ───────────────────────────────────────────────────────────────────
+// Grants are paid in RLUSD, from the pool's RLUSD only. The pool's XRP is never spent or converted without the
+// owner's say-so; XRP is paid only to someone who can't hold RLUSD. Before paying anyone, check they can receive
+// RLUSD (a trust line to Ripple's issuer with room for the amount and not frozen). Milestones count RLUSD at the
+// current XRP price. If a milestone is reached but the RLUSD can't cover its grants, ONE healthchecks.io /fail asks
+// the owner before any XRP is converted (checkpoint `grants-milestone-short:<xrp milestone>`).
+export interface RlusdReceive { canReceive: boolean; reason: string }
+
+export async function rlusdReceiveStatus(address: string, amount = 0): Promise<RlusdReceive> {
+  const r = await rpc("account_lines", { account: address, peer: RLUSD_ISSUER, ledger_index: "validated" });
+  if (!r) return { canReceive: false, reason: "couldn't read the ledger" };
+  if (r.error === "actNotFound") return { canReceive: false, reason: "the account doesn't exist on the XRP Ledger" };
+  const line = ((r.lines as { currency: string; balance: string; limit: string; freeze?: boolean; freeze_peer?: boolean }[] | undefined) ?? []).find((l) => l.currency === RLUSD_HEX);
+  if (!line) return { canReceive: false, reason: "no RLUSD trust line" };
+  if (line.freeze || line.freeze_peer) return { canReceive: false, reason: "their RLUSD trust line is frozen" };
+  if (Number(line.limit) - Number(line.balance) < amount) return { canReceive: false, reason: "their RLUSD trust line limit is too low for this amount" };
+  return { canReceive: true, reason: "has an RLUSD trust line" };
+}
+
+export const RLUSD_TRUSTLINE_MESSAGE = (amountUsd: number) =>
+  `Hi — this is XRPLHub. Your community grant of $${amountUsd} is ready to send. We pay grants in RLUSD (a US-dollar stablecoin issued by Ripple), so your wallet needs an RLUSD trust line first. In Xaman: open your wallet, tap "+ Add asset" (or Assets → Add), search for RLUSD by Ripple (issuer rMxCKbEDwqr76QuheSUMdEGf4B9xJ8m5De) and add it. It needs 0.2 XRP held in reserve, which you get back if you remove it later. Reply once it's added and we'll send the grant. We will never ask for your secret key or any payment.`;
+
+/** Pool total valued in XRP and USD: XRP + RLUSD at the current XRP price. */
+export function poolTotals(p: PoolState, xrpUsdPrice: number | null) {
+  const xrp = p.balanceXrp ?? 0;
+  const rlusd = p.rlusd.balance;
+  if (!xrpUsdPrice) return { xrpEquivalent: xrp, usd: null as number | null, rlusd, xrp };
+  return { xrpEquivalent: xrp + rlusd / xrpUsdPrice, usd: xrp * xrpUsdPrice + rlusd, rlusd, xrp };
+}
+
+/** Milestone reached but RLUSD short of what its grants need → ask the owner (once per milestone). */
+export async function maybeMilestoneShortAlert(prisma: PrismaClient, ping: typeof pingHealthcheck = pingHealthcheck): Promise<boolean> {
+  const [p, price] = await Promise.all([readPool(), xrpUsd().catch(() => null)]);
+  const t = poolTotals(p, price);
+  if (t.xrpEquivalent < FIRST_MILESTONE_XRP) return false;
+  const first = await paidFirstGrants(prisma);
+  const queue = await prisma.grantRequest.findMany({ where: { round: "pool-2026", status: { in: ["PENDING", "REVIEWING", "APPROVED"] } }, orderBy: { createdAt: "asc" }, take: FIRST_MILESTONE_GRANTS, select: { amountRequested: true } });
+  const needUsd = first.reduce((s, g) => s + (g.approvedAmount ?? 0), 0) + queue.reduce((s, g) => s + g.amountRequested, 0);
+  if (t.rlusd >= needUsd) return false;
+  const id = `grants-milestone-short:${FIRST_MILESTONE_XRP}`;
+  if (await prisma.indexerCheckpoint.findUnique({ where: { id } })) return false;
+  await prisma.indexerCheckpoint.create({ data: { id, status: "idle", lastCompletedPassAt: new Date() } });
+  await ping("/fail", `XRPLHub grants pool reached its ${FIRST_MILESTONE_XRP.toLocaleString("en-US")} XRP milestone (${Math.round(t.xrpEquivalent).toLocaleString("en-US")} XRP counting RLUSD), but it holds ${t.rlusd.toFixed(2)} RLUSD and the first grants need about $${needUsd.toFixed(2)}. Grants are paid in RLUSD only: decide whether to convert some of the pool's ${Math.round(t.xrp).toLocaleString("en-US")} XRP. Nothing has been converted.`);
+  return true;
 }

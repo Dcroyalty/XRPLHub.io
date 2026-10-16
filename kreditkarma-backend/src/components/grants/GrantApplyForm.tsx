@@ -7,7 +7,7 @@ import { APPLICANT_STATUS, GRANT_CATEGORIES, GRANT_UPDATES_CONSENT } from "@/lib
 import { B, S } from "@/components/brand";
 
 export default function GrantApplyForm() {
-  const [f, setF] = useState({ name: "", wallet: "", email: "", category: "", need: "", amountXrp: "50", website: "" });
+  const [f, setF] = useState({ name: "", wallet: "", email: "", category: "", need: "", amountUsd: "50", website: "" });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [done, setDone] = useState<{ id: string } | null>(null);
@@ -18,7 +18,7 @@ export default function GrantApplyForm() {
     e.preventDefault();
     setErr(""); setBusy(true);
     try {
-      const r = await fetch("/api/grants/submit", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...f, amountXrp: Number(f.amountXrp) }) });
+      const r = await fetch("/api/grants/submit", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...f, amountUsd: Number(f.amountUsd) }) });
       const j = await r.json();
       if (!r.ok || !j.ok) throw new Error(j.error || j.message || "Couldn't save your application. Try again.");
       setDone({ id: j.id });
@@ -79,8 +79,9 @@ export default function GrantApplyForm() {
       </select>
       <label style={label} htmlFor="g-need">Tell us what you need</label>
       <textarea id="g-need" required minLength={20} maxLength={2000} rows={4} value={f.need} onChange={set("need")} style={{ ...S.input, resize: "vertical" }} />
-      <label style={label} htmlFor="g-amt">Amount (10 to 100 XRP)</label>
-      <input id="g-amt" required inputMode="numeric" value={f.amountXrp} onChange={set("amountXrp")} style={S.input} />
+      <label style={label} htmlFor="g-amt">Amount ($10 to $100, paid in RLUSD)</label>
+      <input id="g-amt" required inputMode="numeric" value={f.amountUsd} onChange={set("amountUsd")} style={S.input} />
+      <p style={{ ...S.small, margin: "6px 0 0" }}>Grants are paid in RLUSD, a US-dollar stablecoin. Your wallet needs an RLUSD trust line to receive it; we'll tell you how if it doesn't have one.</p>
       <input tabIndex={-1} aria-hidden="true" autoComplete="off" name="website" value={f.website} onChange={set("website")} style={{ position: "absolute", left: -9999, width: 1, height: 1, opacity: 0 }} />
       {err && <p role="alert" style={{ color: "#fca5a5", margin: "10px 0 0", fontSize: 14 }}>{err}</p>}
       <button type="submit" disabled={busy} style={{ ...S.btnPrimary, width: "100%", marginTop: 14 }}>{busy ? "Saving…" : "Submit application"}</button>

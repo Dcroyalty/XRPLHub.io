@@ -623,3 +623,10 @@ old ledger — so "do the nodes agree?" stays green; only the validated ledger's
   claim secret (its SHA-256 is in the memo), then mints a 30-day xrplhub_pro key.
 - **Analytics:** our own devices are excluded by opening https://www.xrplhub.io/?va-disable=1 once per device
   (?va-disable=0 undoes it); automated browsers are dropped (src/components/AnalyticsClient.tsx).
+- **Payout rule (owner, 2026-10-16):** grants are paid in RLUSD from the pool's RLUSD only (the pool has had an RLUSD
+  trust line since 2026-10-16). Never spend or convert the pool's XRP without asking the owner; pay XRP only to someone
+  who can't hold RLUSD. Before paying, check the recipient can receive RLUSD (`rlusdReceiveStatus` in
+  src/lib/grantsPool.ts; /grants and /grants/ledger show "waiting for an RLUSD trust line"); if not, send them
+  `RLUSD_TRUSTLINE_MESSAGE`. Applications are in US dollars ($10–$100). Milestones count RLUSD at the current XRP price;
+  if a milestone is reached but RLUSD can't cover its grants, ONE /fail asks the owner (checkpoint
+  `grants-milestone-short:1000`). Card donations are moved to the pool as RLUSD, 1 RLUSD per dollar.

@@ -4,7 +4,7 @@
 // (it only reads public data), called by .github/workflows/lending-tracker.yml like the other hourly jobs.
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/xrplscore-db";
-import { syncPoolLedger, maybeDonationsAlert, maybeCardUnmovedAlert } from "@/lib/grantsPool";
+import { syncPoolLedger, maybeDonationsAlert, maybeCardUnmovedAlert, maybeMilestoneShortAlert } from "@/lib/grantsPool";
 import { notifyError } from "@/lib/notify";
 
 export const runtime = "nodejs";
@@ -16,7 +16,8 @@ export async function GET() {
     const sync = await syncPoolLedger(prisma, Date.now() + 40_000);
     const alerted = await maybeDonationsAlert(prisma).catch(() => false);
     const unmovedAlerts = await maybeCardUnmovedAlert(prisma).catch(() => 0);
-    return NextResponse.json({ ok: true, ...sync, donationsAlertSent: alerted, cardUnmovedAlerts: unmovedAlerts }, { headers: { "Cache-Control": "no-store" } });
+    const milestoneShortAlert = await maybeMilestoneShortAlert(prisma).catch(() => false);
+    return NextResponse.json({ ok: true, ...sync, donationsAlertSent: alerted, cardUnmovedAlerts: unmovedAlerts, milestoneShortAlert }, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
     await notifyError("cron grants-sync", e);
     return NextResponse.json({ ok: false, error: e instanceof Error ? e.message : String(e) }, { status: 503, headers: { "Cache-Control": "no-store" } });

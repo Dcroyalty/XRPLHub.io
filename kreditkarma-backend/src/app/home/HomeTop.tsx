@@ -165,15 +165,15 @@ export function TrustStrip() {
 }
 
 export function GrantsTeaser() {
-  const [bal, setBal] = useState<number | null>(null);
-  useEffect(() => { fetch("/api/grants/pool").then((r) => r.json()).then((j) => setBal(j.balanceXrp ?? null)).catch(() => {}); }, []);
+  const [bal, setBal] = useState<{ xrp: number; rlusd: number } | null>(null);
+  useEffect(() => { fetch("/api/grants/pool").then((r) => r.json()).then((j) => setBal({ xrp: j.balanceXrp ?? 0, rlusd: j.rlusd?.balance ?? 0 })).catch(() => {}); }, []);
   return (
     <div style={S.card}>
       <div style={S.eyebrow}>Community grants</div>
       <h2 style={{ ...S.h2, marginTop: 6 }}>Grants are open. Applying is free.</h2>
       <p style={{ margin: "0 0 10px", lineHeight: 1.55 }}>
-        Small XRP grants for rent, bills, food or school, reviewed by a person. The pool holds{" "}
-        <strong style={{ color: B.white }}>{bal == null ? "…" : `${bal.toLocaleString("en-US", { maximumFractionDigits: 2 })} XRP`}</strong>; the first 10 grants go out at 1,000 XRP.
+        Small grants for rent, bills, food or school, reviewed by a person and paid in RLUSD. The pool holds{" "}
+        <strong style={{ color: B.white }}>{bal == null ? "…" : `${bal.rlusd.toLocaleString("en-US", { maximumFractionDigits: 2 })} RLUSD + ${bal.xrp.toLocaleString("en-US", { maximumFractionDigits: 2 })} XRP`}</strong>; the first 10 grants go out at 1,000 XRP (RLUSD counted at the XRP price). XRP donations are held in the pool.
       </p>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         <a href="/grants#apply" style={S.btnPrimary}>Apply free</a>

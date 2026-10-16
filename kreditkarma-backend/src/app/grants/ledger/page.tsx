@@ -4,7 +4,7 @@
 import type React from "react";
 import type { Metadata } from "next";
 import { prisma } from "@/lib/xrplscore-db";
-import { cardDonations, donationsUsdInYear, cardOwed, paidFirstGrants, CARD_TRANSFER_SOURCE } from "@/lib/grantsPool";
+import { cardDonations, donationsUsdInYear, cardOwed, paidFirstGrants, CARD_TRANSFER_SOURCE, rlusdReceiveStatus } from "@/lib/grantsPool";
 import { GRANTS_POOL, DONATION_DISCLOSURE } from "@/lib/grantsCopy";
 import SiteNav from "@/components/SiteNav";
 import { B, S } from "@/components/brand";
@@ -28,6 +28,7 @@ export default async function GrantsLedgerPage() {
   ]);
   const year = new Date().getUTCFullYear();
   const [totals, owed, firstQueue] = await Promise.all([donationsUsdInYear(prisma, year, cards), cardOwed(prisma, cards ?? []), paidFirstGrants(prisma)]);
+  const firstReady = await Promise.all(firstQueue.map((g) => rlusdReceiveStatus(g.walletAddress, g.approvedAmount ?? 0)));
   const movedBy = new Map(owed.rows.map((r) => [r.id, r.movedAt]));
   const transfers = rows.filter((r) => r.direction === "in" && r.counterparty === CARD_TRANSFER_SOURCE);
   type Row = { at: string; kind: string; amount: string; detail: React.ReactNode };
@@ -57,7 +58,7 @@ export default async function GrantsLedgerPage() {
         <section style={{ ...S.card, marginBottom: 16 }}>
           <div style={S.eyebrow}>Card donations owed to the pool</div>
           <div style={{ fontFamily: B.serif, fontSize: 28, color: B.white, fontWeight: 700 }}>{cards == null ? "—" : usd(owed.owedUsd)}</div>
-          <p style={{ ...S.small, margin: "4px 0 0" }}>Card donations arrive in Morrbiz LLC's Stripe balance. They are moved to the pool, after card fees, as payments from the XRPLHub treasury {CARD_TRANSFER_SOURCE.slice(0, 6)}…{CARD_TRANSFER_SOURCE.slice(-4)} ({transfers.length} so far), oldest first; each card donation below shows the date it was moved.</p>
+          <p style={{ ...S.small, margin: "4px 0 0" }}>Card donations arrive in Morrbiz LLC's Stripe balance. They are moved to the pool after card fees, as RLUSD at 1 RLUSD per dollar, in payments from the XRPLHub treasury {CARD_TRANSFER_SOURCE.slice(0, 6)}…{CARD_TRANSFER_SOURCE.slice(-4)} ({transfers.length} so far), oldest first; each card donation below shows the date it was moved.</p>
         </section>
 
         <section style={{ ...S.card, marginBottom: 16 }}>
@@ -65,7 +66,7 @@ export default async function GrantsLedgerPage() {
           {firstQueue.length === 0 ? <p style={{ margin: 0 }}>Nothing waiting.</p> : (
             <>
               <p style={{ margin: "0 0 8px" }}>Approved in July 2026, before this pool existed. They are first in the queue and are paid from the first donations.</p>
-              <ul style={{ margin: 0, paddingLeft: 18 }}>{firstQueue.map((g) => <li key={g.id}>{day(g.createdAt)}: {g.approvedAmount} {g.currency === "RLUSD" ? "USD" : g.currency} to {short(g.walletAddress)} — approved, paid first</li>)}</ul>
+              <ul style={{ margin: 0, paddingLeft: 18 }}>{firstQueue.map((g, i) => <li key={g.id}>{day(g.createdAt)}: ${g.approvedAmount} in RLUSD to {short(g.walletAddress)} — approved, paid first{firstReady[i]?.canReceive ? "" : " (waiting for the recipient to add an RLUSD trust line)"}</li>)}</ul>
             </>
           )}
         </section>

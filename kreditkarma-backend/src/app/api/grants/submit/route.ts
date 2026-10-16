@@ -37,12 +37,12 @@ export async function POST(req: Request) {
   const category = String(b.category ?? '');
   const need = String(b.need ?? '').trim();
   const name = String(b.name ?? '').trim().slice(0, 80);
-  const amount = Math.round(Number(b.amountXrp));
+  const amount = Math.round(Number(b.amountUsd ?? b.amountXrp)); // US dollars, paid in RLUSD
   if (!isValidXrplAddress(wallet)) return NextResponse.json({ error: 'Enter a valid XRP Ledger address (starts with r).' }, { status: 400 });
   if (email.length > 254 || !EMAIL.test(email)) return NextResponse.json({ error: 'Enter an email address — we use it to tell you when review starts.' }, { status: 400 });
   if (!GRANT_CATEGORIES.includes(category)) return NextResponse.json({ error: 'Choose what the grant is for.' }, { status: 400 });
   if (need.length < 20 || need.length > 2000) return NextResponse.json({ error: 'Tell us what you need in 20 to 2,000 characters.' }, { status: 400 });
-  if (!Number.isFinite(amount) || amount < 10 || amount > 100) return NextResponse.json({ error: 'Ask for 10 to 100 XRP.' }, { status: 400 });
+  if (!Number.isFinite(amount) || amount < 10 || amount > 100) return NextResponse.json({ error: 'Ask for $10 to $100.' }, { status: 400 });
 
   // One open application per wallet in this round.
   const existing = await prisma.grantRequest.findFirst({ where: { walletAddress: wallet, round: 'pool-2026', status: { in: ['PENDING', 'REVIEWING', 'APPROVED'] } }, select: { id: true } });
@@ -53,7 +53,7 @@ export async function POST(req: Request) {
       walletAddress: wallet,
       category,
       amountRequested: amount,
-      currency: 'XRP',
+      currency: 'RLUSD', // grants are paid in RLUSD (owner rule 2026-10-16)
       description: name ? `${need}\n\n— Name: ${name}` : need,
       urgency: urgencyFor(category),
       status: 'PENDING',
