@@ -27,9 +27,20 @@ export const AMM_POOLS = [
 ] as const;
 
 type Rpc = (method: string, params: object) => Promise<Record<string, unknown> | null>;
+// Ripple's own full-history servers first: the community pool often answers account_tx and amm_info with
+// "tooBusy"/"slowDown" inside a normal reply. A reply carrying an error counts as a failure, never as data.
+const DIRECT = ["https://s1.ripple.com:51234", "https://s2.ripple.com:51234"];
+const usable = (r: Record<string, unknown> | null | undefined) => (r && !r.error ? r : null);
 const defaultRpc: Rpc = async (method, params) => {
+  for (const url of DIRECT) {
+    try {
+      const res = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ method, params: [params] }), signal: AbortSignal.timeout(12_000), cache: "no-store" });
+      const r = usable(((await res.json()) as { result?: Record<string, unknown> }).result);
+      if (r) return r;
+    } catch { /* next */ }
+  }
   const r = await xrplRpc(method, params, 12_000);
-  return r.ok ? ((r.body.result as Record<string, unknown>) ?? null) : null;
+  return r.ok ? usable(r.body.result as Record<string, unknown>) : null;
 };
 
 type Cursor = { min: number; marker: unknown | null };
