@@ -5,8 +5,10 @@ name: Lending tracker (hourly)
 #
 # Keepalive: GitHub disables scheduled workflows in a public repo after 60 days with no repository activity.
 # Each run checks the date of the newest commit on main; if it is more than 40 days old, the job pushes one
-# empty commit ("keepalive") so the schedule never lapses while nobody is committing. The XRPLHub watchdog still
-# raises a RED "lending-tracker" finding (healthchecks.io emails) if snapshots stop for any other reason.
+# empty commit ("keepalive") so the schedule never lapses while nobody is committing. GitHub can also delay or drop
+# scheduled runs: the XRPLHub daily watchdog refreshes the tracker itself when the newest snapshot is over 3 hours old,
+# and raises a RED "lending-tracker" finding (healthchecks.io email) only if that refresh fails too.
+# Scheduled workflows only run from the default branch (main).
 
 on:
   schedule:

@@ -516,7 +516,11 @@ old ledger — so "do the nodes agree?" stays green; only the validated ledger's
   per validator from XRPScan's public validator registry (`api.xrpscan.com/api/v1/validatorregistry`), counted for the
   validators on `vl.ripple.com`. Votes needed = floor(n × 0.8) + 1 (rippled: more than 80%), 29 of 35 today. If XRPScan
   can't be read the snapshot is stored with `source = "ledger-only"` and no votes (watchdog warns).
-- **Alerts:** watchdog finding `lending-tracker` goes RED when the newest snapshot is older than 3 hours → healthchecks.io
+- **Fallback refresh:** GitHub's scheduled runs can be delayed or dropped. When the daily watchdog (06:00 and 07:00 UTC
+  crons) finds the newest snapshot older than 3 hours, it runs the tracker itself (same `runTracker`, 12 s cap) and
+  reports WARN ("the hourly trigger missed") if that stores a snapshot, RED only if that refresh also fails.
+- **Alerts:** watchdog finding `lending-tracker` goes RED when the newest snapshot is older than 3 hours AND the
+  watchdog's own refresh fails → healthchecks.io
   `/fail` email. Most likely cause: GitHub paused the schedule (public repos, after 60 days without a commit) — Actions tab →
   "Lending tracker (hourly)" → Enable workflow. Optional: set `LENDING_HEALTHCHECK_PING_URL` to an hourly healthchecks.io
   check (period 1 h, grace 30 min) and every run pings it.
@@ -562,7 +566,9 @@ old ledger — so "do the nodes agree?" stays green; only the validated ledger's
 - **Schedule keepalive (2026-10-16):** the repo is public, and GitHub disables scheduled workflows after 60 days with no
   repository activity. The workflow's `keepalive` job checks the newest commit on main every hour and, if it is 40+ days
   old, pushes one empty commit ("keepalive: …") with the workflow's own token (no secret, no human). That push also
-  triggers a Vercel deploy, which is harmless. If the schedule stops anyway, the `lending-tracker` watchdog finding goes RED.
+  triggers a Vercel deploy, which is harmless. If the schedule stops anyway, the daily watchdog refreshes the tracker itself (WARN), so
+  the chart keeps at least two points a day; RED only if that refresh fails too. Scheduled workflows only run from the
+  default branch, which is `main`.
 - **Activation self-test (phase 2):** once `lendingLive()`, the hourly job runs `runLendingSelfTest` (`src/lib/lendingOps.ts`)
   daily (hourly while failing): `/lending/vaults` and a vault page, the uxus grade API's $0.02 402 challenge, MCP
   `lending_grade` returning the paid resource, and the Lending Pro pricing card + a Stripe Checkout session (created, never

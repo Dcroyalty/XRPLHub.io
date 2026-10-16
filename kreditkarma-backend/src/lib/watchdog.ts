@@ -38,6 +38,7 @@ import { maxTotalSubjects } from "./monitorEngine";
 import { checkCredentialAnomalies } from "./credentialAnomalyWatch";
 import { userTokensActive, xummConfigured } from "./xumm";
 import { lastSelfTest } from "./lendingOps";
+import { runTracker } from "./lendingTracker";
 
 export type Level = "ok" | "warn" | "red";
 export interface Finding {
@@ -125,14 +126,31 @@ async function checkAnchorWallet(): Promise<Finding> {
   return { key: "anchor-wallet", level: "ok", message: `${spendable.toFixed(3)} XRP spendable` };
 }
 
-// The hourly XRPL Lending tracker (/lending, GitHub Actions → /api/cron/lending-tracker). A snapshot older than
-// 3 hours means the hourly trigger stopped (GitHub disables scheduled workflows after 60 days without a push to a
-// public repo) or the job is failing.
-async function checkLendingTracker(prisma: PrismaClient): Promise<Finding> {
+// The hourly XRPL Lending tracker (/lending, GitHub Actions → /api/cron/lending-tracker). GitHub's scheduled runs
+// can be delayed or dropped, so when the latest snapshot is over 3 hours old the watchdog refreshes the tracker
+// itself (same runTracker the hourly job calls) and goes RED only if that refresh also fails to store a snapshot.
+export async function checkLendingTracker(prisma: PrismaClient): Promise<Finding> {
   const last = await prisma.lendingAmendmentSnapshot.findFirst({ orderBy: { hourBucket: "desc" }, select: { takenAt: true, source: true } });
-  if (!last) return { key: "lending-tracker", level: "warn", message: "the lending tracker has not stored a snapshot yet" };
-  const h = (Date.now() - last.takenAt.getTime()) / 3_600_000;
-  if (h > 3) return { key: "lending-tracker", level: "red", message: `the /lending tracker last stored a snapshot ${h.toFixed(1)}h ago (expected hourly) — check the lending-tracker GitHub Actions workflow (re-enable it if GitHub paused it) and GET /api/cron/lending-tracker` };
+  const h = last ? (Date.now() - last.takenAt.getTime()) / 3_600_000 : Infinity;
+  if (!last || h > 3) {
+    const ago = last ? `${h.toFixed(1)}h ago` : "never";
+    let refreshed: { stored: boolean; source: string } | null = null;
+    let err = "";
+    try {
+      // 12s cap so the refresh fits inside this check's 15s slot (a slot timeout would otherwise read as "skipped").
+      const r = await Promise.race([
+        runTracker(prisma),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error("refresh timed out after 12s")), 12_000)),
+      ]);
+      refreshed = { stored: r.stored, source: r.snapshot.source };
+    } catch (e) {
+      err = e instanceof Error ? e.message : String(e);
+    }
+    if (!refreshed?.stored) {
+      return { key: "lending-tracker", level: "red", message: `the /lending tracker last stored a snapshot ${ago} (expected hourly) and the watchdog's own refresh also failed (${err || "the ledger's Amendments object could not be read"}) — check GET /api/cron/lending-tracker and the lending-tracker GitHub Actions workflow` };
+    }
+    return { key: "lending-tracker", level: "warn", message: `the hourly trigger missed (last snapshot ${ago}); the watchdog refreshed the tracker itself — check the lending-tracker GitHub Actions workflow (re-enable it if GitHub paused it)` };
+  }
   if (last.source !== "ledger+xrpscan") return { key: "lending-tracker", level: "warn", message: "the latest lending snapshot has no validator votes (XRPScan's validator registry could not be read); enabled status is still read from the ledger" };
   return { key: "lending-tracker", level: "ok", message: `last snapshot ${h.toFixed(1)}h ago` };
 }
@@ -596,7 +614,7 @@ export async function runWatchdog(prisma: PrismaClient, opts: WatchdogOptions = 
   add("anchors-behind", () => checkUnanchored(prisma));
   add("monitor-backlog", () => checkMonitorBacklog(prisma));
   add("amendment-reader", () => checkAmendments(prisma));
-  add("lending-tracker", () => checkLendingTracker(prisma));
+  add("lending-tracker", () => checkLendingTracker(prisma), 15000); // may refresh the tracker itself (12s cap)
   add("lending-selftest", () => checkLendingSelfTest(prisma));
   add("ledger-halt", () => checkLedgerHalt(), 9000);
   add("db-size", () => checkDbSize(prisma));
