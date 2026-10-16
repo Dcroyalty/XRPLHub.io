@@ -39,6 +39,7 @@ import { checkCredentialAnomalies } from "./credentialAnomalyWatch";
 import { userTokensActive, xummConfigured } from "./xumm";
 import { lastSelfTest } from "./lendingOps";
 import { runTracker } from "./lendingTracker";
+import { runYieldRefresh, lastRefresh as lastYieldRefresh, YIELD_SOURCES } from "./yieldDesk";
 
 export type Level = "ok" | "warn" | "red";
 export interface Finding {
@@ -155,8 +156,36 @@ export async function checkLendingTracker(prisma: PrismaClient): Promise<Finding
   return { key: "lending-tracker", level: "ok", message: `last snapshot ${h.toFixed(1)}h ago` };
 }
 
+// XRP Yield Desk (/yield) data freshness, with the same self-repair as the lending tracker: when the last full
+// refresh is over 3 hours old, or any one source has had no good read for 24 hours, the watchdog runs the refresh
+// itself (17s cap). WARN if that fixes it; RED (healthchecks.io email) only if the refresh fails or the source is
+// still stale afterwards.
+export async function checkYieldDesk(prisma: PrismaClient, refresh = runYieldRefresh): Promise<Finding> {
+  const DAY = 86_400_000;
+  const staleSources = async () => {
+    const cps = await prisma.indexerCheckpoint.findMany({ where: { id: { in: YIELD_SOURCES.map((n) => `yield-source:${n}`) } } });
+    return cps.filter((c) => !c.lastCompletedPassAt || Date.now() - c.lastCompletedPassAt.getTime() > DAY).map((c) => `${c.id.slice(13)}${c.marker ? ` (${c.marker.slice(0, 120)})` : ""}`);
+  };
+  const last = await lastYieldRefresh(prisma);
+  const hours = last ? (Date.now() - last.getTime()) / 3_600_000 : Infinity;
+  const before = await staleSources();
+  if (hours <= 3 && before.length === 0) return { key: "yield-desk", level: "ok", message: `refreshed ${hours.toFixed(1)}h ago` };
+  const ago = last ? `${hours.toFixed(1)}h ago` : "never";
+  let err = "";
+  const rep = await Promise.race([
+    refresh(prisma, { budgetMs: 17_000 }),
+    new Promise<never>((_, reject) => setTimeout(() => reject(new Error("refresh timed out after 19s")), 19_000)),
+  ]).catch((e) => { err = e instanceof Error ? e.message : String(e); return null; });
+  if (!rep?.ok) {
+    return { key: "yield-desk", level: "red", message: `the /yield data was last refreshed ${ago} and the watchdog's own refresh failed (${err || Object.entries(rep?.sources ?? {}).map(([k, v]) => `${k}: ${v.error}`).join("; ")}) — check GET /api/cron/yield-refresh and the lending-tracker GitHub Actions workflow` };
+  }
+  const after = await staleSources();
+  if (after.length) return { key: "yield-desk", level: "red", message: `/yield source(s) with no good read for over 24h, even after the watchdog retried: ${after.join("; ")}` };
+  return { key: "yield-desk", level: "warn", message: `the /yield data was stale (last refresh ${ago}${before.length ? `; stale sources: ${before.join(", ")}` : ""}); the watchdog refreshed it itself — check the hourly trigger` };
+}
+
 // XRPL Lending phase 2 activation self-test (src/lib/lendingOps.ts, run by the hourly job once lending is live):
-// explorer, the $0.02 grade API's 402, the MCP tool, the Lending Pro checkout. RED while it fails.
+// explorer, the $0.02 grade API's 402, the MCP tool, the XRPLHub Pro checkout. RED while it fails.
 async function checkLendingSelfTest(prisma: PrismaClient): Promise<Finding> {
   const t = await lastSelfTest(prisma);
   if (!t) return { key: "lending-selftest", level: "ok", message: "lending is not live yet — nothing to test" };
@@ -616,6 +645,7 @@ export async function runWatchdog(prisma: PrismaClient, opts: WatchdogOptions = 
   add("amendment-reader", () => checkAmendments(prisma));
   add("lending-tracker", () => checkLendingTracker(prisma), 15000); // may refresh the tracker itself (12s cap)
   add("lending-selftest", () => checkLendingSelfTest(prisma));
+  add("yield-desk", () => checkYieldDesk(prisma), 21000); // may refresh the Yield Desk itself (17s budget, 19s cap)
   add("ledger-halt", () => checkLedgerHalt(), 9000);
   add("db-size", () => checkDbSize(prisma));
   add("spend-push-tokens", () => checkSpendPushTokens(prisma));

@@ -1,4 +1,5 @@
-// src/lib/lendingPro.ts — who may use the Lending Pro routes. Lending Pro is a $49/mo plan sold on uxus.finance
+// src/lib/lendingPro.ts — who may use the XRPLHub Pro routes (lending and yield alerts). XRPLHub Pro (formerly
+// Lending Pro) is a $49/mo plan sold on uxus.finance
 // (same owner, Stripe there); the customer gets a uxus API key and sends it here as `Authorization: Bearer uxus_...`.
 // We ask uxus what the key pays for (GET https://uxus.finance/api/billing/entitlement, read-only, never counts
 // toward quota) and cache the answer for 5 minutes. The key itself is never stored — only its SHA-256.
@@ -15,10 +16,10 @@ export type ProAuth = { ok: true; keyHash: string } | { ok: false; status: numbe
 
 export async function lendingProAuth(req: Request): Promise<ProAuth> {
   const m = (req.headers.get("authorization") || "").match(/^Bearer\s+(\S+)$/);
-  if (!m || !KEY.test(m[1])) return { ok: false, status: 401, message: "Send your Lending Pro key as Authorization: Bearer uxus_... (get one at https://uxus.finance/pricing#lending-pro)." };
+  if (!m || !KEY.test(m[1])) return { ok: false, status: 401, message: "Send your XRPLHub Pro key as Authorization: Bearer uxus_... (get one at https://uxus.finance/pricing#xrplhub-pro)." };
   const h = keyHash(m[1]);
   const hit = cache.get(h);
-  if (hit && Date.now() - hit.at < TTL_MS) return hit.ok ? { ok: true, keyHash: h } : { ok: false, status: 403, message: "This key isn't an active Lending Pro subscription." };
+  if (hit && Date.now() - hit.at < TTL_MS) return hit.ok ? { ok: true, keyHash: h } : { ok: false, status: 403, message: "This key isn't an active XRPLHub Pro subscription." };
   try {
     const r = await fetch(ENTITLEMENT_URL, { headers: { authorization: `Bearer ${m[1]}` }, signal: AbortSignal.timeout(8000), cache: "no-store" });
     if (r.status === 404 || r.status === 401) {
@@ -27,9 +28,10 @@ export async function lendingProAuth(req: Request): Promise<ProAuth> {
     }
     if (!r.ok) return { ok: false, status: 503, message: "Couldn't check your subscription right now. Try again in a minute." };
     const e = (await r.json()) as { plan?: string; active?: boolean };
-    const ok = e.plan === "lending_pro" && e.active === true;
+    // "lending_pro" is the plan's old id; keys sold before the rename keep working.
+    const ok = (e.plan === "xrplhub_pro" || e.plan === "lending_pro") && e.active === true;
     cache.set(h, { at: Date.now(), ok });
-    return ok ? { ok: true, keyHash: h } : { ok: false, status: 403, message: "This key isn't an active Lending Pro subscription." };
+    return ok ? { ok: true, keyHash: h } : { ok: false, status: 403, message: "This key isn't an active XRPLHub Pro subscription." };
   } catch {
     return { ok: false, status: 503, message: "Couldn't check your subscription right now. Try again in a minute." };
   }

@@ -1,6 +1,7 @@
 name: Lending tracker (hourly)
 
-# Calls https://www.xrplhub.io/api/cron/lending-tracker once an hour (Vercel Hobby crons can only run daily).
+# Calls https://www.xrplhub.io/api/cron/lending-tracker and /api/cron/yield-refresh once an hour (Vercel Hobby
+# crons can only run daily).
 # The route is public and stores at most one snapshot per hour, so no secret is needed here.
 #
 # Keepalive: GitHub disables scheduled workflows in a public repo after 60 days with no repository activity.
@@ -26,6 +27,18 @@ jobs:
       - name: Run the hourly lending job
         run: |
           code=$(curl -sS -o body.json -w '%{http_code}' --max-time 90 https://www.xrplhub.io/api/cron/lending-tracker)
+          cat body.json; echo
+          echo "HTTP $code"
+          test "$code" = "200"
+
+  yield:
+    # XRP Yield Desk refresh (https://www.xrplhub.io/yield). Public, idempotent within 45 minutes.
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Refresh the Yield Desk
+        run: |
+          code=$(curl -sS -o body.json -w '%{http_code}' --max-time 90 https://www.xrplhub.io/api/cron/yield-refresh)
           cat body.json; echo
           echo "HTTP $code"
           test "$code" = "200"

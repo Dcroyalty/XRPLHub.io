@@ -574,3 +574,32 @@ old ledger — so "do the nodes agree?" stays green; only the validated ledger's
   `lending_grade` returning the paid resource, and the Lending Pro pricing card + a Stripe Checkout session (created, never
   paid; it expires). No purchases. Result in IndexerCheckpoint `lending-selftest`; watchdog `lending-selftest` is RED while it
   fails, so healthchecks.io emails. It waits up to 48 h after activation for the first vault to be discovered.
+
+## 24. XRP Yield Desk (/yield) and XRPLHub Pro (2026-10-16)
+
+- **What it is:** every way to earn on XRP or RLUSD we can verify from public data, each with an A–F risk grade
+  (`src/lib/yieldGrade.ts`, method rendered at `/yield/method`). Pages: `/yield`, `/yield/<slug>` (one per option),
+  `/yield/method`, `/yield/best-xrp-yield`; all in the sitemap. JSON: `GET /api/yield/options[?asset=|?slug=]`.
+- **Sources** (`src/lib/yieldSources.ts`, `src/lib/yieldAmm.ts`): Doppler public API (api.doppler.finance), the Firelight
+  stXRP contract on Flare (read directly), DefiLlama yields + protocols APIs (Flare FXRP products, RLUSD/XRP elsewhere,
+  ≥ $250K), Binance Simple Earn and OKX Savings public rate endpoints, XRPL AMM pools XRP/RLUSD and XRP/USDC (size from
+  amm_info, fee income from on-ledger trades, scanned incrementally: checkpoint `yield-amm:<account>`), and XLS-66 vaults
+  once lending is live. Each source's last good read: checkpoint `yield-source:<name>`. A failing source keeps its last
+  numbers (each card shows when they were read); options a source drops stay as pages, marked unlisted.
+- **Schedule:** `.github/workflows/lending-tracker.yml` job `yield` calls the public `GET /api/cron/yield-refresh` hourly
+  (no-op if refreshed in the last 45 min). Last full refresh: checkpoint `yield-refresh`.
+- **Watchdog (self-repair):** finding `yield-desk`. If the last refresh is over 3 h old, or any source has had no good
+  read for 24 h, the watchdog runs the refresh itself (17 s budget). WARN if that fixes it; RED (healthchecks.io `/fail`)
+  only if the refresh fails or the source is still stale. A RED naming one source usually means that API changed shape.
+- **Alerts:** grade changes are stored in `YieldGrade`. Free list: `YieldSignup` (stored only; emails start once
+  RESEND_API_KEY is set — send each `YieldGrade` row with `emailedAt = null` to the matching signups, then set
+  `emailedAt`). XRPLHub Pro webhooks: `POST /api/yield/pro/watch` (Pro key), stored in `LendingAlertWatch` with
+  subjectType `yield`, sent by each refresh.
+- **Visits:** `YieldPageView` (day, path, count), counted by a cookie-free beacon (`/api/yield/visit`) on the /yield pages,
+  because Vercel Web Analytics is not switched on for kreditkarma-obi2 (the `<Analytics />` component is mounted).
+  To switch it on: Vercel dashboard → kreditkarma-obi2 → Analytics → Enable (free on Hobby), then redeploy.
+- **Money:** uxus sells `GET /api/yield/grade?id=<slug>` at $0.02 (x402) and the MCP tool `yield_grade` (v1.4.0); unknown
+  ids get 404 before the paywall (no charge). XRPLHub Pro ($49/mo, plan `xrplhub_pro` on uxus, formerly Lending Pro;
+  old price archived, old `lending_pro` keys still accepted) is on sale now. Never test with a real purchase.
+- **Rules:** non-custodial (we never touch funds), general information only, never paid by graded products, no referral
+  codes or per-deposit commissions. Every /yield page shows that.

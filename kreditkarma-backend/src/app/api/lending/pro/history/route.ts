@@ -1,5 +1,5 @@
-// src/app/api/lending/pro/history/route.ts — Lending Pro: the full grade history of one vault or broker.
-// GET ?type=vault|broker&id=<64 hex>&days=1..365 (default 90), Authorization: Bearer <uxus Lending Pro key>.
+// src/app/api/lending/pro/history/route.ts — XRPLHub Pro: the full grade history of one vault or broker.
+// GET ?type=vault|broker&id=<64 hex>&days=1..365 (default 90), Authorization: Bearer <uxus XRPLHub Pro key>.
 // Off until XRPL lending is enabled on mainnet.
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/xrplscore-db";

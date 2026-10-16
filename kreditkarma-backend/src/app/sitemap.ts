@@ -1,10 +1,19 @@
 import { MetadataRoute } from 'next';
+import { prisma } from '@/lib/xrplscore-db';
 
-export default function sitemap(): MetadataRoute.Sitemap {
+export const revalidate = 3600;
+
+export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const base = 'https://www.xrplhub.io';
   const now  = new Date();
+  // One page per Yield Desk option (unlisted ones too: their pages stay up). Never let the DB break the sitemap.
+  const yieldSlugs = await prisma.yieldOption.findMany({ select: { slug: true, updatedAt: true } }).catch(() => [] as { slug: string; updatedAt: Date }[]);
 
   return [
+    { url: `${base}/yield`, lastModified: now, changeFrequency: 'hourly', priority: 0.9 },
+    { url: `${base}/yield/best-xrp-yield`, lastModified: now, changeFrequency: 'daily', priority: 0.9 },
+    { url: `${base}/yield/method`, lastModified: now, changeFrequency: 'monthly', priority: 0.6 },
+    ...yieldSlugs.map((y) => ({ url: `${base}/yield/${y.slug}`, lastModified: y.updatedAt, changeFrequency: 'daily' as const, priority: 0.7 })),
     {
       url:              `${base}`,
       lastModified:     now,

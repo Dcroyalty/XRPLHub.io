@@ -6,8 +6,8 @@
 //      `lending-walk:<network>`). Pinned to one node, because a saved marker only resumes on the node that
 //      issued it (see markerWalk.ts). Brokers and loans are then reached through each vault (lendingFacts.ts).
 //   2. Refresh: the stalest known vaults first — vault, brokers, loans, lending transactions — then a grade
-//      for the vault and each broker, stored in LendingGrade (the history Lending Pro serves).
-//   3. Alerts: Lending Pro watches whose subject's grade changed get a signed webhook.
+//      for the vault and each broker, stored in LendingGrade (the history XRPLHub Pro serves).
+//   3. Alerts: XRPLHub Pro watches whose subject's grade changed get a signed webhook.
 // Read-only: XRPLHub never holds funds or keys and never lends.
 
 import type { PrismaClient } from "@prisma/client";
@@ -210,9 +210,9 @@ export async function refreshVault(prisma: PrismaClient, network: string, rpc: L
   return g;
 }
 
-/** Send a signed webhook to every Lending Pro watch whose subject's grade differs from the last one we sent. */
+/** Send a signed webhook to every XRPLHub Pro lending watch whose subject's grade differs from the last one we sent. */
 export async function sendGradeAlerts(prisma: PrismaClient, network: string, poster: Poster = postWebhook): Promise<number> {
-  const watches = await prisma.lendingAlertWatch.findMany();
+  const watches = await prisma.lendingAlertWatch.findMany({ where: { subjectType: { in: ["vault", "broker"] } } });
   let sent = 0;
   for (const w of watches) {
     const latest = await prisma.lendingGrade.findFirst({ where: { network, subjectType: w.subjectType, subjectId: w.subjectId }, orderBy: { takenAt: "desc" } });

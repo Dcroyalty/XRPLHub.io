@@ -68,6 +68,12 @@ The live production app is a single Next.js project in **`kreditkarma-backend/`*
   (`lendingLive()`, read from the ledger): vault/broker/loan index, explorer pages, A–F RISK GRADES (never "credit rating";
   method at `/lending/method` from `src/lib/lendingGrade.ts`). Paid grade API lives on uxus. See docs/AUTONOMY.md §23.
 
+- **XRP Yield Desk** (`/yield`, 2026-10-16) — every way to earn on XRP or RLUSD we can verify from public data (XRPL AMM,
+  Doppler, Firelight stXRP and other Flare FXRP products, RLUSD/XRP DeFi, exchange earn, XLS-66 vaults once live), each
+  with an A–F RISK GRADE (`src/lib/yieldGrade.ts`, method at `/yield/method`). General information, never advice; never
+  paid by graded products; no referral codes. Hourly refresh, watchdog self-repair, free grade alerts (stored), Pro
+  webhooks. Paid `yield_grade` API and XRPLHub Pro ($49/mo) live on uxus. See docs/AUTONOMY.md §24.
+
 - **Continuous monitoring** — `/api/monitor/*`: watched wallets, HMAC-signed webhooks, sparse attested
   observations (canon `monitor-observation-v1`). Layered on top of underwriting, never a replacement; no default
   probability, no default score-drop threshold, consumer-use (FCRA/ECOA) acknowledgement required. See

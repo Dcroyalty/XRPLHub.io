@@ -1119,3 +1119,78 @@ model LendingAlertWatch {
 
   @@unique([apiKeyHash, subjectType, subjectId])
 }
+
+// ── XRP Yield Desk (/yield) ─────────────────────────────────────────────────────────────────────────────────
+// One row per way to earn on XRP or RLUSD (src/lib/yieldDesk.ts). `data` is the full YieldOption JSON as last
+// read from its public source; the grade is recomputed from it every refresh.
+model YieldOption {
+  slug          String   @id
+  source        String // doppler | firelight | defillama | xrpl-amm | exchange | xls66
+  asset         String // XRP | RLUSD
+  data          String // JSON (YieldOption)
+  grade         String // A B C D F
+  score         Int
+  listed        Boolean  @default(true) // false once its source stops returning it (page stays, marked unlisted)
+  firstSeenAt   DateTime @default(now())
+  dataAt        DateTime // when the numbers were read from the source
+  updatedAt     DateTime @updatedAt
+
+  @@index([listed, asset])
+}
+
+// One row per option per UTC day: the rate and size we saw, for track record and stability.
+model YieldObservation {
+  slug     String
+  day      DateTime // UTC midnight
+  apr      Float?
+  tvlUsd   Float?
+  extra    String? // JSON: e.g. vault share price for realized-yield math
+
+  @@id([slug, day])
+}
+
+// Every grade change (and the first grade) — drives alerts and the history line on each page.
+model YieldGrade {
+  id            String   @id @default(cuid())
+  slug          String
+  grade         String
+  score         Int
+  methodVersion String
+  takenAt       DateTime @default(now())
+  emailedAt     DateTime? // set once free-list emails go out (after RESEND_API_KEY is configured)
+
+  @@index([slug, takenAt])
+  @@index([emailedAt])
+}
+
+// XRPL AMM fee income, per pool per UTC day, built from on-ledger trades (src/lib/yieldAmm.ts).
+model YieldAmmDay {
+  amm      String // AMM account
+  day      DateTime
+  feesXrp  Float    @default(0) // trading fees earned by the pool, XRP-equivalent
+  trades   Int      @default(0)
+
+  @@id([amm, day])
+}
+
+// Free grade-change alerts list. Nothing is sent until an email sender is configured (RESEND_API_KEY).
+model YieldSignup {
+  id               String    @id @default(cuid())
+  email            String    @unique // lower-cased
+  createdAt        DateTime  @default(now())
+  slug             String? // null = every option; else just this one
+  consentText      String
+  unsubscribeToken String    @unique
+  unsubscribedAt   DateTime?
+  ipHash           String?
+}
+
+// /yield page visits per UTC day and path. Counted by a tiny beacon on each /yield page (no cookies, no IP or
+// other personal data stored) until Vercel Web Analytics is switched on for the project.
+model YieldPageView {
+  day   DateTime
+  path  String
+  count Int      @default(0)
+
+  @@id([day, path])
+}

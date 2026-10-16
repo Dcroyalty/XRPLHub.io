@@ -2072,7 +2072,15 @@ export default function XRPLHubHome() {
               <MptPowerCheck />
             </div>
           </div>
-          <a href="/lending" style={{ display:'flex',alignItems:'center',justifyContent:'space-between',gap:14,flexWrap:'wrap',marginTop:18,padding:'18px 22px',borderRadius:18,border:'1px solid rgba(167,139,250,.35)',background:'linear-gradient(135deg,rgba(167,139,250,.09),rgba(6,6,22,.85))',color:'#fff',textDecoration:'none' }}>
+          <a href="/yield" style={{ display:'flex',alignItems:'center',justifyContent:'space-between',gap:14,flexWrap:'wrap',marginTop:18,padding:'18px 22px',borderRadius:18,border:'1px solid rgba(16,185,129,.35)',background:'linear-gradient(135deg,rgba(16,185,129,.09),rgba(6,6,22,.85))',color:'#fff',textDecoration:'none' }}>
+            <span>
+              <span style={{ display:'block',fontSize:10,fontWeight:700,color:'#10b981',letterSpacing:'.13em',textTransform:'uppercase',marginBottom:4,fontFamily:"'IBM Plex Mono',monospace" }}>New · free</span>
+              <span style={{ display:'block',fontSize:18,fontWeight:900,marginBottom:4 }}>XRP Yield Desk</span>
+              <span style={{ display:'block',fontSize:13,color:'rgba(255,255,255,.55)',lineHeight:1.6 }}>Every way to earn on XRP and RLUSD we can verify — rates, lockups, who holds the keys — each with an A–F risk grade. Not advice; we&apos;re never paid by what we grade.</span>
+            </span>
+            <span style={{ padding:'11px 18px',borderRadius:99,background:'#10b981',color:'#000',fontWeight:800,fontSize:13,whiteSpace:'nowrap' }}>Compare yields →</span>
+          </a>
+          <a href="/lending" style={{ display:'flex',alignItems:'center',justifyContent:'space-between',gap:14,flexWrap:'wrap',marginTop:12,padding:'18px 22px',borderRadius:18,border:'1px solid rgba(167,139,250,.35)',background:'linear-gradient(135deg,rgba(167,139,250,.09),rgba(6,6,22,.85))',color:'#fff',textDecoration:'none' }}>
             <span>
               <span style={{ display:'block',fontSize:10,fontWeight:700,color:'#a78bfa',letterSpacing:'.13em',textTransform:'uppercase',marginBottom:4,fontFamily:"'IBM Plex Mono',monospace" }}>New · free</span>
               <span style={{ display:'block',fontSize:18,fontWeight:900,marginBottom:4 }}>Is XRPL lending live yet?</span>

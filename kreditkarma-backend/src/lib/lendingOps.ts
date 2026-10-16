@@ -8,7 +8,7 @@
 //
 // 2. Activation self-test: once lending is live, prove the paid surfaces work end to end WITHOUT buying
 //    anything — the explorer pages, the $0.02 grade API's 402 challenge, the MCP lending_grade tool, and the
-//    Lending Pro checkout (a Stripe Checkout session is created and left unpaid; it expires on its own).
+//    XRPLHub Pro checkout (a Stripe Checkout session is created and left unpaid; it expires on its own).
 //    Result stored in IndexerCheckpoint `lending-selftest`; the watchdog turns a failure into a RED finding,
 //    which pings HEALTHCHECK_PING_URL/fail on every cron run until it passes.
 
@@ -104,12 +104,12 @@ export async function runLendingSelfTest(prisma: PrismaClient, opts: { force?: b
       return "returns the paid resource";
     });
   }
-  await step("Lending Pro checkout", async () => {
+  await step("XRPLHub Pro checkout", async () => {
     const page = await get(`${UXUS}/pricing`);
-    if (page.status !== 200 || !page.text.includes("XRPL Lending Pro")) throw new Error(`/pricing HTTP ${page.status} or Lending Pro card missing`);
-    if (page.text.includes("Opens when XRPL lending goes live")) throw new Error("/pricing still shows Lending Pro as not open (the page re-renders every 10 minutes)");
-    const r = await get(`${UXUS}/api/billing/checkout`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ plan: "lending_pro" }) });
-    if (r.status !== 200 || !/checkout\.stripe\.com\/c\/pay\/cs_live_/.test(r.text)) throw new Error(`checkout for lending_pro HTTP ${r.status}: ${r.text.slice(0, 160)}`);
+    if (page.status !== 200 || !page.text.includes("XRPLHub Pro")) throw new Error(`/pricing HTTP ${page.status} or XRPLHub Pro card missing`);
+    if (page.text.includes("Opening shortly")) throw new Error("/pricing shows XRPLHub Pro as not open yet");
+    const r = await get(`${UXUS}/api/billing/checkout`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ plan: "xrplhub_pro" }) });
+    if (r.status !== 200 || !/checkout\.stripe\.com\/c\/pay\/cs_live_/.test(r.text)) throw new Error(`checkout for xrplhub_pro HTTP ${r.status}: ${r.text.slice(0, 160)}`);
     return "pricing card open; Stripe Checkout session created (left unpaid, expires on its own)";
   });
 

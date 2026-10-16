@@ -1,8 +1,8 @@
-// src/app/api/lending/pro/watch/route.ts — Lending Pro: webhook alerts when a vault's or broker's grade changes.
+// src/app/api/lending/pro/watch/route.ts — XRPLHub Pro: webhook alerts when a vault's or broker's grade changes.
 //   GET    list your watches
 //   POST   { type: "vault"|"broker", id, webhookUrl }  → returns the signing secret ONCE
 //   DELETE ?id=<watch id>
-// Authorization: Bearer <uxus Lending Pro key>. Webhooks are signed exactly like XRPLHub monitoring webhooks
+// Authorization: Bearer <uxus XRPLHub Pro key>. Webhooks are signed exactly like XRPLHub monitoring webhooks
 // (X-XRPLHub-Signature: v1=HMAC-SHA256(secret, `${timestamp}.${body}`)), sent by the hourly job.
 // Off until XRPL lending is enabled on mainnet.
 import { NextResponse } from "next/server";
@@ -21,7 +21,7 @@ export async function GET(req: Request) {
   if (!(await lendingLive())) return notLive();
   const auth = await lendingProAuth(req);
   if (!auth.ok) return NextResponse.json({ error: "unauthorized", message: auth.message }, { status: auth.status });
-  const rows = await prisma.lendingAlertWatch.findMany({ where: { apiKeyHash: auth.keyHash }, orderBy: { createdAt: "asc" } });
+  const rows = await prisma.lendingAlertWatch.findMany({ where: { apiKeyHash: auth.keyHash, subjectType: { in: ["vault", "broker"] } }, orderBy: { createdAt: "asc" } });
   return NextResponse.json({ watches: rows.map((w) => ({ id: w.id, type: w.subjectType, subjectId: w.subjectId, webhookUrl: w.webhookUrl, lastNotifiedGrade: w.lastNotifiedGrade, lastNotifiedAt: w.lastNotifiedAt })) }, { headers: { "Cache-Control": "no-store" } });
 }
 
