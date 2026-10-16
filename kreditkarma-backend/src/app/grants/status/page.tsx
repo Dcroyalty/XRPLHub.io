@@ -12,6 +12,7 @@ type App = {
   payout: { address: string; destinationTag: number | null; ready: boolean | null; note: string | null };
   proposed: { address: string | null; destinationTag: number | null; at: string } | null;
   canEditPayout: boolean;
+  deniedNote: string | null;
 };
 
 const day = (d: string) => new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
@@ -76,6 +77,7 @@ export default function GrantStatusPage() {
               <span style={{ color: B.accent, fontWeight: 800 }}>${a.amountUsd} in RLUSD</span>
             </div>
             <p style={{ ...S.small, margin: "4px 0 0" }}>Applied {day(a.appliedAt)}{a.paidAt ? ` · paid ${day(a.paidAt)}` : ""}</p>
+            {a.deniedNote && <p style={{ margin: "8px 0 0", fontSize: 15, color: B.white }}>{a.deniedNote} <a href="/grants#apply" style={{ color: B.accent }}>Apply again</a></p>}
             {a.status === "Pending" && <p style={{ margin: "8px 0 0", fontSize: 14 }}>Applications are reviewed in order once the pool reaches its first milestone. Grants are paid at XRPLHub&apos;s discretion when the pool has funds.</p>}
             {a.canEditPayout && (
               <p style={{ margin: "8px 0 0", fontSize: 14 }}>

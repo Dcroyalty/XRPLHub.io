@@ -14,6 +14,10 @@ export const dynamic = "force-dynamic";
 
 const LABEL: Record<string, string> = { PENDING: "Pending", REVIEWING: "Pending", APPROVED: "Approved", PAID: "Paid", REJECTED: "Denied", FAILED: "Approved" };
 const EDITABLE = ["PENDING", "REVIEWING", "APPROVED"];
+// What the applicant sees when an application is denied, keyed by rejectionReason (owner's wording).
+const DENIED_NOTE: Record<string, string> = {
+  "wallet-cannot-receive": "Denied: the wallet on file can't receive grants. You're welcome to apply again with your own wallet.",
+};
 
 export async function GET(req: Request) {
   const rl = rateLimit(req, "grants-status", 30, 10 * 60_000);
@@ -41,6 +45,7 @@ export async function GET(req: Request) {
       payout: { address: t.address, destinationTag: t.tag, ready: ready?.ready ?? null, note: ready?.reason ?? null },
       proposed: g.proposedAt ? { address: g.proposedPayoutAddress, destinationTag: g.proposedPayoutTag, at: g.proposedAt.toISOString() } : null,
       canEditPayout: EDITABLE.includes(g.status),
+      deniedNote: g.status === "REJECTED" ? DENIED_NOTE[g.rejectionReason ?? ""] ?? "Denied." : null,
     };
   }));
   return NextResponse.json({ applications }, { headers: { "Cache-Control": "no-store" } });
