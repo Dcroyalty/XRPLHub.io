@@ -38,10 +38,10 @@ export default function YieldSignupForm({ consent, slug }: { consent: string; sl
           placeholder="you@example.com"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          style={{ flex: "1 1 220px", minWidth: 0, padding: "11px 12px", border: "1px solid #ccc", borderRadius: 8, fontSize: 16, background: "#fff", color: C.fg }}
+          style={{ flex: "1 1 220px", minWidth: 0, padding: "11px 12px", border: "1px solid #ccc", borderRadius: 8, fontSize: 16, background: "#fff", color: "#0b1d3f" }}
         />
         <input tabIndex={-1} autoComplete="off" aria-hidden="true" value={website} onChange={(e) => setWebsite(e.target.value)} name="website" style={{ position: "absolute", left: -9999, width: 1, height: 1, opacity: 0 }} />
-        <button type="submit" disabled={busy} style={{ flex: "0 0 auto", padding: "11px 18px", borderRadius: 8, border: "none", background: C.accent, color: "#fff", fontWeight: 700, fontSize: 15, cursor: busy ? "default" : "pointer" }}>
+        <button type="submit" disabled={busy} style={{ flex: "0 0 auto", padding: "11px 18px", borderRadius: 8, border: "none", background: C.accent, color: "#0b1d3f", fontWeight: 800, fontSize: 15, cursor: busy ? "default" : "pointer" }}>
           {busy ? "Adding…" : "Alert me"}
         </button>
       </div>

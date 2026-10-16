@@ -159,14 +159,14 @@ export default function UsdcBasePay({ plan }: { plan: PlanId }) {
 }
 
 const s: Record<string, React.CSSProperties> = {
-  p: { color: "#444", lineHeight: 1.5 },
+  p: { color: "rgba(233,238,248,.7)", lineHeight: 1.5 },
   amountBox: { textAlign: "center", padding: "6px 0 16px" },
   amountBig: { fontSize: 30, fontWeight: 800 },
-  amountSub: { fontSize: 12, color: "#888", marginTop: 4 },
+  amountSub: { fontSize: 12, color: "rgba(233,238,248,.7)", marginTop: 4 },
   pay: { display: "block", width: "100%", textAlign: "center", padding: "14px 16px", borderRadius: 12, background: "#0052ff", color: "#fff", border: "none", fontWeight: 700, cursor: "pointer", fontSize: 15, fontFamily: "inherit" },
-  retry: { display: "block", width: "100%", textAlign: "center", padding: "10px 16px", borderRadius: 10, background: "#fff", color: "#111", border: "1px solid #111", fontWeight: 700, cursor: "pointer", marginTop: 8, fontFamily: "inherit" },
+  retry: { display: "block", width: "100%", textAlign: "center", padding: "10px 16px", borderRadius: 10, background: "transparent", color: "#ffffff", border: "1px solid #ffffff", fontWeight: 700, cursor: "pointer", marginTop: 8, fontFamily: "inherit" },
   warn: { color: "#8a6d00", background: "#fff7d6", padding: "10px 12px", borderRadius: 8, fontSize: 13, marginTop: 12 },
-  polling: { textAlign: "center", color: "#888", marginTop: 16, fontSize: 14 },
+  polling: { textAlign: "center", color: "rgba(233,238,248,.7)", marginTop: 16, fontSize: 14 },
   hint: { fontSize: 12, color: "#999", marginTop: 14, lineHeight: 1.5 },
-  key: { background: "#111", color: "#0f0", padding: 16, borderRadius: 10, wordBreak: "break-all", whiteSpace: "pre-wrap", fontSize: 14 },
+  key: { background: "rgba(255,255,255,.95)", color: "#0b1d3f", padding: 16, borderRadius: 10, wordBreak: "break-all", whiteSpace: "pre-wrap", fontSize: 14 },
 };

@@ -66,3 +66,50 @@ body {
   background: white;
   transform: scale(1.05);
 }
+/* ── XRPLHub ratings theme: ONE look for the whole site (2026-10-16) ──────────────────────────────────────────────
+   Deep navy and white with one gold accent, over the background above (unchanged). The same tokens live in
+   src/components/brand.ts (B, S) for components. Pages built on the older palettes are brought in line here:
+   - the --xh-* variables are what the Spend / Permissions / Send-many / checkout pages read (src/app/spend/ui.tsx);
+     inside the Xaman xApp, applyXappTheme() sets them inline on <html>, which still wins;
+   - every page uses the same two fonts: a plain sans for text and a serif for headings (!important beats the old
+     inline Syne / letter-spacing); the logo wordmark keeps its own font (.xh-keep-font);
+   - pill buttons become the same 10px-radius buttons as the top of the homepage. */
+:root {
+  --xh-navy: #0b1d3f;
+  --xh-navy-card: rgba(11,29,63,.86);
+  --xh-line: rgba(255,255,255,.12);
+  --xh-gold: #d4a72c;
+  --xh-sans: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --xh-serif: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif;
+  /* tool pages (spend/ui.tsx v("…")) */
+  --xh-bg: transparent;
+  --xh-fg: #e9eef8;
+  --xh-muted: rgba(233,238,248,.72);
+  --xh-small: rgba(233,238,248,.6);
+  --xh-subtle: rgba(233,238,248,.55);
+  --xh-label: #ffffff;
+  --xh-card: rgba(11,29,63,.86);
+  --xh-border: rgba(255,255,255,.12);
+  --xh-row: rgba(255,255,255,.08);
+  --xh-input-bg: rgba(255,255,255,.08);
+  --xh-input-border: rgba(255,255,255,.2);
+  --xh-accent: #d4a72c;
+  --xh-accent-ink: #0b1d3f;
+  --xh-name: #ffffff;
+  --xh-attn: #d4a72c;
+  --xh-ok: #9be3c3;
+  --xh-ok-bg: rgba(16,120,90,.18);
+  --xh-ok-border: rgba(155,227,195,.35);
+  --xh-err: #fca5a5;
+  --xh-danger-bg: rgba(185,28,28,.16);
+  --xh-danger-border: rgba(252,165,165,.4);
+  --xh-warn-bg: rgba(212,167,44,.12);
+  --xh-warn-border: rgba(212,167,44,.45);
+  --xh-warn-fg: #f3e3b3;
+}
+body { font-family: var(--xh-sans); color: #e9eef8; }
+body *:not(code):not(pre):not(kbd):not(.xh-keep-font):not([style*="onospace"]):not([style*="Mono"]) { font-family: var(--xh-sans) !important; }
+body h1:not(.xh-keep-font), body h2:not(.xh-keep-font), body h3:not(.xh-keep-font) { font-family: var(--xh-serif) !important; font-weight: 700 !important; letter-spacing: normal !important; }
+/* the old pill buttons → the same buttons as the top of the homepage */
+body button[style*="border-radius: 99px"], body a[style*="border-radius: 99px"], body button[style*="border-radius: 9999px"], body a[style*="border-radius: 9999px"] { border-radius: 10px !important; }
+.xh-card { background: var(--xh-navy-card); border: 1px solid var(--xh-line); border-radius: 14px; padding: 18px; color: #e9eef8; }

@@ -26,7 +26,7 @@ export default async function YieldPage({ searchParams }: Props) {
   const tab = (label: string, value?: string) => {
     const active = (value ?? undefined) === asset;
     return (
-      <a href={value ? `/yield?asset=${value}` : "/yield"} style={{ padding: "7px 14px", borderRadius: 999, fontSize: 14, fontWeight: 700, textDecoration: "none", border: `1px solid ${active ? C.accent : C.border}`, background: active ? C.accent : "#fff", color: active ? "#fff" : C.fg }}>
+      <a href={value ? `/yield?asset=${value}` : "/yield"} style={{ padding: "7px 14px", borderRadius: 999, fontSize: 14, fontWeight: 700, textDecoration: "none", border: `1px solid ${active ? C.accent : C.border}`, background: active ? C.accent : "transparent", color: active ? "#0b1d3f" : C.fg }}>
         {label}
       </a>
     );

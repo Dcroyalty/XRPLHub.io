@@ -9,6 +9,7 @@ export default function BrandLogo({ href = "/" }: { href?: string }) {
     <a href={href} aria-label="XRPLHub home" style={{ display: "inline-flex", alignItems: "center", gap: 8, textDecoration: "none", flex: "0 0 auto" }}>
       <img src="/hub-logo.png" alt="" width={26} height={26} style={{ width: 26, height: 26, borderRadius: 7, objectFit: "cover", display: "block" }} />
       <span
+        className="xh-keep-font"
         style={{
           fontFamily: "'Syne', sans-serif",
           fontWeight: 900,

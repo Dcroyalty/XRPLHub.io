@@ -1,25 +1,25 @@
 import BrandLogo from "@/components/BrandLogo";
 export default function TermsPage() {
-  const H = { color:'#10b981', fontWeight:800 as const, fontSize:13, textTransform:'uppercase' as const, letterSpacing:'.04em', marginTop:28, marginBottom:8, display:'block' as const };
+  const H = { color:'#d4a72c', fontWeight:800 as const, fontSize:13, textTransform:'uppercase' as const, letterSpacing:'.04em', marginTop:28, marginBottom:8, display:'block' as const };
   const P = { fontSize:14, color:'rgba(255,255,255,.62)', lineHeight:1.85 as const, marginBottom:10 };
   return (
     <div style={{ minHeight:'100vh', background:'#030310', color:'#eeeef5', fontFamily:"'Syne',sans-serif", padding:'0 0 80px' }}>
       <style>{`@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800;900&display=swap');*{box-sizing:border-box;margin:0;padding:0}::-webkit-scrollbar{width:4px}::-webkit-scrollbar-thumb{background:rgba(255,255,255,.1);border-radius:99px}`}</style>
 
       {/* Nav */}
-      <nav style={{ background:'rgba(3,4,14,.9)', backdropFilter:'blur(20px)', borderBottom:'1px solid rgba(16,185,129,.18)', padding:'0 24px', height:64, display:'flex', alignItems:'center', justifyContent:'space-between', position:'sticky', top:0, zIndex:100 }}>
+      <nav style={{ background:'rgba(3,4,14,.9)', backdropFilter:'blur(20px)', borderBottom:'1px solid rgba(212,167,44,.18)', padding:'0 24px', height:64, display:'flex', alignItems:'center', justifyContent:'space-between', position:'sticky', top:0, zIndex:100 }}>
         <BrandLogo />
-        <a href="/" style={{ fontSize:13, color:'#10b981', textDecoration:'none', fontWeight:600 }}>← Back to Home</a>
+        <a href="/" style={{ fontSize:13, color:'#d4a72c', textDecoration:'none', fontWeight:600 }}>← Back to Home</a>
       </nav>
 
       <div style={{ maxWidth:780, margin:'0 auto', padding:'52px 24px 0' }}>
-        <div style={{ fontSize:11, fontWeight:700, color:'#10b981', letterSpacing:'.14em', textTransform:'uppercase', marginBottom:10 }}>Legal</div>
+        <div style={{ fontSize:11, fontWeight:700, color:'#d4a72c', letterSpacing:'.14em', textTransform:'uppercase', marginBottom:10 }}>Legal</div>
         <h1 style={{ fontSize:'clamp(28px,5vw,44px)', fontWeight:900, letterSpacing:'-2px', marginBottom:8 }}>Terms of Service</h1>
         <p style={{ fontSize:12, color:'rgba(255,255,255,.28)', marginBottom:40, fontFamily:"'IBM Plex Mono',monospace" }}>
           xrplhub.io · Effective September 7, 2026 · Last updated {new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}
         </p>
 
-        <div style={{ background:'rgba(16,185,129,.06)', border:'1px solid rgba(16,185,129,.18)', borderRadius:16, padding:'20px 24px', marginBottom:36 }}>
+        <div style={{ background:'rgba(212,167,44,.06)', border:'1px solid rgba(212,167,44,.18)', borderRadius:16, padding:'20px 24px', marginBottom:36 }}>
           <p style={{ fontSize:13, color:'rgba(255,255,255,.55)', lineHeight:1.8 }}>By accessing or using xrplhub.io, you agree to be bound by these Terms of Service in full. If you do not agree, do not use the platform.</p>
         </div>
 
@@ -72,10 +72,10 @@ export default function TermsPage() {
         <p style={P}>We may update these Terms at any time. Continued use of the platform after changes constitutes acceptance. Material changes will be communicated via email to registered users.</p>
 
         <span style={H}>12. Contact</span>
-        <p style={P}>Legal inquiries: <a href="mailto:legal@xrplhub.io" style={{ color:'#10b981' }}>legal@xrplhub.io</a><br />General support: <a href="mailto:support@xrplhub.io" style={{ color:'#10b981' }}>support@xrplhub.io</a></p>
+        <p style={P}>Legal inquiries: <a href="mailto:legal@xrplhub.io" style={{ color:'#d4a72c' }}>legal@xrplhub.io</a><br />General support: <a href="mailto:support@xrplhub.io" style={{ color:'#d4a72c' }}>support@xrplhub.io</a></p>
 
         <div style={{ marginTop:48, paddingTop:24, borderTop:'1px solid rgba(255,255,255,.07)', display:'flex', gap:16, flexWrap:'wrap' }}>
-          <a href="/privacy" style={{ fontSize:13, color:'#10b981', textDecoration:'none', fontWeight:600 }}>Privacy Policy →</a>
+          <a href="/privacy" style={{ fontSize:13, color:'#d4a72c', textDecoration:'none', fontWeight:600 }}>Privacy Policy →</a>
           <a href="/support" style={{ fontSize:13, color:'rgba(255,255,255,.4)', textDecoration:'none' }}>Support →</a>
           <a href="/" style={{ fontSize:13, color:'rgba(255,255,255,.4)', textDecoration:'none' }}>← Home</a>
         </div>

@@ -46,7 +46,7 @@ export default async function VerifyPage({ params }: { params: Promise<{ certId:
             No issued XRPLScore credential matches <code style={{ color: '#f87171' }}>{certId || '(none)'}</code>.
             Check the certificate ID and try again.
           </p>
-          <a href="https://www.xrplhub.io" style={{ display: 'inline-block', marginTop: 22, color: '#10b981', fontSize: 13, fontWeight: 700 }}>
+          <a href="https://www.xrplhub.io" style={{ display: 'inline-block', marginTop: 22, color: '#d4a72c', fontSize: 13, fontWeight: 700 }}>
             ← XRPLHub.io
           </a>
         </div>
@@ -69,7 +69,7 @@ export default async function VerifyPage({ params }: { params: Promise<{ certId:
   const expired = cred.expiresAt.getTime() < Date.now();
   const valid = signatureValid && !expired && !cred.revoked;
 
-  const accent = valid ? '#10b981' : expired ? '#f59e0b' : '#f87171';
+  const accent = valid ? '#d4a72c' : expired ? '#f59e0b' : '#f87171';
   const headline = valid ? 'Issued by XRPLHub — record intact' : expired ? 'Expired Credential' : 'Invalid Credential';
   const icon = valid ? '✅' : expired ? '⏳' : '❌';
 
@@ -102,7 +102,7 @@ export default async function VerifyPage({ params }: { params: Promise<{ certId:
         {cred.txHash && (
           <div style={{ marginTop: 16 }}>
             <a href={`https://xrpscan.com/tx/${cred.txHash}`} target="_blank" rel="noopener noreferrer"
-               style={{ fontSize: 12, color: '#10b981', fontWeight: 600 }}>
+               style={{ fontSize: 12, color: '#d4a72c', fontWeight: 600 }}>
               View issuance payment on XRPScan ↗
             </a>
           </div>

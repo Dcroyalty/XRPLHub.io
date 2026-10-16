@@ -266,15 +266,15 @@ export default function FreeKeyFlow() {
 }
 
 const s: Record<string, React.CSSProperties> = {
-  p: { color: "#444", lineHeight: 1.55, marginBottom: 14 },
+  p: { color: "rgba(233,238,248,.7)", lineHeight: 1.55, marginBottom: 14 },
   err: { color: "#b00020", marginTop: 10 },
-  btn: { display: "block", width: "100%", textAlign: "center", padding: "13px 16px", borderRadius: 12, background: "#111", color: "#fff", border: "none", fontWeight: 700, fontSize: 15, cursor: "pointer", fontFamily: "inherit", textDecoration: "none" },
+  btn: { display: "block", width: "100%", textAlign: "center", padding: "13px 16px", borderRadius: 12, background: "#d4a72c", color: "#0b1d3f", border: "none", fontWeight: 700, fontSize: 15, cursor: "pointer", fontFamily: "inherit", textDecoration: "none" },
   box: { border: "1px solid #e0e0e0", borderRadius: 12, padding: 16, textAlign: "center" },
   h: { fontWeight: 700, margin: "0 0 10px" },
   qr: { width: 190, height: 190, margin: "0 auto 12px", display: "block" },
-  polling: { textAlign: "center", color: "#888", marginTop: 14, fontSize: 14 },
-  key: { background: "#111", color: "#0f0", padding: 16, borderRadius: 10, wordBreak: "break-all", whiteSpace: "pre-wrap", fontSize: 14 },
+  polling: { textAlign: "center", color: "rgba(233,238,248,.7)", marginTop: 14, fontSize: 14 },
+  key: { background: "rgba(255,255,255,.95)", color: "#0b1d3f", padding: 16, borderRadius: 10, wordBreak: "break-all", whiteSpace: "pre-wrap", fontSize: 14 },
   warn: { color: "#8a6d00", background: "#fff7d6", padding: "10px 12px", borderRadius: 8, fontSize: 13, margin: "12px 0" },
-  code: { background: "#111", color: "#e6e6e6", padding: 12, borderRadius: 10, fontSize: 12, overflowX: "auto", lineHeight: 1.6, whiteSpace: "pre" },
+  code: { background: "rgba(255,255,255,.95)", color: "#0b1d3f", padding: 12, borderRadius: 10, fontSize: 12, overflowX: "auto", lineHeight: 1.6, whiteSpace: "pre" },
   link: { color: "#0a7", fontWeight: 600 },
 };

@@ -7,7 +7,7 @@ export const metadata = {
 
 export default function ScreeningLegalPage() {
   const H = {
-    color: "#10b981",
+    color: "#d4a72c",
     fontWeight: 800 as const,
     fontSize: 13,
     textTransform: "uppercase" as const,
@@ -35,7 +35,7 @@ export default function ScreeningLegalPage() {
         style={{
           background: "rgba(3,4,14,.9)",
           backdropFilter: "blur(20px)",
-          borderBottom: "1px solid rgba(16,185,129,.18)",
+          borderBottom: "1px solid rgba(212,167,44,.18)",
           padding: "0 24px",
           height: 64,
           display: "flex",
@@ -47,7 +47,7 @@ export default function ScreeningLegalPage() {
         }}
       >
         <BrandLogo />
-        <a href="/" style={{ fontSize: 13, color: "#10b981", textDecoration: "none", fontWeight: 600 }}>
+        <a href="/" style={{ fontSize: 13, color: "#d4a72c", textDecoration: "none", fontWeight: 600 }}>
           ← Back to Home
         </a>
       </nav>
@@ -57,7 +57,7 @@ export default function ScreeningLegalPage() {
           style={{
             fontSize: 11,
             fontWeight: 700,
-            color: "#10b981",
+            color: "#d4a72c",
             letterSpacing: ".14em",
             textTransform: "uppercase",
             marginBottom: 10,

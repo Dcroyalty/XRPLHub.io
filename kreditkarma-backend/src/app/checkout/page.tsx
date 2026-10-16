@@ -35,9 +35,9 @@ export default function CheckoutPage() {
 }
 
 const s: Record<string, React.CSSProperties> = {
-  shell: { background: "#fff", color: "#1a1a1a", minHeight: "100vh" },
+  shell: { background: "transparent", color: "#e9eef8", minHeight: "100vh" },
   page: { maxWidth: 520, margin: "0 auto", padding: "32px 20px 48px", fontFamily: "system-ui, sans-serif" },
-  back: { fontSize: 13, color: "#777", textDecoration: "none" },
+  back: { fontSize: 13, color: "rgba(233,238,248,.7)", textDecoration: "none" },
   h1: { fontSize: 24, fontWeight: 800, margin: "12px 0 20px" },
-  p: { color: "#444", lineHeight: 1.5 },
+  p: { color: "rgba(233,238,248,.7)", lineHeight: 1.5 },
 };

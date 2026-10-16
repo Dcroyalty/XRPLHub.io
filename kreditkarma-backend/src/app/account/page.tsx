@@ -47,7 +47,7 @@ export default function AccountDashboard() {
   };
 
   const fmtDate = (s?:string) => s ? new Date(s).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—';
-  const statusColor = (s?:string) => ({ DELIVERED:'#10b981', PAID:'#10b981', APPROVED:'#10b981', PENDING:'#f59e0b', REVIEWING:'#38bdf8', REJECTED:'#ef4444', FAILED:'#ef4444' } as Record<string,string>)[s||''] || 'rgba(255,255,255,.5)';
+  const statusColor = (s?:string) => ({ DELIVERED:'#d4a72c', PAID:'#d4a72c', APPROVED:'#d4a72c', PENDING:'#f59e0b', REVIEWING:'#38bdf8', REJECTED:'#ef4444', FAILED:'#ef4444' } as Record<string,string>)[s||''] || 'rgba(255,255,255,.5)';
 
   if (!user) {
     return (
@@ -55,7 +55,7 @@ export default function AccountDashboard() {
         <div style={{ maxWidth:420, textAlign:'center' }}>
           <h1 style={{ fontSize:28, fontWeight:900, marginBottom:14 }}>Sign In Required</h1>
           <p style={{ color:'rgba(255,255,255,.5)', marginBottom:24 }}>Please log in to see your account dashboard.</p>
-          <a href="/" style={{ display:'inline-block', padding:'13px 26px', background:'#10b981', color:'#000', borderRadius:99, fontWeight:800, textDecoration:'none' }}>← Back to Home</a>
+          <a href="/" style={{ display:'inline-block', padding:'13px 26px', background:'#d4a72c', color:'#000', borderRadius:99, fontWeight:800, textDecoration:'none' }}>← Back to Home</a>
         </div>
       </main>
     );
@@ -70,7 +70,7 @@ export default function AccountDashboard() {
       {/* Header */}
       <header style={{ borderBottom:'1px solid rgba(255,255,255,.08)', padding:'16px 24px', display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:12 }}>
         <a href="/" style={{ color:'#fff', textDecoration:'none', fontSize:18, fontWeight:900 }}>
-          <span style={{ color:'#10b981' }}>xrpl</span><span style={{ color:'#38bdf8' }}>Hub</span><span style={{ color:'#ef4444' }}>.io</span>
+          <span style={{ color:'#d4a72c' }}>xrpl</span><span style={{ color:'#38bdf8' }}>Hub</span><span style={{ color:'#ef4444' }}>.io</span>
         </a>
         <div style={{ display:'flex', alignItems:'center', gap:14 }}>
           <span style={{ fontSize:13, color:'rgba(255,255,255,.45)' }}>{user.name || user.email}</span>
@@ -80,15 +80,15 @@ export default function AccountDashboard() {
 
       <div style={{ maxWidth:1100, margin:'0 auto', padding:'40px 24px' }}>
         <div style={{ marginBottom:30 }}>
-          <p style={{ fontSize:11, fontWeight:700, color:'#10b981', letterSpacing:'.16em', textTransform:'uppercase', marginBottom:6, fontFamily:"'IBM Plex Mono',monospace" }}>My Account</p>
+          <p style={{ fontSize:11, fontWeight:700, color:'#d4a72c', letterSpacing:'.16em', textTransform:'uppercase', marginBottom:6, fontFamily:"'IBM Plex Mono',monospace" }}>My Account</p>
           <h1 style={{ fontSize:'clamp(26px,4vw,38px)', fontWeight:900, letterSpacing:'-1.5px' }}>Welcome back, {user.name || user.email.split('@')[0]}</h1>
           {wallet && <p style={{ fontSize:12, color:'rgba(255,255,255,.35)', marginTop:6, fontFamily:"'IBM Plex Mono',monospace" }}>Connected wallet: {wallet.slice(0,10)}…{wallet.slice(-6)}</p>}
         </div>
 
         {/* Stat cards */}
         <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(190px,1fr))', gap:14, marginBottom:30 }}>
-          <StatCard label="Total Purchases" value={String(purchases.length)} sub={purchases.length ? `${totalSpent.toFixed(0)} spent` : '—'} color="#10b981" />
-          <StatCard label="Current XRPLScore™" value={latestScore?String(latestScore):'—'} sub={latestScore?'300–850 scale':'Connect wallet'} color="#34d399" />
+          <StatCard label="Total Purchases" value={String(purchases.length)} sub={purchases.length ? `${totalSpent.toFixed(0)} spent` : '—'} color="#d4a72c" />
+          <StatCard label="Current XRPLScore™" value={latestScore?String(latestScore):'—'} sub={latestScore?'300–850 scale':'Connect wallet'} color="#e3bf55" />
           <StatCard label="Active Grant Apps" value={String(activeGrants)} sub={grants.length?`${grants.length} total`:'—'} color="#8b5cf6" />
           <StatCard label="Wallet" value={wallet?'Connected':'Not connected'} sub={wallet?'Xaman':'Connect on home'} color="#38bdf8" />
         </div>
@@ -96,7 +96,7 @@ export default function AccountDashboard() {
         {/* Tabs */}
         <div style={{ display:'flex', gap:6, marginBottom:18, borderBottom:'1px solid rgba(255,255,255,.07)', overflowX:'auto' }}>
           {(['overview','purchases','score','grants'] as const).map(t=>(
-            <button key={t} onClick={()=>setTab(t)} style={{ background:'none', border:'none', color:tab===t?'#10b981':'rgba(255,255,255,.5)', fontWeight:tab===t?800:600, fontSize:14, padding:'12px 16px', cursor:'pointer', fontFamily:'inherit', borderBottom:`2px solid ${tab===t?'#10b981':'transparent'}`, textTransform:'capitalize', whiteSpace:'nowrap' }}>{t}</button>
+            <button key={t} onClick={()=>setTab(t)} style={{ background:'none', border:'none', color:tab===t?'#d4a72c':'rgba(255,255,255,.5)', fontWeight:tab===t?800:600, fontSize:14, padding:'12px 16px', cursor:'pointer', fontFamily:'inherit', borderBottom:`2px solid ${tab===t?'#d4a72c':'transparent'}`, textTransform:'capitalize', whiteSpace:'nowrap' }}>{t}</button>
           ))}
         </div>
 
@@ -126,7 +126,7 @@ export default function AccountDashboard() {
               {score.slice().reverse().slice(0,12).map((s,i)=>(
                 <div key={i} style={{ display:'flex',justifyContent:'space-between',padding:'10px 0',borderBottom:'1px solid rgba(255,255,255,.05)' }}>
                   <span style={{ fontSize:13,color:'rgba(255,255,255,.55)' }}>{fmtDate(s.scannedAt)}</span>
-                  <span style={{ fontSize:14,fontWeight:800,color:'#10b981',fontFamily:"'IBM Plex Mono',monospace" }}>{s.score}</span>
+                  <span style={{ fontSize:14,fontWeight:800,color:'#d4a72c',fontFamily:"'IBM Plex Mono',monospace" }}>{s.score}</span>
                 </div>
               ))}
             </div>
@@ -169,7 +169,7 @@ function PurchaseRow({ p, fmtDate, statusColor }: { p:Purchase; fmtDate:(s?:stri
         <div style={{ fontSize:11,color:'rgba(255,255,255,.4)',marginTop:2 }}>{fmtDate(p.verifiedAt || p.deliveredAt)} · {p.amount} {p.currency}</div>
       </div>
       <span style={{ fontSize:10,fontWeight:800,color:statusColor(p.status?.startsWith('ACTIVE') ? 'REVIEWING' : p.status),background:statusColor(p.status?.startsWith('ACTIVE') ? 'REVIEWING' : p.status)+'18',border:`1px solid ${statusColor(p.status?.startsWith('ACTIVE') ? 'REVIEWING' : p.status)}40`,borderRadius:99,padding:'3px 10px',textTransform:'uppercase',letterSpacing:'.1em' }}>{p.status?.startsWith('ACTIVE') ? 'In progress' : (p.status || 'Verified')}</span>
-      {p.serviceTxHash && p.serviceTxHash.split(',').filter(Boolean).map((h,i,all)=>(<a key={h} href={`https://xrpscan.com/tx/${h}`} target="_blank" rel="noopener noreferrer" style={{ fontSize:11,color:'#10b981',textDecoration:'none',marginRight:8 }}>{all.length>1?`TX ${i+1} ↗`:'TX ↗'}</a>))}
+      {p.serviceTxHash && p.serviceTxHash.split(',').filter(Boolean).map((h,i,all)=>(<a key={h} href={`https://xrpscan.com/tx/${h}`} target="_blank" rel="noopener noreferrer" style={{ fontSize:11,color:'#d4a72c',textDecoration:'none',marginRight:8 }}>{all.length>1?`TX ${i+1} ↗`:'TX ↗'}</a>))}
     </div>
   );
 }
@@ -196,13 +196,13 @@ function ScoreChart({ points }: { points:ScorePoint[] }) {
   const path = points.map((p,i) => `${i===0?'M':'L'}${xs(i).toFixed(1)},${ys(p.score).toFixed(1)}`).join(' ');
   const last = points[points.length-1];
   return (
-    <div style={{ background:'rgba(16,185,129,.04)', border:'1px solid rgba(16,185,129,.15)', borderRadius:12, padding:12 }}>
+    <div style={{ background:'rgba(212,167,44,.04)', border:'1px solid rgba(212,167,44,.15)', borderRadius:12, padding:12 }}>
       <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" style={{ width:'100%', height:120, display:'block' }}>
-        <path d={path} fill="none" stroke="#10b981" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
-        <circle cx={xs(points.length-1)} cy={ys(last.score)} r="4.5" fill="#10b981" />
+        <path d={path} fill="none" stroke="#d4a72c" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
+        <circle cx={xs(points.length-1)} cy={ys(last.score)} r="4.5" fill="#d4a72c" />
       </svg>
       <div style={{ display:'flex',justifyContent:'space-between',fontSize:11,color:'rgba(255,255,255,.4)',marginTop:6,fontFamily:"'IBM Plex Mono',monospace" }}>
-        <span>Min: {Math.min(...scores)}</span><span>Latest: <strong style={{ color:'#10b981' }}>{last.score}</strong></span><span>Max: {Math.max(...scores)}</span>
+        <span>Min: {Math.min(...scores)}</span><span>Latest: <strong style={{ color:'#d4a72c' }}>{last.score}</strong></span><span>Max: {Math.max(...scores)}</span>
       </div>
     </div>
   );

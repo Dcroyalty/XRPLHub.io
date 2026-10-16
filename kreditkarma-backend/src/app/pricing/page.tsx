@@ -8,6 +8,8 @@
 import { PLAN_ORDER, PLANS } from "@/lib/plans";
 import PlanCta from "./PlanCta";
 import FreeKeyModal from "./FreeKeyModal";
+import SiteNav from "@/components/SiteNav";
+import { B } from "@/components/brand";
 
 export const metadata = {
   title: "XRPLScore — Pricing",
@@ -17,18 +19,8 @@ export const metadata = {
 export default function PricingPage() {
   return (
     <div style={styles.shell}>
+    <SiteNav active="api" />
     <main style={styles.page}>
-      <nav style={styles.topnav}>
-        <a href="/" style={styles.brand}>
-          <span style={{ color: "#10b981" }}>xrpl</span>
-          <span style={{ color: "#38bdf8" }}>Hub</span>
-          <span style={{ color: "#ef4444" }}>.io</span>
-        </a>
-        <div style={styles.navlinks}>
-          <a href="/" style={styles.navlink}>Home</a>
-          <a href="/openapi.json" style={styles.navlink}>API Docs</a>
-        </div>
-      </nav>
 
       <header style={styles.header}>
         <h1 style={styles.h1}>XRPLScore API</h1>
@@ -97,36 +89,28 @@ export default function PricingPage() {
   );
 }
 
-// Inline styles keep this file drop-in with zero CSS setup. Replace freely.
-// NOTE: globals.css sets `body { color: #eeeef2 }` for the dark homepage. This
-// is a LIGHT page, so it must set its own background + text colour explicitly —
-// otherwise every un-coloured element inherits near-white text and vanishes on
-// the white cards.
+// The site's one look (navy and white, one gold accent, over the site background): tokens from
+// src/components/brand.ts, shared with every other page.
+const card: React.CSSProperties = { border: `1px solid ${B.navyLine}`, borderRadius: 14, padding: 20, background: B.navyCard, color: B.ink };
 const styles: Record<string, React.CSSProperties> = {
-  shell: { background: "#fff", color: "#1a1a1a", minHeight: "100vh" },
-  page: { maxWidth: 960, margin: "0 auto", padding: "24px 20px 48px", fontFamily: "system-ui, sans-serif" },
-  topnav: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 0 28px", borderBottom: "1px solid #eee", marginBottom: 40 },
-  brand: { fontWeight: 900, fontSize: 18, letterSpacing: "-0.5px", textDecoration: "none" },
-  navlinks: { display: "flex", gap: 18 },
-  navlink: { fontSize: 14, color: "#555", textDecoration: "none", fontWeight: 600 },
-  usage: { marginTop: 44, padding: "24px", border: "1px solid #e6e6e6", borderRadius: 16, background: "#fafafa" },
-  usageH: { fontSize: 18, fontWeight: 700, margin: "0 0 8px" },
-  usageP: { color: "#555", fontSize: 14, lineHeight: 1.6, margin: "8px 0" },
-  code: { background: "#111", color: "#e6e6e6", padding: 14, borderRadius: 10, fontSize: 12.5, overflowX: "auto", lineHeight: 1.6 },
-  inlineLink: { color: "#0a7", fontWeight: 600 },
-  header: { textAlign: "center", marginBottom: 40 },
-  h1: { fontSize: 40, fontWeight: 800, margin: 0 },
-  sub: { fontSize: 17, color: "#555", maxWidth: 520, margin: "12px auto 0" },
-  grid: { display: "grid", gap: 20, gridTemplateColumns: "1fr" },
-  card: { border: "1px solid #e6e6e6", borderRadius: 16, padding: 24, background: "#fff" },
-  planName: { fontSize: 20, fontWeight: 700, margin: 0 },
-  price: { margin: "12px 0" },
-  amount: { fontSize: 32, fontWeight: 800 },
-  unit: { fontSize: 15, color: "#777" },
-  blurb: { color: "#555", margin: "0 0 16px" },
-  features: { listStyle: "none", padding: 0, margin: "0 0 20px" },
-  feature: { padding: "6px 0", borderTop: "1px solid #f0f0f0", fontSize: 15 },
-  cta: { display: "block", textAlign: "center", padding: "12px 16px", borderRadius: 10, background: "#111", color: "#fff", textDecoration: "none", fontWeight: 600 },
-  ctaGhost: { display: "block", textAlign: "center", padding: "12px 16px", borderRadius: 10, border: "1px solid #111", color: "#111", textDecoration: "none", fontWeight: 600 },
-  foot: { textAlign: "center", color: "#888", marginTop: 32, fontSize: 14 },
+  shell: { color: B.ink, minHeight: "100vh" },
+  page: { maxWidth: 960, margin: "0 auto", padding: "22px 16px 48px", fontFamily: B.sans },
+  usage: { ...card, marginTop: 28 },
+  usageH: { fontSize: 20, fontWeight: 700, margin: "0 0 8px", color: B.white },
+  usageP: { color: B.ink, fontSize: 14, lineHeight: 1.6, margin: "8px 0" },
+  code: { background: "rgba(255,255,255,.95)", color: B.navy, padding: 14, borderRadius: 10, fontSize: 12.5, overflowX: "auto", lineHeight: 1.6 },
+  inlineLink: { color: B.accent, fontWeight: 600 },
+  header: { marginBottom: 24 },
+  h1: { fontSize: "clamp(30px,7vw,44px)", margin: 0, color: B.white },
+  sub: { fontSize: 16, color: B.ink, maxWidth: 560, margin: "10px 0 0", lineHeight: 1.55 },
+  grid: { display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,260px),1fr))" },
+  card,
+  planName: { fontSize: 20, margin: 0, color: B.white },
+  price: { margin: "10px 0" },
+  amount: { fontSize: 30, fontWeight: 800, color: B.accent },
+  unit: { fontSize: 15, color: B.muted },
+  blurb: { color: B.ink, margin: "0 0 14px" },
+  features: { listStyle: "none", padding: 0, margin: "0 0 18px" },
+  feature: { padding: "6px 0", borderTop: `1px solid ${B.navyLine}`, fontSize: 14 },
+  foot: { color: B.muted, marginTop: 24, fontSize: 14 },
 };

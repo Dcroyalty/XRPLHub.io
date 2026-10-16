@@ -1,20 +1,21 @@
 // src/app/lending/ui.ts — shared styles for the /lending pages (server-safe: no "use client").
-// Same look as the newer XRPLHub tool pages (src/app/spend/ui.tsx): light, one column, mobile-first.
+// The site's one look (navy and white, one gold accent, over the site background; see globals.css and
+// src/components/brand.ts): one column, mobile-first.
 import type React from "react";
 
 export const C = {
-  bg: "#f7f7f5",
-  fg: "#1a1a1a",
-  muted: "#555",
-  small: "#666",
-  card: "#fff",
-  border: "#e4e4e0",
-  row: "#f0f0ec",
-  accent: "#0f766e",
-  yes: "#047857",
-  no: "#b91c1c",
-  warnBg: "#fffbea",
-  warnBorder: "#f0e3a8",
+  bg: "transparent",
+  fg: "#e9eef8",
+  muted: "rgba(233,238,248,.72)",
+  small: "rgba(233,238,248,.6)",
+  card: "rgba(11,29,63,.86)",
+  border: "rgba(255,255,255,.12)",
+  row: "rgba(255,255,255,.08)",
+  accent: "#d4a72c",
+  yes: "#9be3c3",
+  no: "#fca5a5",
+  warnBg: "rgba(212,167,44,.12)",
+  warnBorder: "rgba(212,167,44,.45)",
 };
 
 export const L: Record<string, React.CSSProperties> = {

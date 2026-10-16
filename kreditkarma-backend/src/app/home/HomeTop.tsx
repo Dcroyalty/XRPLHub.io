@@ -191,3 +191,67 @@ export function GrantsTeaser() {
     </div>
   );
 }
+
+// ── The rest of the homepage, in the same cards ───────────────────────────────────────────────────────────────────
+type Prod = { name: string; line: string; price: string; href?: string; onClick?: () => void; cta?: string };
+
+export function ProductGrid({ onMptIssue }: { onMptIssue: () => void }) {
+  const items: Prod[] = [
+    { name: "Yield Desk", line: "Every way to earn on XRP and RLUSD we can verify, each with an A–F risk grade.", price: "Free", href: "/yield" },
+    { name: "Lending tracker", line: "Is XRPL lending live yet? The validator vote, hour by hour.", price: "Free", href: "/lending" },
+    { name: "Spend Controls", line: "Allowances that can only be spent where you pick, and recurring payments you approve.", price: "Free", href: "/spend" },
+    { name: "Token check", line: "See what a token's creator can do: freeze it, take it back, or block you from selling.", price: "Free", href: "#mpt" },
+    { name: "Wallet permissions", line: "Who can move money from your wallet? Find and remove old permissions.", price: "Free", href: "/permissions" },
+    { name: "Batch Send", line: "Pay up to 8 people with one all-or-nothing approval.", price: "Free", href: "/send-many" },
+    { name: "Issue a token (MPT)", line: "Build a Multi-Purpose Token with its backing declared on the ledger. You sign in your wallet.", price: "Free", onClick: onMptIssue },
+    { name: "Community grants", line: "Small grants for rent, bills, food or school, paid in RLUSD. Applying is free.", price: "Free", href: "/grants" },
+  ];
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,260px),1fr))", gap: 12, fontFamily: B.sans }}>
+      {items.map((p) => (
+        <ProductCard key={p.name} name={p.name} price={p.price} line={p.line}>
+          {p.onClick
+            ? <button onClick={p.onClick} style={S.btnPrimary}>{p.cta ?? "Use free"}</button>
+            : <a href={p.href} style={S.btnPrimary}>{p.cta ?? "Use free"}</a>}
+        </ProductCard>
+      ))}
+    </div>
+  );
+}
+
+export function DevelopersSection() {
+  return (
+    <section id="api" style={{ ...S.card, scrollMarginTop: 80 }}>
+      <div style={S.eyebrow}>For businesses, builders and AI agents</div>
+      <h2 style={{ ...S.h2, marginTop: 6 }}>Ratings and wallet scores as an API</h2>
+      <p style={{ margin: "0 0 12px", lineHeight: 1.55 }}>
+        Risk grades for XRP yield and XRPL lending at $0.02 per call (x402, no account), the wallet score API, sanctions screening, wallet alerts and an MCP server for AI agents.
+      </p>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <a href="/developers" style={S.btnPrimary}>See the API</a>
+        <a href="/pricing" style={S.btnSecondary}>Wallet score API pricing</a>
+      </div>
+    </section>
+  );
+}
+
+export function HomeFaq() {
+  const qa: [string, string][] = [
+    ["Do I need to know crypto?", "No. If you have an XRP wallet like Xaman, you can use everything here."],
+    ["Does XRPLHub ever hold my money?", "No. Your money stays in your wallet, and you approve every payment yourself. We never see your keys."],
+    ["What's free?", "The wallet check, Yield Desk ratings, the lending tracker, Spend Controls, Token check, wallet permissions, Batch Send and grant applications. XRPLHub Pro and the grade API are paid."],
+  ];
+  return (
+    <section id="faq" style={{ fontFamily: B.sans }}>
+      <h2 style={S.h2}>Questions</h2>
+      <div style={{ display: "grid", gap: 10 }}>
+        {qa.map(([q, a]) => (
+          <div key={q} style={S.card}>
+            <h3 style={{ margin: "0 0 4px", color: B.white, fontSize: 17 }}>{q}</h3>
+            <p style={{ margin: 0, lineHeight: 1.55 }}>{a}</p>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}

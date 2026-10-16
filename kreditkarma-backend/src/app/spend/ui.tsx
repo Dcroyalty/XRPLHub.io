@@ -22,7 +22,7 @@ export const s: Record<string, React.CSSProperties> = {
   label: { display: "block", fontSize: 12, fontWeight: 600, color: v("label", "#444"), margin: "0 0 4px" },
   input: { width: "100%", padding: "9px 10px", border: `1px solid ${v("input-border", "#ccc")}`, borderRadius: 8, fontSize: 14, boxSizing: "border-box", background: v("input-bg", "#fff"), color: v("fg", "#1a1a1a") },
   mono: { fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 12, wordBreak: "break-all" },
-  btn: { padding: "10px 16px", borderRadius: 9, border: "none", background: v("accent", "#0f766e"), color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer" },
+  btn: { padding: "10px 16px", borderRadius: 9, border: "none", background: v("accent", "#0f766e"), color: v("accent-ink", "#fff"), fontWeight: 700, fontSize: 14, cursor: "pointer" },
   btnGhost: { padding: "8px 12px", borderRadius: 8, border: `1px solid ${v("input-border", "#ccc")}`, background: v("card", "#fff"), color: v("fg", "#1a1a1a"), fontSize: 13, cursor: "pointer" },
   small: { fontSize: 12, color: v("small", "#666") },
   err: { color: v("err", "#b91c1c"), fontSize: 13, margin: "6px 0" },

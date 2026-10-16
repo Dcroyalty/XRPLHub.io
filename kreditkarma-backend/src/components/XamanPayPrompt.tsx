@@ -73,7 +73,7 @@ export default function XamanPayPrompt({
       style={{
         background: cardBg, borderRadius: 18, padding: 14, width: 210, height: 210,
         margin: "0 auto 12px", display: "flex", alignItems: "center", justifyContent: "center",
-        boxShadow: "0 0 30px rgba(16,185,129,.15)",
+        boxShadow: "0 0 30px rgba(212,167,44,.15)",
       }}
     >
       <img src={src} alt={`Scan with Xaman to ${action.toLowerCase()}`} style={{ width: "100%", height: "100%", borderRadius: 8 }} />
@@ -87,9 +87,9 @@ export default function XamanPayPrompt({
       rel="noopener noreferrer"
       style={{
         display: "inline-flex", alignItems: "center", gap: 8,
-        background: "#10b981", color: "#000", fontWeight: 800, fontSize: 15,
+        background: "#d4a72c", color: "#000", fontWeight: 800, fontSize: 15,
         padding: "14px 30px", borderRadius: 99, textDecoration: "none",
-        boxShadow: "0 4px 20px rgba(16,185,129,.35)",
+        boxShadow: "0 4px 20px rgba(212,167,44,.35)",
       }}
     >
       📱 Open in Xaman — {action} →
@@ -140,7 +140,7 @@ function Row({
       <span style={{ color: muted, flexShrink: 0 }}>{label}</span>
       <span
         style={{
-          color: highlight ? "#10b981" : strong,
+          color: highlight ? "#d4a72c" : strong,
           fontWeight: highlight || !mono ? 700 : 400,
           fontFamily: mono ? "ui-monospace, monospace" : "inherit",
           wordBreak: "break-all", textAlign: "right",

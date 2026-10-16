@@ -5,13 +5,13 @@ export default function SupportPage() {
       <style>{`@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800;900&family=IBM+Plex+Mono:wght@400;600&display=swap');*{box-sizing:border-box;margin:0;padding:0}::-webkit-scrollbar{width:4px}::-webkit-scrollbar-thumb{background:rgba(255,255,255,.1);border-radius:99px}a{transition:color .15s}`}</style>
 
       {/* Nav */}
-      <nav style={{ background:'rgba(3,4,14,.9)', backdropFilter:'blur(20px)', borderBottom:'1px solid rgba(16,185,129,.18)', padding:'0 24px', height:64, display:'flex', alignItems:'center', justifyContent:'space-between', position:'sticky', top:0, zIndex:100 }}>
+      <nav style={{ background:'rgba(3,4,14,.9)', backdropFilter:'blur(20px)', borderBottom:'1px solid rgba(212,167,44,.18)', padding:'0 24px', height:64, display:'flex', alignItems:'center', justifyContent:'space-between', position:'sticky', top:0, zIndex:100 }}>
         <BrandLogo />
-        <a href="/" style={{ fontSize:13, color:'#10b981', textDecoration:'none', fontWeight:600 }}>← Back to Home</a>
+        <a href="/" style={{ fontSize:13, color:'#d4a72c', textDecoration:'none', fontWeight:600 }}>← Back to Home</a>
       </nav>
 
       <div style={{ maxWidth:820, margin:'0 auto', padding:'52px 24px 0' }}>
-        <div style={{ fontSize:11, fontWeight:700, color:'#10b981', letterSpacing:'.14em', textTransform:'uppercase', marginBottom:10 }}>Help Center</div>
+        <div style={{ fontSize:11, fontWeight:700, color:'#d4a72c', letterSpacing:'.14em', textTransform:'uppercase', marginBottom:10 }}>Help Center</div>
         <h1 style={{ fontSize:'clamp(28px,5vw,44px)', fontWeight:900, letterSpacing:'-2px', marginBottom:16 }}>Support</h1>
         <p style={{ fontSize:15, color:'rgba(255,255,255,.5)', marginBottom:52, lineHeight:1.7 }}>We&apos;re here to help. Find answers below or reach out directly.</p>
 
@@ -23,30 +23,30 @@ export default function SupportPage() {
             { emoji:'🔒', title:'Privacy & Data', email:'privacy@xrplhub.io', desc:'Data access, correction, and deletion requests.' },
             { emoji:'🤝', title:'Institutional Partnerships', email:'partners@xrplhub.io', desc:'B2B API access, data licensing, grant program partnerships.' },
           ].map(c => (
-            <div key={c.title} style={{ background:'rgba(16,185,129,.05)', border:'1px solid rgba(16,185,129,.18)', borderRadius:18, padding:'22px 20px' }}>
+            <div key={c.title} style={{ background:'rgba(212,167,44,.05)', border:'1px solid rgba(212,167,44,.18)', borderRadius:18, padding:'22px 20px' }}>
               <div style={{ fontSize:28, marginBottom:12 }}>{c.emoji}</div>
               <div style={{ fontWeight:800, fontSize:15, marginBottom:6 }}>{c.title}</div>
               <p style={{ fontSize:12, color:'rgba(255,255,255,.4)', lineHeight:1.65, marginBottom:14 }}>{c.desc}</p>
-              <a href={`mailto:${c.email}`} style={{ fontSize:13, color:'#10b981', fontWeight:700, textDecoration:'none', fontFamily:"'IBM Plex Mono',monospace" }}>{c.email}</a>
+              <a href={`mailto:${c.email}`} style={{ fontSize:13, color:'#d4a72c', fontWeight:700, textDecoration:'none', fontFamily:"'IBM Plex Mono',monospace" }}>{c.email}</a>
             </div>
           ))}
         </div>
 
         {/* Response times */}
         <div style={{ background:'rgba(255,255,255,.03)', border:'1px solid rgba(255,255,255,.07)', borderRadius:16, padding:'24px 28px', marginBottom:52 }}>
-          <div style={{ fontSize:11, fontWeight:700, color:'#10b981', letterSpacing:'.12em', textTransform:'uppercase', marginBottom:16 }}>Response Times</div>
+          <div style={{ fontSize:11, fontWeight:700, color:'#d4a72c', letterSpacing:'.12em', textTransform:'uppercase', marginBottom:16 }}>Response Times</div>
           <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))', gap:12 }}>
             {[['General Support','Within 24 hours'],['Legal Inquiries','Within 3 business days'],['Privacy & Data Requests','Within 30 days'],['Grant Applications','Paused until the treasury is funded; human review when open']].map(([t,d]) => (
               <div key={t} style={{ padding:'12px 0', borderBottom:'1px solid rgba(255,255,255,.05)' }}>
                 <div style={{ fontSize:12, fontWeight:700, color:'rgba(255,255,255,.7)', marginBottom:3 }}>{t}</div>
-                <div style={{ fontSize:11, color:'#10b981', fontWeight:600 }}>{d}</div>
+                <div style={{ fontSize:11, color:'#d4a72c', fontWeight:600 }}>{d}</div>
               </div>
             ))}
           </div>
         </div>
 
         {/* FAQ */}
-        <div style={{ fontSize:11, fontWeight:700, color:'#10b981', letterSpacing:'.14em', textTransform:'uppercase', marginBottom:24 }}>Common Questions</div>
+        <div style={{ fontSize:11, fontWeight:700, color:'#d4a72c', letterSpacing:'.14em', textTransform:'uppercase', marginBottom:24 }}>Common Questions</div>
         <div style={{ display:'flex', flexDirection:'column', gap:12, marginBottom:52 }}>
           {[
             ['What\'s free?', 'The wallet score, Spend Controls and Token Check are free. Business tools are paid.'],
@@ -65,17 +65,17 @@ export default function SupportPage() {
         </div>
 
         {/* Need Xaman */}
-        <div style={{ background:'linear-gradient(135deg,rgba(16,185,129,.1),rgba(6,6,22,.8))', border:'1px solid rgba(16,185,129,.25)', borderRadius:18, padding:'28px 24px', marginBottom:40, textAlign:'center' as const }}>
+        <div style={{ background:'linear-gradient(135deg,rgba(212,167,44,.1),rgba(6,6,22,.8))', border:'1px solid rgba(212,167,44,.25)', borderRadius:18, padding:'28px 24px', marginBottom:40, textAlign:'center' as const }}>
           <div style={{ fontSize:32, marginBottom:12 }}>📲</div>
           <h3 style={{ fontSize:20, fontWeight:900, marginBottom:8 }}>Need an XRPL Wallet?</h3>
           <p style={{ fontSize:13, color:'rgba(255,255,255,.5)', marginBottom:18, lineHeight:1.65 }}>Everything here works with an XRP wallet such as Xaman. It&apos;s free on iPhone and Android.</p>
-          <a href="https://xaman.app/" target="_blank" rel="noopener noreferrer" style={{ display:'inline-flex', alignItems:'center', gap:8, background:'#10b981', color:'#000', fontWeight:800, fontSize:14, padding:'12px 28px', borderRadius:99, textDecoration:'none' }}>Download Xaman — Free →</a>
+          <a href="https://xaman.app/" target="_blank" rel="noopener noreferrer" style={{ display:'inline-flex', alignItems:'center', gap:8, background:'#d4a72c', color:'#000', fontWeight:800, fontSize:14, padding:'12px 28px', borderRadius:99, textDecoration:'none' }}>Download Xaman — Free →</a>
         </div>
 
         <div style={{ paddingTop:24, borderTop:'1px solid rgba(255,255,255,.07)', display:'flex', gap:16, flexWrap:'wrap' }}>
           <a href="/terms" style={{ fontSize:13, color:'rgba(255,255,255,.4)', textDecoration:'none' }}>Terms of Service</a>
           <a href="/privacy" style={{ fontSize:13, color:'rgba(255,255,255,.4)', textDecoration:'none' }}>Privacy Policy</a>
-          <a href="/" style={{ fontSize:13, color:'#10b981', textDecoration:'none', fontWeight:600 }}>← Back to Home</a>
+          <a href="/" style={{ fontSize:13, color:'#d4a72c', textDecoration:'none', fontWeight:600 }}>← Back to Home</a>
         </div>
       </div>
     </div>

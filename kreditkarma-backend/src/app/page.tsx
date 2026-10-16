@@ -8,7 +8,7 @@ import WalletPicker from '@/lib/wallet/WalletPicker';
 import XamanPayPrompt from '@/components/XamanPayPrompt';
 import SiteNav from '@/components/SiteNav';
 import DonateBox from '@/components/grants/DonateBox';
-import { WalletCheck, BuyRow, TopRated, TrustStrip, GrantsTeaser, GrantsBanner } from './home/HomeTop';
+import { WalletCheck, BuyRow, TopRated, TrustStrip, GrantsTeaser, GrantsBanner, ProductGrid, DevelopersSection, HomeFaq } from './home/HomeTop';
 import {
   getProvider as getWalletProvider,
   resolveProviderOptions,
@@ -86,7 +86,7 @@ const brandGradientText: React.CSSProperties = {
 // ─── Wordmark: xrplHub.io in the brand green-to-blue gradient ───
 function Wordmark({ size = 18 }: { size?: number }) {
   return (
-    <span style={{ fontWeight: 900, letterSpacing: '-.5px', lineHeight: 1, fontSize: size, ...brandGradientText }}>
+    <span className="xh-keep-font" style={{ fontWeight: 900, letterSpacing: '-.5px', lineHeight: 1, fontSize: size, ...brandGradientText }}>
       xrplHub.io
     </span>
   );
@@ -1976,112 +1976,19 @@ export default function XRPLHubHome() {
           <h2 id="products" style={{ fontFamily:"'Iowan Old Style','Palatino Linotype',Palatino,Georgia,serif", fontSize:'clamp(22px,4.6vw,30px)', fontWeight:700, color:'#fff', margin:'28px 0 0', scrollMarginTop:80 }}>More from XRPLHub</h2>
         </div>
 
-        {/* THREE FREE TOOLS — the three products nobody else offers (competitive map, 2026-10-06), in plain English */}
-        <section id="only" className="section-pad" style={{ padding:'0 24px 56px',maxWidth:1240,margin:'0 auto' }}>
-          <div style={{ textAlign:'center',marginBottom:30 }}>
-            <div style={{ display:'inline-flex',alignItems:'center',gap:6,marginBottom:12 }}>
-              <span style={{ width:5,height:5,borderRadius:'50%',background:'#d4a72c',boxShadow:'0 0 8px #d4a72c' }} />
-              <span style={{ fontSize:11,fontWeight:700,color:'#d4a72c',letterSpacing:'.14em',textTransform:'uppercase' }}>Free</span>
-            </div>
-            <h2 style={{ fontSize:'clamp(24px,4vw,42px)',fontWeight:900,letterSpacing:'-2px',marginBottom:12 }}>Three free tools</h2>
-            <p style={{ fontSize:14,color:'rgba(255,255,255,.48)',maxWidth:600,margin:'0 auto',lineHeight:1.7 }}>Your money stays in your own wallet, and you approve every payment yourself. We never see your keys.</p>
+        {/* EVERY PRODUCT — one card style for all of them (src/app/home/HomeTop.tsx) */}
+        <section className="section-pad" style={{ maxWidth:1180, margin:'0 auto', padding:'0 16px 28px' }}>
+          <ProductGrid onMptIssue={()=>{ const p = PRODUCTS.find(x=>x.id==='mptissue'); if (p) setAP(p); }} />
+          <div id="mpt" className="xh-card" style={{ marginTop:12, scrollMarginTop:80 }}>
+            <h3 style={{ margin:'0 0 6px', color:'#fff', fontSize:20 }}>Token check</h3>
+            <p style={{ margin:'0 0 12px', lineHeight:1.55 }}>Before you buy a tokenized asset, see what its creator can do: freeze it, take it back from you, block you from selling it, or make you ask permission to hold it. This checks tokenized assets (MPTs) only.</p>
+            <MptPowerCheck />
           </div>
-          <div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(300px,1fr))',gap:18 }}>
-            <div style={{ background:'linear-gradient(135deg,rgba(212,167,44,.1),rgba(6,6,22,.85))',border:'1px solid rgba(212,167,44,.28)',borderRadius:22,padding:'26px 24px',display:'flex',flexDirection:'column' }}>
-              <div style={{ fontSize:10,fontWeight:700,color:'#d4a72c',letterSpacing:'.13em',textTransform:'uppercase',marginBottom:8,fontFamily:"'IBM Plex Mono',monospace" }}>What&apos;s this wallet&apos;s track record?</div>
-              <h3 style={{ fontSize:22,fontWeight:900,marginBottom:10 }}>Wallet Score</h3>
-              <p style={{ fontSize:13,color:'rgba(255,255,255,.55)',lineHeight:1.7,marginBottom:14 }}>Paste any XRP wallet address. You get a score from 300 to 850, built only from that wallet&apos;s public history: how old it is, how it&apos;s been used, how much it keeps on hand. It scores a wallet, not a person. It isn&apos;t a credit check and doesn&apos;t use your name or ID.</p>
-              <div style={{ display:'flex',flexDirection:'column',gap:6,marginBottom:18,fontSize:12,color:'rgba(255,255,255,.55)' }}>
-                {['Free for any wallet, no sign-up','Look up an address before you send money to it','Connect your own wallet to see your full report'].map(f=><div key={f}><span style={{ color:'#d4a72c' }}>✓</span> {f}</div>)}
-              </div>
-              <div style={{ display:'flex',gap:8,flexWrap:'wrap',marginTop:'auto' }}>
-                <button onClick={()=>document.getElementById('score')?.scrollIntoView({behavior:'smooth'})} style={{ padding:'11px 18px',borderRadius:99,background:'#d4a72c',color:'#000',border:'none',fontWeight:800,fontSize:13,cursor:'pointer',fontFamily:'inherit' }}>Check a wallet →</button>
-              </div>
-            </div>
-            <div style={{ background:'linear-gradient(135deg,rgba(56,189,248,.1),rgba(6,6,22,.85))',border:'1px solid rgba(56,189,248,.28)',borderRadius:22,padding:'26px 24px',display:'flex',flexDirection:'column' }}>
-              <div style={{ fontSize:10,fontWeight:700,color:'#38bdf8',letterSpacing:'.13em',textTransform:'uppercase',marginBottom:8,fontFamily:"'IBM Plex Mono',monospace" }}>Give money with rules</div>
-              <h3 style={{ fontSize:22,fontWeight:900,marginBottom:10 }}>Spend Controls</h3>
-              <p style={{ fontSize:13,color:'rgba(255,255,255,.55)',lineHeight:1.7,marginBottom:14 }}>Give your kids an allowance they can only spend at places you pick, up to amounts you set. Or pay a bill or subscription every week or month. You approve each payment in your own wallet; when a new month starts, we send that month&apos;s payment to your wallet to approve. Cancel anytime.</p>
-              <div style={{ display:'flex',flexDirection:'column',gap:6,marginBottom:18,fontSize:12,color:'rgba(255,255,255,.55)' }}>
-                {['Only the people and places you pick can be paid','Allowances are paid in RLUSD, a digital US dollar','Monthly payments can be XRP or RLUSD'].map(f=><div key={f}><span style={{ color:'#38bdf8' }}>✓</span> {f}</div>)}
-              </div>
-              <div style={{ marginTop:'auto' }}>
-                <a href="/spend" style={{ display:'inline-block',padding:'11px 18px',borderRadius:99,background:'#38bdf8',color:'#000',fontWeight:800,fontSize:13,textDecoration:'none' }}>Give money with rules →</a>
-              </div>
-            </div>
-            <div id="mpt" style={{ background:'linear-gradient(135deg,rgba(245,158,11,.1),rgba(6,6,22,.85))',border:'1px solid rgba(245,158,11,.28)',borderRadius:22,padding:'26px 24px',display:'flex',flexDirection:'column' }}>
-              <div style={{ fontSize:10,fontWeight:700,color:'#f59e0b',letterSpacing:'.13em',textTransform:'uppercase',marginBottom:8,fontFamily:"'IBM Plex Mono',monospace" }}>Look before you buy</div>
-              <h3 style={{ fontSize:22,fontWeight:900,marginBottom:10 }}>Token Check</h3>
-              <p style={{ fontSize:13,color:'rgba(255,255,255,.55)',lineHeight:1.7,marginBottom:14 }}>Before you buy a tokenized asset, see what its creator can do: freeze it, take it back from you, block you from selling it, or make you ask permission to hold it.</p>
-              <p style={{ fontSize:12,color:'rgba(255,255,255,.45)',marginBottom:12,lineHeight:1.6,fontStyle:'italic' }}>This checks tokenized assets only, the newer kind of token. It can&apos;t check every XRP token yet.</p>
-              <MptPowerCheck />
-            </div>
-          </div>
-          <a href="/yield" style={{ display:'flex',alignItems:'center',justifyContent:'space-between',gap:14,flexWrap:'wrap',marginTop:18,padding:'18px 22px',borderRadius:18,border:'1px solid rgba(212,167,44,.35)',background:'linear-gradient(135deg,rgba(212,167,44,.09),rgba(6,6,22,.85))',color:'#fff',textDecoration:'none' }}>
-            <span>
-              <span style={{ display:'block',fontSize:10,fontWeight:700,color:'#d4a72c',letterSpacing:'.13em',textTransform:'uppercase',marginBottom:4,fontFamily:"'IBM Plex Mono',monospace" }}>New · free</span>
-              <span style={{ display:'block',fontSize:18,fontWeight:900,marginBottom:4 }}>XRP Yield Desk</span>
-              <span style={{ display:'block',fontSize:13,color:'rgba(255,255,255,.55)',lineHeight:1.6 }}>Every way to earn on XRP and RLUSD we can verify — rates, lockups, who holds the keys — each with an A–F risk grade. Not advice; we&apos;re never paid by what we grade.</span>
-            </span>
-            <span style={{ padding:'11px 18px',borderRadius:99,background:'#d4a72c',color:'#000',fontWeight:800,fontSize:13,whiteSpace:'nowrap' }}>Compare yields →</span>
-          </a>
-          <a href="/lending" style={{ display:'flex',alignItems:'center',justifyContent:'space-between',gap:14,flexWrap:'wrap',marginTop:12,padding:'18px 22px',borderRadius:18,border:'1px solid rgba(167,139,250,.35)',background:'linear-gradient(135deg,rgba(167,139,250,.09),rgba(6,6,22,.85))',color:'#fff',textDecoration:'none' }}>
-            <span>
-              <span style={{ display:'block',fontSize:10,fontWeight:700,color:'#a78bfa',letterSpacing:'.13em',textTransform:'uppercase',marginBottom:4,fontFamily:"'IBM Plex Mono',monospace" }}>New · free</span>
-              <span style={{ display:'block',fontSize:18,fontWeight:900,marginBottom:4 }}>Is XRPL lending live yet?</span>
-              <span style={{ display:'block',fontSize:13,color:'rgba(255,255,255,.55)',lineHeight:1.6 }}>Track the validator vote on XRP Ledger lending hour by hour, see who votes yes, and get one email the day it goes live.</span>
-            </span>
-            <span style={{ padding:'11px 18px',borderRadius:99,background:'#a78bfa',color:'#000',fontWeight:800,fontSize:13,whiteSpace:'nowrap' }}>Track lending →</span>
-          </a>
-          <a href="/permissions" style={{ display:'flex',alignItems:'center',justifyContent:'space-between',gap:14,flexWrap:'wrap',marginTop:12,padding:'18px 22px',borderRadius:18,border:'1px solid rgba(239,68,68,.3)',background:'linear-gradient(135deg,rgba(239,68,68,.08),rgba(6,6,22,.85))',color:'#fff',textDecoration:'none' }}>
-            <span>
-              <span style={{ display:'block',fontSize:10,fontWeight:700,color:'#f87171',letterSpacing:'.13em',textTransform:'uppercase',marginBottom:4,fontFamily:"'IBM Plex Mono',monospace" }}>New · free</span>
-              <span style={{ display:'block',fontSize:18,fontWeight:900,marginBottom:4 }}>Who can move money from my wallet?</span>
-              <span style={{ display:'block',fontSize:13,color:'rgba(255,255,255,.55)',lineHeight:1.6 }}>See everyone who can take money out of an XRP wallet — a second key, signers, someone you gave permission to, a check — and remove the ones you don&apos;t want.</span>
-            </span>
-            <span style={{ padding:'11px 18px',borderRadius:99,background:'#f87171',color:'#000',fontWeight:800,fontSize:13,whiteSpace:'nowrap' }}>Check my wallet →</span>
-          </a>
-          <a href="/send-many" style={{ display:'flex',alignItems:'center',justifyContent:'space-between',gap:14,flexWrap:'wrap',marginTop:12,padding:'18px 22px',borderRadius:18,border:'1px solid rgba(56,189,248,.3)',background:'linear-gradient(135deg,rgba(56,189,248,.08),rgba(6,6,22,.85))',color:'#fff',textDecoration:'none' }}>
-            <span>
-              <span style={{ display:'block',fontSize:10,fontWeight:700,color:'#38bdf8',letterSpacing:'.13em',textTransform:'uppercase',marginBottom:4,fontFamily:"'IBM Plex Mono',monospace" }}>New · free</span>
-              <span style={{ display:'block',fontSize:18,fontWeight:900,marginBottom:4 }}>Pay up to 8 people with one approval</span>
-              <span style={{ display:'block',fontSize:13,color:'rgba(255,255,255,.55)',lineHeight:1.6 }}>Send XRP or RLUSD to several people at once. Everyone gets paid, or nobody does — never half.</span>
-            </span>
-            <span style={{ padding:'11px 18px',borderRadius:99,background:'#38bdf8',color:'#000',fontWeight:800,fontSize:13,whiteSpace:'nowrap' }}>Send to many →</span>
-          </a>
-        </section>
-
-        {/* XRPLSCORE — anonymous pitch + checker (or personalized wallet report when wallet connected) */}
-        <section id="score" className="section-pad" style={{ padding:'0 24px 48px',maxWidth:1240,margin:'0 auto' }}>
-          <div style={{ background:'linear-gradient(135deg,rgba(212,167,44,.07),rgba(6,6,22,.85))',border:'1px solid rgba(212,167,44,.18)',borderRadius:24,padding:'40px 32px',backdropFilter:'blur(20px)',animation:'borderPulse 4s ease-in-out infinite' }}>
-          {connectedWallet ? (
-            <PersonalCreditReport
-              wallet={connectedWallet}
-              data={personalScore}
-              history={scoreHistory}
-              loading={personalLoading}
-            />
-          ) : (
-            <div style={{ maxWidth:560,margin:'0 auto' }}>
-                <div style={{ display:'inline-flex',alignItems:'center',gap:6,marginBottom:14 }}>
-                  <span style={{ width:5,height:5,borderRadius:'50%',background:'#d4a72c',boxShadow:'0 0 8px #d4a72c',animation:'pulse 2s infinite' }} />
-                  <span style={{ fontSize:11,fontWeight:700,color:'#d4a72c',letterSpacing:'.14em',textTransform:'uppercase' }}>Wallet Score · free, no sign-up</span>
-                </div>
-                <h2 style={{ fontSize:'clamp(22px,3.3vw,36px)',fontWeight:900,letterSpacing:'-2px',marginBottom:14 }}>Check any XRP wallet.</h2>
-                <p style={{ fontSize:13,color:'rgba(255,255,255,.5)',lineHeight:1.8,marginBottom:20 }}>
-                  Paste a wallet address to see its score. Free, no sign-up. The score comes only from the wallet&apos;s public history and can be up to 15 minutes old.
-                  It scores a wallet, not a person. It isn&apos;t a credit check.
-                </p>
-
-                {/* score checker */}
-                <div style={{ display:'flex',gap:9,flexWrap:'wrap' }}>
-                  <input className="score-inp" type="text" value={walletInput} onChange={e=>setWI(e.target.value)} onKeyDown={e=>e.key==='Enter'&&fetchScore(walletInput)} placeholder="Paste an XRP wallet address (starts with r)…" style={{ ...INP,flex:1,minWidth:180,borderRadius:99,paddingLeft:20,fontFamily:"'IBM Plex Mono',monospace",fontSize:12 }} />
-                  <button onClick={()=>fetchScore(walletInput)} style={{ padding:'12px 22px',borderRadius:99,background:'#d4a72c',color:'#000',border:'none',fontWeight:800,fontSize:13,cursor:'pointer',fontFamily:'inherit',whiteSpace:'nowrap' }}>Check →</button>
-                </div>
-                <p style={{ fontSize:11,color:'rgba(255,255,255,.28)',marginTop:10 }}>or <button onClick={()=>setShowConnect(true)} style={{ background:'none',border:'none',color:'#d4a72c',cursor:'pointer',fontWeight:700,fontSize:11,fontFamily:'inherit',padding:0 }}>connect your Xaman wallet</button> to see your own wallet&apos;s full report</p>
+          {connectedWallet && (
+            <div id="score" className="xh-card" style={{ marginTop:12, scrollMarginTop:80 }}>
+              <PersonalCreditReport wallet={connectedWallet} data={personalScore} history={scoreHistory} loading={personalLoading} />
             </div>
           )}
-          </div>
         </section>
 
         {/* GRANTS — the grants pool (src/lib/grantsPool.ts); full page at /grants */}
@@ -2092,58 +1999,11 @@ export default function XRPLHubHome() {
           </div>
         </section>
 
-        {/* FOR BUSINESSES AND DEVELOPERS — the technical terms live here, not in the consumer cards above */}
-        <section id="api" className="section-pad" style={{ padding:'0 24px 56px',maxWidth:980,margin:'0 auto' }}>
-          <div style={{ ...GLASS,borderRadius:22,padding:'34px 28px' }}>
-            <div style={{ fontSize:10,fontWeight:700,color:'#38bdf8',letterSpacing:'.14em',textTransform:'uppercase',marginBottom:8,fontFamily:"'IBM Plex Mono',monospace" }}>For businesses and developers</div>
-            <h2 style={{ fontSize:'clamp(22px,3.4vw,30px)',fontWeight:900,letterSpacing:'-1px',marginBottom:10 }}>Tools for businesses, builders and AI agents</h2>
-            <p style={{ fontSize:14,color:'rgba(255,255,255,.55)',lineHeight:1.7,marginBottom:18,maxWidth:680 }}>
-              The same XRPLScore™ (300–850, 8 public on-chain signals) as one REST call, plus paid tools built on it. Free API tier with no card; paid plans billed in RLUSD.
-              Autonomous agents can pay per call over x402, with no account and no key.
-            </p>
-            <div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(260px,1fr))',gap:'8px 18px',marginBottom:20,fontSize:13,color:'rgba(255,255,255,.6)',lineHeight:1.6 }}>
-              {[
-                ['Sanctions screening','OFAC SDN screening with a receipt that proves you checked'],
-                ['Wallet alerts','continuous monitoring with HMAC-signed webhooks'],
-                ['Payment pre-check for AI agents','one verdict before paying an XRPL address (x402, pay per call)'],
-                ['Score API + MCP server','REST, OpenAPI and an MCP server for agents'],
-                ['MPT issuer risk','issuer powers and holder data for Multi-Purpose Tokens'],
-                ['Lending data','XLS-66 loan exposure and underwriting inputs, live when lending activates'],
-              ].map(([t,d])=><div key={t}><span style={{ color:'#38bdf8' }}>✓</span> <strong style={{ color:'#fff' }}>{t}</strong>: {d}</div>)}
-            </div>
-            <div style={{ background:'rgba(0,0,0,.35)',border:'1px solid rgba(255,255,255,.1)',borderRadius:12,padding:'14px 16px',marginBottom:20,overflowX:'auto' }}>
-              <code style={{ fontSize:12,color:'rgba(255,255,255,.75)',fontFamily:"'IBM Plex Mono',monospace",whiteSpace:'pre',lineHeight:1.7 }}>{`curl -H "authorization: Bearer xrs_live_..." \\
-  "https://www.xrplhub.io/api/v1/score?wallet=rXXXX..."`}</code>
-            </div>
-            <div style={{ display:'flex',gap:12,flexWrap:'wrap',marginBottom:22 }}>
-              <a href="/pricing" style={{ display:'inline-flex',alignItems:'center',gap:8,padding:'13px 26px',background:'#d4a72c',color:'#000',fontSize:14,fontWeight:800,borderRadius:99,textDecoration:'none' }}>See pricing & get a key →</a>
-              <a href="/openapi.json" style={{ display:'inline-flex',alignItems:'center',gap:8,padding:'13px 26px',border:'1.5px solid rgba(255,255,255,.22)',color:'#fff',fontSize:14,fontWeight:600,borderRadius:99,textDecoration:'none' }}>OpenAPI spec ↗</a>
-              <a href="/.well-known/x402" style={{ display:'inline-flex',alignItems:'center',gap:8,padding:'13px 26px',border:'1.5px solid rgba(255,255,255,.22)',color:'#fff',fontSize:14,fontWeight:600,borderRadius:99,textDecoration:'none' }}>x402 discovery ↗</a>
-            </div>
-            <div style={{ borderTop:'1px solid rgba(255,255,255,.08)',paddingTop:18 }}>
-              <div style={{ fontSize:14,fontWeight:800,marginBottom:6 }}>Issuing a Multi-Purpose Token?</div>
-              <p style={{ fontSize:12,color:'rgba(255,255,255,.5)',lineHeight:1.6,marginBottom:10,maxWidth:640 }}>Build the MPTokenIssuanceCreate with a recorded backing declaration. Free; you sign in your own wallet. It earns the io.xrplhub.mpt.v1.declared credential, a record of what you declared, never a verification of it.</p>
-              <button onClick={()=>{ const p = PRODUCTS.find(x=>x.id==='mptissue'); if (p) setAP(p); }} style={{ padding:'10px 16px',borderRadius:99,border:'1px solid rgba(245,158,11,.4)',background:'transparent',color:'#f59e0b',fontWeight:700,fontSize:12,cursor:'pointer',fontFamily:'inherit' }}>Issue an MPT with a backing declaration →</button>
-            </div>
-          </div>
-        </section>
-
-        {/* PLAIN FAQ — for people who just bought XRP */}
-        <section id="faq" className="section-pad" style={{ padding:'0 24px 72px',maxWidth:820,margin:'0 auto' }}>
-          <h2 style={{ fontSize:'clamp(22px,3.4vw,30px)',fontWeight:900,letterSpacing:'-1px',marginBottom:18,textAlign:'center' }}>Questions</h2>
-          <div style={{ display:'flex',flexDirection:'column',gap:12 }}>
-            {[
-              ['Do I need to know crypto?','No. If you have an XRP wallet like Xaman, you can use everything here.'],
-              ['Does XRPLHub ever hold my money?','No. Your money stays in your wallet, and you approve every payment yourself. We never see your keys.'],
-              ['What\'s free?','The wallet score, Spend Controls, Token Check, the wallet permissions check and Batch Send are free. Business tools are paid.'],
-            ].map(([q,a])=>(
-              <div key={q} style={{ background:'rgba(255,255,255,.03)',border:'1px solid rgba(255,255,255,.08)',borderRadius:14,padding:'16px 18px' }}>
-                <div style={{ fontSize:15,fontWeight:800,marginBottom:6 }}>{q}</div>
-                <div style={{ fontSize:13,color:'rgba(255,255,255,.6)',lineHeight:1.7 }}>{a}</div>
-              </div>
-            ))}
-          </div>
-        </section>
+        {/* DEVELOPERS + QUESTIONS — same cards */}
+        <div style={{ maxWidth:1180, margin:'0 auto', padding:'0 16px 56px', display:'grid', gap:22 }}>
+          <DevelopersSection />
+          <HomeFaq />
+        </div>
 
         {/* FOOTER */}
         <footer style={{ background:'rgba(3,4,14,.72)',backdropFilter:'blur(14px)',borderTop:'1px solid rgba(255,255,255,.07)',padding:'32px 24px 28px' }}>
