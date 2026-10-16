@@ -534,3 +534,10 @@ old ledger — so "do the nodes agree?" stays green; only the validated ledger's
   fire when a watched grade changes. Tested end to end against XRPL Devnet on 2026-10-16 (lending is enabled on Devnet;
   Ripple's lending tutorials use Devnet).
 - **Copies:** `lendingGrade.ts` and `lendingFacts.ts` are copied into the uxus repo for the paid grade API. Change both.
+- **Lending Pro (phase 2, off until `lendingLive()`):** sold on uxus.finance ($49/mo, Stripe price
+  `price_1URAofRoquiH1GTZCgWWeul3`, plan `lending_pro`, 20,000 grade calls/month). The customer's uxus key works here:
+  `GET /api/lending/pro/history?type=&id=&days=` and `GET|POST|DELETE /api/lending/pro/watch` (grade-change webhooks,
+  signed like monitoring webhooks). `src/lib/lendingPro.ts` checks the key against
+  `https://uxus.finance/api/billing/entitlement` (cached 5 min) and stores only its SHA-256. The paid per-call grade API
+  is `GET https://uxus.finance/api/lending/grade?id=` ($0.02 x402; 503 before the paywall until lending is live) and MCP
+  tool `lending_grade` on uxus.
